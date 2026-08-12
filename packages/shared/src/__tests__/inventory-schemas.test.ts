@@ -1,0 +1,58 @@
+import { describe, expect, it } from 'vitest';
+import {
+  inventoryMovementSchema,
+  inventoryProductSchema,
+} from '../schemas';
+
+describe('inventoryProductSchema', () => {
+  it('validates a product', () => {
+    const result = inventoryProductSchema.safeParse({
+      name: 'Amoxicilina',
+      category: 'medicamento',
+      unit: 'caja',
+      quantity: 10,
+      minQuantity: 2,
+      unitCost: '1500.50',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.unitCost).toBe(1500.5);
+    }
+  });
+
+  it('rejects a short name', () => {
+    const result = inventoryProductSchema.safeParse({
+      name: 'A',
+      quantity: 1,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects negative stock', () => {
+    const result = inventoryProductSchema.safeParse({
+      name: 'Jeringas',
+      quantity: -1,
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('inventoryMovementSchema', () => {
+  it('accepts an entrada', () => {
+    const result = inventoryMovementSchema.safeParse({
+      movementType: 'entrada',
+      quantity: 5,
+      lotNumber: 'L-001',
+      expiresAt: '2027-01-15',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects zero quantity', () => {
+    const result = inventoryMovementSchema.safeParse({
+      movementType: 'salida',
+      quantity: 0,
+    });
+    expect(result.success).toBe(false);
+  });
+});

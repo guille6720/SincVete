@@ -1,0 +1,311 @@
+'use server';
+
+import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
+import {
+  appointmentListSchema,
+  appointmentSchema,
+  computeEndTime,
+  fromLocalDateTimeInput,
+  type ActionResult,
+  type Appointment,
+  type AppointmentListRow,
+  type AppointmentStatus,
+  type AssignableStaffMember,
+  type Role,
+} from '@sincvete/shared';
+import { createServerClient } from '@/lib/supabase/server';
+import { PermissionError, requirePermission } from '@/lib/permissions';
+import { getSessionContext } from '@/actions/auth';
+
+function actionError<T = void>(error: unknown): ActionResult<T> {
+  if (error instanceof PermissionError) {
+    return { success: false, error: error.message };
+  }
+  console.error(error);
+  return { success: false, error: 'Ocurrió un error inesperado' };
+}
+
+function parseAppointmentForm(formData: FormData) {
+  const startsAtRaw = formData.get('startsAt');
+  const startsAt =
+    typeof startsAtRaw === 'string' && startsAtRaw.includes('T') && !startsAtRaw.endsWith('Z')
+      ? fromLocalDateTimeInput(startsAtRaw)
+      : startsAtRaw;
+
+  return appointmentSchema.safeParse({
+    patientId: formData.get('patientId'),
+    ownerId: formData.get('ownerId'),
+    assignedUserId: formData.get('assignedUserId'),
+    startsAt,
+    durationMinutes: formData.get('durationMinutes') || 30,
+    appointmentType: formData.get('appointmentType') || 'consulta',
+    title: formData.get('title'),
+    notes: formData.get('notes'),
+    branchId: formData.get('branchId'),
+    status: formData.get('status') || undefined,
+    cancellationReason: formData.get('cancellationReason'),
+  });
+}
+
+export async function listAppointments(
+  input: {
+    weekStart: string;
+    branchId?: string;
+    status?: string;
+    assignedUserId?: string;
+  }
+): Promise<AppointmentListRow[]> {
+  await requirePermission('appointments:read');
+  const parsed = appointmentListSchema.parse(input);
+  const session = await getSessionContext();
+  const supabase = await createServerClient();
+
+  const { data, error } = await supabase.rpc('list_appointments_range', {
+    p_week_start: parsed.weekStart,
+    p_branch_id: parsed.branchId ?? session?.branchId ?? null,
+    p_status: parsed.status ?? null,
+    p_assigned_user_id: parsed.assignedUserId ?? null,
+  });
+
+  if (error) throw error;
+  return (data ?? []) as AppointmentListRow[];
+}
+
+export async function getAppointment(id: string): Promise<AppointmentListRow | null> {
+  await requirePermission('appointments:read');
+  const supabase = await createServerClient();
+
+  const { data: appointment, error } = await supabase
+    .from('appointments')
+    .select('*')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (error || !appointment) return null;
+
+  const [{ data: patient }, { data: owner }, profileResult] = await Promise.all([
+    supabase.from('patients').select('name, species').eq('id', appointment.patient_id).single(),
+    supabase.from('owners').select('full_name').eq('id', appointment.owner_id).single(),
+    appointment.assigned_user_id
+      ? supabase.from('profiles').select('full_name').eq('id', appointment.assigned_user_id).single()
+      : Promise.resolve({ data: null }),
+  ]);
+
+  if (!patient || !owner) return null;
+
+  return {
+    ...(appointment as Appointment),
+    patient_name: patient.name,
+    patient_species: patient.species as AppointmentListRow['patient_species'],
+    owner_full_name: owner.full_name,
+    assigned_user_name: profileResult.data?.full_name ?? null,
+  };
+}
+
+export async function createAppointment(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const session = await requirePermission('appointments:write');
+    const parsed = parseAppointmentForm(formData);
+
+    if (!parsed.success) {
+      return {
+        success: false,
+        error: 'Datos inválidos',
+        fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+      };
+    }
+
+    const branchId = parsed.data.branchId ?? session.branchId;
+    if (!branchId) {
+      return { success: false, error: 'Seleccioná una sucursal activa' };
+    }
+
+    const startsAt = parsed.data.startsAt;
+    const endsAt = computeEndTime(startsAt, parsed.data.durationMinutes);
+
+    const supabase = await createServerClient();
+    const { data, error } = await supabase
+      .from('appointments')
+      .insert({
+        organization_id: session.organizationId,
+        branch_id: branchId,
+        patient_id: parsed.data.patientId,
+        owner_id: parsed.data.ownerId,
+        assigned_user_id: parsed.data.assignedUserId ?? null,
+        starts_at: startsAt,
+        ends_at: endsAt,
+        appointment_type: parsed.data.appointmentType,
+        title: parsed.data.title ?? null,
+        notes: parsed.data.notes ?? null,
+        status: 'programada',
+      })
+      .select('id')
+      .single();
+
+    if (error) {
+      return { success: false, error: 'No se pudo crear la cita' };
+    }
+
+    revalidatePath('/agenda');
+    revalidatePath('/dashboard');
+    redirect(`/agenda/${data.id}`);
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function updateAppointment(
+  appointmentId: string,
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    await requirePermission('appointments:write');
+    const parsed = parseAppointmentForm(formData);
+
+    if (!parsed.success) {
+      return {
+        success: false,
+        error: 'Datos inválidos',
+        fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+      };
+    }
+
+    const startsAt = parsed.data.startsAt;
+    const endsAt = computeEndTime(startsAt, parsed.data.durationMinutes);
+
+    const supabase = await createServerClient();
+    const { error } = await supabase
+      .from('appointments')
+      .update({
+        branch_id: parsed.data.branchId,
+        patient_id: parsed.data.patientId,
+        owner_id: parsed.data.ownerId,
+        assigned_user_id: parsed.data.assignedUserId ?? null,
+        starts_at: startsAt,
+        ends_at: endsAt,
+        appointment_type: parsed.data.appointmentType,
+        title: parsed.data.title ?? null,
+        notes: parsed.data.notes ?? null,
+        status: parsed.data.status,
+        cancellation_reason: parsed.data.cancellationReason ?? null,
+      })
+      .eq('id', appointmentId);
+
+    if (error) {
+      return { success: false, error: 'No se pudo actualizar la cita' };
+    }
+
+    revalidatePath('/agenda');
+    revalidatePath(`/agenda/${appointmentId}`);
+    revalidatePath('/dashboard');
+    return { success: true };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function updateAppointmentStatus(
+  appointmentId: string,
+  status: AppointmentStatus,
+  cancellationReason?: string
+): Promise<ActionResult> {
+  try {
+    await requirePermission('appointments:write');
+    const supabase = await createServerClient();
+
+    const { error } = await supabase
+      .from('appointments')
+      .update({
+        status,
+        cancellation_reason:
+          status === 'cancelada' ? cancellationReason ?? 'Cancelada' : null,
+      })
+      .eq('id', appointmentId);
+
+    if (error) {
+      return { success: false, error: 'No se pudo actualizar el estado' };
+    }
+
+    revalidatePath('/agenda');
+    revalidatePath(`/agenda/${appointmentId}`);
+    revalidatePath('/dashboard');
+    return { success: true };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function deleteAppointment(appointmentId: string): Promise<ActionResult> {
+  try {
+    await requirePermission('appointments:write');
+    const supabase = await createServerClient();
+
+    const { error } = await supabase
+      .from('appointments')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', appointmentId);
+
+    if (error) {
+      return { success: false, error: 'No se pudo eliminar la cita' };
+    }
+
+    revalidatePath('/agenda');
+    revalidatePath('/dashboard');
+    return { success: true };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function getAssignableStaff(): Promise<AssignableStaffMember[]> {
+  await requirePermission('appointments:read');
+  const session = await getSessionContext();
+  if (!session) return [];
+
+  const supabase = await createServerClient();
+  let query = supabase
+    .from('branch_members')
+    .select('user_id, role')
+    .eq('organization_id', session.organizationId)
+    .eq('is_active', true)
+    .is('deleted_at', null);
+
+  if (session.branchId) {
+    query = query.eq('branch_id', session.branchId);
+  }
+
+  const { data: members, error } = await query;
+  if (error || !members?.length) return [];
+
+  const userIds = [...new Set(members.map((m) => m.user_id))];
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .in('id', userIds);
+
+  const profileMap = new Map((profiles ?? []).map((p) => [p.id, p.full_name]));
+
+  return members.map((member) => ({
+    userId: member.user_id,
+    fullName: profileMap.get(member.user_id) ?? 'Sin nombre',
+    role: member.role as Role,
+  }));
+}
+
+export async function canManageAppointments(): Promise<boolean> {
+  const session = await getSessionContext();
+  if (!session) return false;
+  return session.permissions.includes('appointments:write');
+}
+
+export async function canReadAppointments(): Promise<boolean> {
+  const session = await getSessionContext();
+  if (!session) return false;
+  return session.permissions.includes('appointments:read');
+}
