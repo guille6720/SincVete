@@ -9,10 +9,19 @@ interface DashboardSpeciesBreakdownProps {
 export function DashboardSpeciesBreakdown({ summary }: DashboardSpeciesBreakdownProps) {
   const total = summary.speciesCounts.reduce((acc, item) => acc + item.count, 0);
 
+  const barColors = [
+    'bg-teal-500',
+    'bg-sky-500',
+    'bg-amber-500',
+    'bg-rose-500',
+    'bg-emerald-500',
+    'bg-indigo-500',
+  ];
+
   return (
-    <Card>
+    <Card className="border-teal-200/70 bg-white/90 shadow-sm backdrop-blur-sm">
       <CardHeader>
-        <CardTitle>Pacientes por especie</CardTitle>
+        <CardTitle className="text-lg">Pacientes por especie</CardTitle>
         <CardDescription>Distribución de pacientes activos</CardDescription>
       </CardHeader>
       <CardContent>
@@ -20,14 +29,14 @@ export function DashboardSpeciesBreakdown({ summary }: DashboardSpeciesBreakdown
           <p className="text-sm text-muted-foreground">Todavía no hay pacientes registrados.</p>
         ) : (
           <ul className="space-y-3">
-            {summary.speciesCounts.map((item) => {
+            {summary.speciesCounts.map((item, index) => {
               const pct = total > 0 ? Math.round((item.count / total) * 100) : 0;
               return (
                 <li key={item.species} className="space-y-1">
                   <div className="flex items-center justify-between text-sm">
                     <Link
                       href={`/pacientes?species=${encodeURIComponent(item.species)}`}
-                      className="font-medium hover:text-primary hover:underline"
+                      className="font-medium hover:text-teal-700 hover:underline"
                     >
                       {SPECIES_EMOJI[item.species]} {item.species}
                     </Link>
@@ -35,9 +44,9 @@ export function DashboardSpeciesBreakdown({ summary }: DashboardSpeciesBreakdown
                       {item.count} ({pct}%)
                     </span>
                   </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-muted">
+                  <div className="h-2.5 overflow-hidden rounded-full bg-teal-50">
                     <div
-                      className="h-full rounded-full bg-primary/70"
+                      className={`h-full rounded-full ${barColors[index % barColors.length]}`}
                       style={{ width: `${pct}%` }}
                     />
                   </div>

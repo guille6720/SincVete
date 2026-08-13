@@ -18,24 +18,31 @@ DECLARE
   action_name TEXT;
   old_row JSONB;
   new_row JSONB;
+  row_data JSONB;
 BEGIN
   IF TG_OP = 'INSERT' THEN
     action_name := 'create';
     new_row := to_jsonb(NEW);
-    org_id := NEW.organization_id;
+    row_data := new_row;
   ELSIF TG_OP = 'UPDATE' THEN
     action_name := 'update';
     old_row := to_jsonb(OLD);
     new_row := to_jsonb(NEW);
-    org_id := NEW.organization_id;
+    row_data := new_row;
   ELSIF TG_OP = 'DELETE' THEN
     action_name := 'delete';
     old_row := to_jsonb(OLD);
-    org_id := OLD.organization_id;
+    row_data := old_row;
+  END IF;
+
+  IF TG_TABLE_NAME = 'organizations' THEN
+    org_id := (row_data->>'id')::uuid;
+  ELSE
+    org_id := NULLIF(row_data->>'organization_id', '')::uuid;
   END IF;
 
   BEGIN
-    branch_id_val := NULLIF(COALESCE(new_row, old_row)->>'branch_id', '')::uuid;
+    branch_id_val := NULLIF(row_data->>'branch_id', '')::uuid;
   EXCEPTION WHEN invalid_text_representation THEN
     branch_id_val := NULL;
   END;

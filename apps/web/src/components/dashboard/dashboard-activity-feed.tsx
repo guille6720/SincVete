@@ -8,13 +8,13 @@ interface DashboardActivityFeedProps {
 
 export function DashboardActivityFeed({ activity }: DashboardActivityFeedProps) {
   return (
-    <Card>
+    <Card className="border-sky-200/70 bg-white/90 shadow-sm backdrop-blur-sm">
       <CardHeader className="flex flex-row items-start justify-between gap-3">
         <div>
-          <CardTitle>Actividad reciente</CardTitle>
+          <CardTitle className="text-lg">Actividad reciente</CardTitle>
           <CardDescription>Cambios auditados en la clínica</CardDescription>
         </div>
-        <Link href="/auditoria" className="text-xs text-primary hover:underline">
+        <Link href="/auditoria" className="text-xs font-medium text-teal-700 hover:underline">
           Ver auditoría
         </Link>
       </CardHeader>

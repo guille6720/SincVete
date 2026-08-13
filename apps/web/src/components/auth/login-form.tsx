@@ -20,7 +20,11 @@ export function LoginForm({ redirectTo, errorCode }: LoginFormProps) {
   return (
     <Card className="w-full max-w-md">
       <CardHeader className="text-center">
-        <CardTitle>{APP_NAME}</CardTitle>
+        <CardTitle>
+          <Link href="/" className="hover:text-primary">
+            {APP_NAME}
+          </Link>
+        </CardTitle>
         <CardDescription>Ingresá a tu clínica o al portal del tutor</CardDescription>
       </CardHeader>
       <CardContent>

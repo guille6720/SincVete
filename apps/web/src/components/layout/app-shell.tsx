@@ -86,7 +86,7 @@ export function AppShell({
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen bg-[linear-gradient(180deg,#f3faf7_0%,#f8fafc_42%,#eef6f3_100%)]">
       <CommandPalette />
 
       {/* Mobile overlay */}
@@ -102,18 +102,19 @@ export function AppShell({
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r bg-card transition-transform lg:static lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-teal-900/10 bg-white/95 shadow-sm backdrop-blur transition-transform lg:static lg:translate-x-0',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
-        <div className="flex h-14 items-center justify-between border-b px-4">
-          <Link href="/dashboard" className="font-semibold text-primary">
+        <div className="flex h-14 items-center justify-between border-b border-teal-900/10 bg-gradient-to-r from-teal-700 to-teal-600 px-4">
+          <Link href="/dashboard" className="flex items-center gap-2 font-semibold text-white">
+            <PawPrint className="h-5 w-5 text-emerald-200" />
             {APP_NAME}
           </Link>
           <Button
             variant="ghost"
             size="icon"
-            className="lg:hidden"
+            className="text-white hover:bg-white/15 hover:text-white lg:hidden"
             onClick={() => setSidebarOpen(false)}
           >
             <X className="h-5 w-5" />
@@ -121,8 +122,8 @@ export function AppShell({
         </div>
 
         {branchName && (
-          <div className="border-b px-4 py-3">
-            <p className="text-xs text-muted-foreground">Sucursal</p>
+          <div className="border-b border-teal-900/10 bg-teal-50/60 px-4 py-3">
+            <p className="text-xs text-teal-700/80">Sucursal</p>
             {branches.length > 1 ? (
               <BranchSelector branches={branches} activeBranchId={activeBranchId ?? null} />
             ) : (
@@ -140,13 +141,20 @@ export function AppShell({
                 href={item.href}
                 onClick={() => setSidebarOpen(false)}
                 className={cn(
-                  'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
+                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
                   isActive
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                    ? 'bg-teal-600 text-white shadow-sm shadow-teal-700/20'
+                    : 'text-slate-600 hover:bg-teal-50 hover:text-teal-900'
                 )}
               >
-                <item.icon className="h-4 w-4" />
+                <span
+                  className={cn(
+                    'inline-flex h-7 w-7 items-center justify-center rounded-md',
+                    isActive ? 'bg-white/20' : 'bg-teal-50 text-teal-700'
+                  )}
+                >
+                  <item.icon className="h-4 w-4" />
+                </span>
                 {item.label}
               </Link>
             );
@@ -169,7 +177,7 @@ export function AppShell({
 
       {/* Main content */}
       <div className="flex flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-teal-900/10 bg-white/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/70">
           <Button
             variant="ghost"
             size="icon"

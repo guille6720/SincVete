@@ -18,13 +18,13 @@ export function DashboardRecentLists({
 }: DashboardRecentListsProps) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <Card>
+      <Card className="border-teal-200/70 bg-white/90 shadow-sm backdrop-blur-sm">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle>Últimos pacientes</CardTitle>
+            <CardTitle className="text-lg">Últimos pacientes</CardTitle>
             <CardDescription>Registros recientes</CardDescription>
           </div>
-          <Link href="/pacientes" className="text-sm text-primary hover:underline">
+          <Link href="/pacientes" className="text-sm font-medium text-teal-700 hover:underline">
             Ver todos
           </Link>
         </CardHeader>
@@ -38,7 +38,7 @@ export function DashboardRecentLists({
                   <div>
                     <Link
                       href={`/pacientes/${patient.id}`}
-                      className="font-medium hover:text-primary hover:underline"
+                      className="font-medium hover:text-teal-700 hover:underline"
                     >
                       {SPECIES_EMOJI[patient.species]} {patient.name}
                     </Link>
@@ -54,13 +54,13 @@ export function DashboardRecentLists({
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="border-sky-200/70 bg-white/90 shadow-sm backdrop-blur-sm">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle>Últimos propietarios</CardTitle>
+            <CardTitle className="text-lg">Últimos propietarios</CardTitle>
             <CardDescription>Registros recientes</CardDescription>
           </div>
-          <Link href="/propietarios" className="text-sm text-primary hover:underline">
+          <Link href="/propietarios" className="text-sm font-medium text-sky-700 hover:underline">
             Ver todos
           </Link>
         </CardHeader>
@@ -73,7 +73,7 @@ export function DashboardRecentLists({
                 <li key={owner.id} className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
                   <Link
                     href={`/propietarios/${owner.id}`}
-                    className="font-medium hover:text-primary hover:underline"
+                    className="font-medium hover:text-sky-700 hover:underline"
                   >
                     {owner.full_name}
                   </Link>
