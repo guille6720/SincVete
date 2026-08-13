@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { APP_NAME, slugify } from '@sincvete/shared';
+import { slugify } from '@sincvete/shared';
+import { BrandLogo } from '@/components/brand/sincvete-logo';
 
 export function RegisterForm() {
   const [state, formAction, pending] = useActionState(signUp, null);
@@ -23,9 +24,14 @@ export function RegisterForm() {
 
   return (
     <Card className="w-full max-w-lg">
-      <CardHeader className="text-center">
-        <CardTitle>Registrá {APP_NAME}</CardTitle>
-        <CardDescription>Creá tu clínica y comenzá en minutos</CardDescription>
+      <CardHeader className="space-y-4 text-center">
+        <div className="flex justify-center">
+          <BrandLogo href="/" size="lg" priority />
+        </div>
+        <div>
+          <CardTitle>Registrá tu clínica</CardTitle>
+          <CardDescription>Creá tu clínica y comenzá en minutos</CardDescription>
+        </div>
       </CardHeader>
       <CardContent>
         <form action={formAction} className="space-y-4">

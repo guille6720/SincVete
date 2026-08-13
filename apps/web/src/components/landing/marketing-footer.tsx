@@ -1,12 +1,13 @@
 import Link from 'next/link';
 import { APP_NAME } from '@sincvete/shared';
+import { BrandLogo } from '@/components/brand/sincvete-logo';
 
 export function MarketingFooter() {
   return (
     <footer className="border-t border-white/10 bg-[var(--land-ink)] text-white">
       <div className="mx-auto flex max-w-6xl flex-col gap-10 px-4 py-14 sm:px-6 md:flex-row md:justify-between">
         <div className="max-w-sm">
-          <p className="font-display text-2xl font-semibold">{APP_NAME}</p>
+          <BrandLogo href="/" size="lg" variant="onDark" />
           <p className="mt-3 text-sm leading-relaxed text-white/60">
             El sistema de gestión veterinaria para clínicas en Argentina. Agenda, historia
             clínica, farmacia, caja y portal del tutor en una sola plataforma.

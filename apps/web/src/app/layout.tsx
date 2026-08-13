@@ -17,6 +17,10 @@ const fraunces = Fraunces({
 export const metadata: Metadata = {
   title: APP_NAME,
   description: 'Plataforma veterinaria SaaS profesional',
+  icons: {
+    icon: [{ url: '/favicon.png', type: 'image/png' }],
+    apple: [{ url: '/brand/logo.png' }],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Menu, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { APP_NAME } from '@sincvete/shared';
+import { BrandLogo } from '@/components/brand/sincvete-logo';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -35,12 +35,7 @@ export function MarketingHeader() {
       )}
     >
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-        <Link
-          href="/"
-          className="font-display text-xl font-semibold tracking-tight text-[var(--land-ink)]"
-        >
-          {APP_NAME}
-        </Link>
+        <BrandLogo href="/" size="sm" priority />
 
         <nav className="hidden items-center gap-8 md:flex">
           {NAV.map((item) => (

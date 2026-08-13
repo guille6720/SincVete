@@ -3,11 +3,12 @@
 import { useActionState } from 'react';
 import Link from 'next/link';
 import { acceptPortalInviteForm, activatePortalAccount } from '@/actions/portal';
+import { BrandLogo } from '@/components/brand/sincvete-logo';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { APP_NAME, type PortalInvitePreview } from '@sincvete/shared';
+import type { PortalInvitePreview } from '@sincvete/shared';
 
 interface PortalActivateFormProps {
   token: string;
@@ -28,8 +29,10 @@ export function PortalActivateForm({
   if (!token || !preview) {
     return (
       <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle>{APP_NAME}</CardTitle>
+        <CardHeader className="space-y-3 text-center">
+          <div className="flex justify-center">
+            <BrandLogo href="/" size="md" />
+          </div>
           <CardDescription>Invitación inválida o vencida</CardDescription>
         </CardHeader>
         <CardContent className="text-center text-sm text-muted-foreground">
@@ -45,8 +48,10 @@ export function PortalActivateForm({
   if (isStaff) {
     return (
       <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle>{APP_NAME}</CardTitle>
+        <CardHeader className="space-y-3 text-center">
+          <div className="flex justify-center">
+            <BrandLogo href="/" size="md" />
+          </div>
           <CardDescription>Esta cuenta es del equipo de la clínica</CardDescription>
         </CardHeader>
         <CardContent className="text-center text-sm text-muted-foreground">

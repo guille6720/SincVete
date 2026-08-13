@@ -34,7 +34,8 @@ import { signOut } from '@/actions/auth';
 import { BranchSelector } from '@/components/layout/branch-selector';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { APP_NAME, ROLE_LABELS, type Role } from '@sincvete/shared';
+import { ROLE_LABELS, type Role } from '@sincvete/shared';
+import { BrandLogo } from '@/components/brand/sincvete-logo';
 import { CommandPalette, CommandPaletteTrigger } from './command-palette';
 import { NotificationBell } from '@/components/notifications/notification-bell';
 
@@ -106,15 +107,18 @@ export function AppShell({
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
-        <div className="flex h-14 items-center justify-between border-b border-teal-900/10 bg-gradient-to-r from-teal-700 to-teal-600 px-4">
-          <Link href="/dashboard" className="flex items-center gap-2 font-semibold text-white">
-            <PawPrint className="h-5 w-5 text-emerald-200" />
-            {APP_NAME}
-          </Link>
+        <div className="relative border-b border-teal-900/10 bg-white px-3 pb-2 pt-3">
+          <BrandLogo
+            href="/dashboard"
+            size="sidebar"
+            variant="onLight"
+            priority
+            className="mx-auto object-contain object-center"
+          />
           <Button
             variant="ghost"
             size="icon"
-            className="text-white hover:bg-white/15 hover:text-white lg:hidden"
+            className="absolute right-1 top-1 text-slate-600 hover:bg-slate-100 lg:hidden"
             onClick={() => setSidebarOpen(false)}
           >
             <X className="h-5 w-5" />
@@ -122,7 +126,7 @@ export function AppShell({
         </div>
 
         {branchName && (
-          <div className="border-b border-teal-900/10 bg-teal-50/60 px-4 py-3">
+          <div className="border-b border-teal-900/10 bg-slate-50 px-4 py-3">
             <p className="text-xs text-teal-700/80">Sucursal</p>
             {branches.length > 1 ? (
               <BranchSelector branches={branches} activeBranchId={activeBranchId ?? null} />

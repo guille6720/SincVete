@@ -2,6 +2,7 @@ import { ArrowRight, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 import { APP_NAME } from '@sincvete/shared';
 import { Button } from '@/components/ui/button';
+import { BrandLogo } from '@/components/brand/sincvete-logo';
 import { MarketingFooter } from '@/components/landing/marketing-footer';
 import { MarketingHeader } from '@/components/landing/marketing-header';
 import { PlansPricingSection } from '@/components/landing/plans-pricing-section';
@@ -77,9 +78,9 @@ export function SincVeteHomeLanding() {
       <section className="relative pt-16">
         <div className="grid min-h-[calc(100svh-4rem)] lg:grid-cols-2">
           <div className="flex flex-col justify-center px-4 py-14 sm:px-8 lg:px-12 xl:pl-[max(3rem,calc((100vw-72rem)/2+1.5rem))]">
-            <p className="animate-landing-rise font-display text-5xl font-semibold tracking-tight text-[var(--land-ink)] sm:text-6xl lg:text-7xl">
-              {APP_NAME}
-            </p>
+            <div className="animate-landing-rise">
+              <BrandLogo size="hero" priority />
+            </div>
             <h1 className="animate-landing-rise mt-5 max-w-lg font-display text-3xl font-semibold leading-tight tracking-tight text-[var(--land-ink)] sm:text-4xl">
               La clínica veterinaria, en una sola app.
             </h1>
@@ -220,6 +221,9 @@ export function SincVeteHomeLanding() {
       {/* Final CTA */}
       <LandingCtaBackdrop>
         <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
+          <div className="mb-6 flex justify-center">
+            <BrandLogo size="lg" variant="onDark" className="rounded-lg" />
+          </div>
           <h2 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
             Empezá a operar con {APP_NAME} hoy
           </h2>

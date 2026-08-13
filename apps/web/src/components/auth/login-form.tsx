@@ -3,11 +3,11 @@
 import { useActionState } from 'react';
 import Link from 'next/link';
 import { signIn } from '@/actions/auth';
+import { BrandLogo } from '@/components/brand/sincvete-logo';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { APP_NAME } from '@sincvete/shared';
 
 interface LoginFormProps {
   redirectTo?: string;
@@ -19,12 +19,10 @@ export function LoginForm({ redirectTo, errorCode }: LoginFormProps) {
 
   return (
     <Card className="w-full max-w-md">
-      <CardHeader className="text-center">
-        <CardTitle>
-          <Link href="/" className="hover:text-primary">
-            {APP_NAME}
-          </Link>
-        </CardTitle>
+      <CardHeader className="space-y-4 text-center">
+        <div className="flex justify-center">
+          <BrandLogo href="/" size="lg" priority />
+        </div>
         <CardDescription>Ingresá a tu clínica o al portal del tutor</CardDescription>
       </CardHeader>
       <CardContent>
@@ -38,41 +36,39 @@ export function LoginForm({ redirectTo, errorCode }: LoginFormProps) {
               id="email"
               name="email"
               type="email"
-              autoComplete="email"
               required
+              autoComplete="email"
               placeholder="tu@email.com"
             />
             {state?.fieldErrors?.email && (
               <p className="text-sm text-destructive">{state.fieldErrors.email[0]}</p>
             )}
           </div>
-
           <div className="space-y-2">
             <Label htmlFor="password">Contraseña</Label>
             <Input
               id="password"
               name="password"
               type="password"
-              autoComplete="current-password"
               required
-              placeholder="••••••••"
+              autoComplete="current-password"
             />
             {state?.fieldErrors?.password && (
               <p className="text-sm text-destructive">{state.fieldErrors.password[0]}</p>
             )}
           </div>
 
-          {errorCode === 'no_access' && (
+          {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
+          {errorCode === 'portal_denied' && (
             <p className="text-sm text-destructive">Esta cuenta no tiene acceso a SincVete.</p>
           )}
-          {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
 
           <Button type="submit" className="w-full" disabled={pending}>
-            {pending ? 'Ingresando...' : 'Ingresar'}
+            {pending ? 'Ingresando…' : 'Ingresar'}
           </Button>
         </form>
 
-        <p className="mt-4 text-center text-sm text-muted-foreground">
+        <p className="mt-6 text-center text-sm text-muted-foreground">
           ¿No tenés cuenta?{' '}
           <Link href="/register" className="font-medium text-primary hover:underline">
             Registrá tu clínica

@@ -2,10 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LogOut, PawPrint } from 'lucide-react';
+import { LogOut } from 'lucide-react';
+import { BrandLogo } from '@/components/brand/sincvete-logo';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { APP_NAME } from '@sincvete/shared';
 
 interface PortalShellProps {
   children: React.ReactNode;
@@ -19,11 +19,8 @@ export function PortalShell({ children, userName, signOutAction }: PortalShellPr
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <header className="sticky top-0 z-30 border-b bg-card/95 backdrop-blur">
-        <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between gap-4 px-4">
-          <Link href="/portal" className="flex items-center gap-2 font-semibold text-primary">
-            <PawPrint className="h-5 w-5" />
-            {APP_NAME}
-          </Link>
+        <div className="mx-auto flex h-16 w-full max-w-5xl items-center justify-between gap-4 px-4">
+          <BrandLogo href="/portal" size="sm" />
           <nav className="flex items-center gap-2">
             <Link
               href="/portal"
