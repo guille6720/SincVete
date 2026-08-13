@@ -63,18 +63,24 @@ export function LandingPhotoStrip() {
   ] as const;
 
   return (
-    <section aria-label="Pacientes que cuidamos" className="border-y border-[var(--land-line)] bg-[var(--land-ink)]">
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+    <section
+      aria-label="Pacientes que cuidamos"
+      className="border-y border-[var(--land-line)] bg-[var(--land-ink)]"
+    >
+      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-4 px-4 py-6 sm:grid-cols-2 sm:gap-5 sm:px-6 sm:py-8 md:grid-cols-3 md:gap-6">
         {photos.map((photo) => (
-          <figure key={photo.src} className="group relative aspect-[3/4] overflow-hidden">
+          <figure
+            key={photo.src}
+            className="group relative aspect-[4/3] overflow-hidden rounded-sm sm:aspect-[3/4] md:min-h-[280px]"
+          >
             <Image
               src={photo.src}
               alt={photo.alt}
               fill
               className="object-cover transition duration-700 group-hover:scale-105"
-              sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 16vw"
+              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
             />
-            <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-3 pb-3 pt-10 text-xs font-medium text-white">
+            <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-4 pb-4 pt-12 text-sm font-medium text-white">
               {photo.label}
             </figcaption>
           </figure>
