@@ -65,13 +65,25 @@ export function LandingPhotoStrip() {
   return (
     <section
       aria-label="Pacientes que cuidamos"
-      className="border-y border-[var(--land-line)] bg-[var(--land-ink)]"
+      className="relative overflow-hidden border-y border-[var(--land-line)]"
     >
-      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-4 px-4 py-6 sm:grid-cols-2 sm:gap-5 sm:px-6 sm:py-8 md:grid-cols-3 md:gap-6">
+      <Image
+        src="/landing/hero-vet.jpg"
+        alt=""
+        fill
+        className="scale-110 object-cover blur-md"
+        sizes="100vw"
+        aria-hidden
+      />
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-[var(--land-ink)]/55"
+      />
+      <div className="relative z-10 mx-auto grid max-w-6xl grid-cols-1 gap-4 px-4 py-6 sm:grid-cols-2 sm:gap-5 sm:px-6 sm:py-8 md:grid-cols-3 md:gap-6">
         {photos.map((photo) => (
           <figure
             key={photo.src}
-            className="group relative aspect-[4/3] overflow-hidden rounded-sm sm:aspect-[3/4] md:min-h-[280px]"
+            className="group relative aspect-[4/3] overflow-hidden rounded-sm shadow-lg ring-1 ring-white/15 sm:aspect-[3/4] md:min-h-[280px]"
           >
             <Image
               src={photo.src}
