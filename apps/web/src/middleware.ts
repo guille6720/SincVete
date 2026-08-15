@@ -2,7 +2,14 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import type { Database } from '@sincvete/db';
 
-const PUBLIC_ROUTES = ['/', '/login', '/register', '/auth/callback', '/portal/activar'];
+const PUBLIC_ROUTES = [
+  '/',
+  '/login',
+  '/register',
+  '/auth/callback',
+  '/portal/activar',
+  '/recuperar-contrasena',
+];
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });

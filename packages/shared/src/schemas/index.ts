@@ -23,6 +23,20 @@ export const signInSchema = z.object({
   password: passwordSchema,
 });
 
+export const requestPasswordResetSchema = z.object({
+  email: emailSchema,
+});
+
+export const updatePasswordSchema = z
+  .object({
+    password: passwordSchema,
+    confirmPassword: z.string().min(1, 'Confirmá la contraseña'),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: 'Las contraseñas no coinciden',
+    path: ['confirmPassword'],
+  });
+
 export const signUpSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
@@ -56,6 +70,8 @@ export const inviteMemberSchema = z.object({
 
 export type SignInInput = z.infer<typeof signInSchema>;
 export type SignUpInput = z.infer<typeof signUpSchema>;
+export type RequestPasswordResetInput = z.infer<typeof requestPasswordResetSchema>;
+export type UpdatePasswordInput = z.infer<typeof updatePasswordSchema>;
 export type PaginationInput = z.infer<typeof paginationSchema>;
 export type InviteMemberInput = z.infer<typeof inviteMemberSchema>;
 

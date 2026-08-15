@@ -45,7 +45,15 @@ export function LoginForm({ redirectTo, errorCode }: LoginFormProps) {
             )}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Contraseña</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="password">Contraseña</Label>
+              <Link
+                href="/recuperar-contrasena"
+                className="text-xs font-medium text-primary hover:underline"
+              >
+                ¿Olvidaste tu contraseña?
+              </Link>
+            </div>
             <Input
               id="password"
               name="password"
