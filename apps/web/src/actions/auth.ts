@@ -112,13 +112,27 @@ export async function signUp(
       password: parsed.data.password,
     });
 
-    if (authError || !authData.user) {
+    if (authError) {
+      const msg = authError.message.toLowerCase();
       return {
         success: false,
         error:
-          connectionErrorMessage(authError?.message)
-          ?? authError?.message
-          ?? 'No se pudo crear la cuenta',
+          connectionErrorMessage(authError.message)
+          ?? (msg.includes('already') || msg.includes('registered')
+            ? 'Este email ya está registrado. Probá iniciar sesión.'
+            : authError.message),
+      };
+    }
+
+    if (!authData.user) {
+      return { success: false, error: 'No se pudo crear la cuenta. Probá con otro email.' };
+    }
+
+    // Supabase returns a user with empty identities when the email is already registered
+    if (!authData.user.identities || authData.user.identities.length === 0) {
+      return {
+        success: false,
+        error: 'Este email ya está registrado. Probá iniciar sesión.',
       };
     }
 
@@ -131,17 +145,25 @@ export async function signUp(
 
     if (setupError) {
       console.error('[signUp] handle_new_user_signup', setupError);
-      const service = await createServiceClient();
-      await service.auth.admin.deleteUser(authData.user.id);
+      try {
+        const service = await createServiceClient();
+        await service.auth.admin.deleteUser(authData.user.id);
+      } catch (cleanupError) {
+        console.error('[signUp] cleanup deleteUser failed', cleanupError);
+      }
+
+      const msg = setupError.message.toLowerCase();
       return {
         success: false,
-        error: setupError.message.includes('slug')
-          ? 'El identificador de clínica ya está en uso'
+        error: msg.includes('slug') || msg.includes('already taken')
+          ? 'El identificador de clínica ya está en uso. Probá con otro (por ejemplo vete-bmw-2).'
           : setupError.message.includes('Could not find') || setupError.message.includes('schema cache')
             ? 'Falta aplicar las migraciones en Supabase (db push)'
-            : setupError.message.includes('JWT') || setupError.code === 'PGRST301' || setupError.message.toLowerCase().includes('not authenticated')
+            : msg.includes('jwt') || setupError.code === 'PGRST301' || msg.includes('not authenticated')
               ? 'Confirmá el email o desactivá "Confirm email" en Auth → Providers'
-              : `No se pudo configurar la clínica: ${setupError.message}`,
+              : msg.includes('already has a profile')
+                ? 'Este usuario ya tiene una clínica. Ingresá con tu email.'
+                : `No se pudo configurar la clínica: ${setupError.message}`,
       };
     }
 
