@@ -3,7 +3,6 @@ import { getSessionContext } from '@/lib/session';
 import { countUnreadNotifications } from '@/actions/notifications';
 import { getUserBranches } from '@/actions/settings';
 import { AppShell } from '@/components/layout/app-shell';
-import { createServerClient } from '@/lib/supabase/server';
 
 export default async function ClinicLayout({ children }: { children: React.ReactNode }) {
   const session = await getSessionContext();
@@ -17,18 +16,16 @@ export default async function ClinicLayout({ children }: { children: React.React
     redirect(session.kind === 'portal' ? '/portal' : '/login');
   }
 
+  // Both loaders are React.cache'd — reuse across nested pages in this request.
   const [branches, unreadNotifications] = await Promise.all([
     getUserBranches(),
     countUnreadNotifications(),
   ]);
 
-  let branchName = branches.find((b) => b.id === session.branchId)?.name;
-  if (!branchName && session.branchId) {
-    const supabase = await createServerClient();
-    const { data } = await supabase.from('branches').select('name').eq('id', session.branchId).single();
-    branchName = data?.name;
-  }
-  branchName ??= branches.find((b) => b.is_main)?.name ?? branches[0]?.name;
+  const branchName =
+    branches.find((b) => b.id === session.branchId)?.name ??
+    branches.find((b) => b.is_main)?.name ??
+    branches[0]?.name;
 
   return (
     <AppShell

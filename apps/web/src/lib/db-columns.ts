@@ -6,6 +6,9 @@
 export const PATIENT_COLUMNS =
   'id, organization_id, branch_id, owner_id, name, species, breed, sex, birth_date, color, microchip, is_neutered, is_deceased, deceased_at, notes, photo_url, is_active, created_at, updated_at, deleted_at';
 
+export const ORGANIZATION_COLUMNS =
+  'id, name, slug, plan, settings, created_at, updated_at, deleted_at';
+
 export const OWNER_COLUMNS =
   'id, organization_id, branch_id, full_name, email, phone, phone_whatsapp, document_type, document_number, address, city, province, postal_code, notes, is_active, portal_user_id, created_at, updated_at, deleted_at';
 

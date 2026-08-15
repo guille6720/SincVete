@@ -18,6 +18,7 @@ import { PermissionError, requirePermission } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
 import { revalidateAgenda, revalidateDashboard } from '@/lib/cache-revalidate';
 import { APPOINTMENT_COLUMNS } from '@/lib/db-columns';
+import { cache } from 'react';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -271,7 +272,8 @@ export async function deleteAppointment(appointmentId: string): Promise<ActionRe
   }
 }
 
-export async function getAssignableStaff(): Promise<AssignableStaffMember[]> {
+/** Request-scoped staff list for agenda forms (not patient PHI). */
+const loadAssignableStaff = cache(async (): Promise<AssignableStaffMember[]> => {
   await requirePermission('appointments:read');
   const session = await getSessionContext();
   if (!session) return [];
@@ -304,6 +306,10 @@ export async function getAssignableStaff(): Promise<AssignableStaffMember[]> {
     fullName: profileMap.get(member.user_id) ?? 'Sin nombre',
     role: member.role as Role,
   }));
+});
+
+export async function getAssignableStaff(): Promise<AssignableStaffMember[]> {
+  return loadAssignableStaff();
 }
 
 export async function canManageAppointments(): Promise<boolean> {

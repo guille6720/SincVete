@@ -26,6 +26,7 @@ import type { Role } from '@sincvete/shared';
 import type { Json } from '@sincvete/db';
 import { createServerClient, createServiceClient } from '@/lib/supabase/server';
 import { PermissionError, requirePermission, requireSession } from '@/lib/permissions';
+import { ORGANIZATION_COLUMNS } from '@/lib/db-columns';
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (error instanceof PermissionError) {
@@ -35,18 +36,23 @@ function actionError<T = void>(error: unknown): ActionResult<T> {
   return { success: false, error: 'Ocurrió un error inesperado' };
 }
 
-export async function getOrganization(): Promise<Organization | null> {
+/** Request-scoped clinic metadata (non-PHI). Dedupes layout + forms + dashboard. */
+const loadOrganization = cache(async (): Promise<Organization | null> => {
   const session = await requireSession();
   const supabase = await createServerClient();
   const { data, error } = await supabase
     .from('organizations')
-    .select('*')
+    .select(ORGANIZATION_COLUMNS)
     .eq('id', session.organizationId)
     .is('deleted_at', null)
     .single();
 
   if (error) return null;
   return data as Organization;
+});
+
+export async function getOrganization(): Promise<Organization | null> {
+  return loadOrganization();
 }
 
 export async function getOrganizationSettingsForm(): Promise<

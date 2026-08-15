@@ -429,3 +429,23 @@ Nueva migración `20240811000038_performance_hot_path_indexes.sql`:
 Sensación de respuesta inmediata: el shell permanece visible y el segmento muestra skeleton sin esperar el RSC completo.
 
 **Producción (`main`): no modificada.**
+
+## 19. Fase 10 aplicada — cache request-scoped (sin nueva arquitectura)
+
+No se introdujo `unstable_cache` / tags / TTL cross-request (riesgo de filtrar PHI entre tenants).
+
+| Loader | Estado |
+| --- | --- |
+| `getSessionContext` / `createServerClient` | ya `React.cache` (Fase 2) |
+| `getUserBranches` | ya `React.cache` |
+| `getOrganization` | **nuevo** `React.cache` + columnas explícitas |
+| `getAssignableStaff` | **nuevo** `React.cache` (profesionales / agenda) |
+| `countUnreadNotifications` | **nuevo** `React.cache` |
+| `getDashboardContext/Summary/Activity` | **cache** + context reusa org/branches |
+| Layout clínica | eliminó query extra de `branches.name` |
+
+N/A en SincVete vs brief DrFlow: specialties, clinical templates, feature flags.
+
+Invalidación: sigue `cache-revalidate.ts` (paths acotados, Fase 3).
+
+**Producción (`main`): no modificada.**
