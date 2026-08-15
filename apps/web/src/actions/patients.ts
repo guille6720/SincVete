@@ -14,6 +14,7 @@ import { createServerClient } from '@/lib/supabase/server';
 import { PermissionError, requirePermission } from '@/lib/permissions';
 import { getSessionContext } from '@/lib/session';
 import { revalidatePatient, revalidatePatientsList } from '@/lib/cache-revalidate';
+import { PATIENT_COLUMNS } from '@/lib/db-columns';
 
 const PATIENT_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 const PATIENT_PHOTO_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
@@ -154,9 +155,7 @@ export async function getPatient(id: string): Promise<Patient | null> {
 
   const { data, error } = await supabase
     .from('patients')
-    .select(
-      'id, organization_id, branch_id, owner_id, name, species, breed, sex, birth_date, color, microchip, is_neutered, is_deceased, deceased_at, notes, photo_url, is_active, created_at, updated_at, deleted_at'
-    )
+    .select(PATIENT_COLUMNS)
     .eq('id', id)
     .is('deleted_at', null)
     .single();

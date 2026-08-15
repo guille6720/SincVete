@@ -17,6 +17,7 @@ import {
 import { createServerClient } from '@/lib/supabase/server';
 import { PermissionError, requirePermission } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
+import { VACCINATION_COLUMNS } from '@/lib/db-columns';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -133,7 +134,7 @@ export async function getVaccination(id: string): Promise<VaccinationListRow | n
 
   const { data: vaccination, error } = await supabase
     .from('vaccinations')
-    .select('*')
+    .select(VACCINATION_COLUMNS)
     .eq('id', id)
     .is('deleted_at', null)
     .single();

@@ -17,6 +17,7 @@ import { createServerClient } from '@/lib/supabase/server';
 import { PermissionError, requirePermission } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
 import { revalidateAgenda, revalidateDashboard } from '@/lib/cache-revalidate';
+import { APPOINTMENT_COLUMNS } from '@/lib/db-columns';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -89,7 +90,7 @@ export async function getAppointment(id: string): Promise<AppointmentListRow | n
 
   const { data: appointment, error } = await supabase
     .from('appointments')
-    .select('*')
+    .select(APPOINTMENT_COLUMNS)
     .eq('id', id)
     .is('deleted_at', null)
     .single();

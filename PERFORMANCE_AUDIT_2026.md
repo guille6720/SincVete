@@ -378,3 +378,22 @@ No se traen años de historia para ocultarlos en el cliente.
 Nota: en SincVete el paciente tiene `name` (mascota); documento/apellido viven en `owners` (ya indexados).
 
 **Producción (`main`): no modificada.**
+
+## 16. Fase 7 aplicada — `select('*')` en rutas críticas
+
+Centralizado en `apps/web/src/lib/db-columns.ts`. Detalle (`get*`) ya no usa `*`:
+
+| Dominio | Funciones |
+| --- | --- |
+| Pacientes / dueños | `getPatient`, `getOwner` |
+| Historia | `getClinicalEntry` |
+| Farmacia | `getPrescription` + items |
+| Agenda / consultas | `getAppointment`, `getConsultation` |
+| Lab | `getLabOrder` + items |
+| Internación / vacunas / cirugía | `getHospitalization` + notes, `getVaccination`, `getSurgery` |
+
+`profiles` en sesión ya estaba acotado (Fase 2).
+
+**Fuera de alcance deliberado:** `audit`, `billing`, `cash`, `inventory`, `settings`, `images` (no hot path clínico del brief).
+
+**Producción (`main`): no modificada.**

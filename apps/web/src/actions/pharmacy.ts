@@ -18,6 +18,7 @@ import {
   revalidatePrescription,
   revalidatePrescriptionBoard,
 } from '@/lib/cache-revalidate';
+import { PRESCRIPTION_COLUMNS, PRESCRIPTION_ITEM_COLUMNS } from '@/lib/db-columns';
 import { revalidatePath } from 'next/cache';
 
 function isNextRedirect(error: unknown): boolean {
@@ -129,7 +130,7 @@ export async function getPrescription(id: string): Promise<{
 
   const { data: prescription, error } = await supabase
     .from('prescriptions')
-    .select('*')
+    .select(PRESCRIPTION_COLUMNS)
     .eq('id', id)
     .is('deleted_at', null)
     .single();
@@ -144,7 +145,7 @@ export async function getPrescription(id: string): Promise<{
       : Promise.resolve({ data: null }),
     supabase
       .from('prescription_items')
-      .select('*')
+      .select(PRESCRIPTION_ITEM_COLUMNS)
       .eq('prescription_id', id)
       .is('deleted_at', null)
       .order('sort_order', { ascending: true }),

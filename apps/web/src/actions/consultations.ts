@@ -22,6 +22,7 @@ import {
   revalidateConsultationDetail,
   revalidatePatientHistoria,
 } from '@/lib/cache-revalidate';
+import { CONSULTATION_COLUMNS } from '@/lib/db-columns';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -129,7 +130,7 @@ export async function getConsultation(id: string): Promise<ConsultationListRow |
 
   const { data: consultation, error } = await supabase
     .from('consultations')
-    .select('*')
+    .select(CONSULTATION_COLUMNS)
     .eq('id', id)
     .is('deleted_at', null)
     .single();

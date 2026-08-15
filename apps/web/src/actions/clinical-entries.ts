@@ -19,6 +19,7 @@ import {
   revalidateClinicalEntryList,
   revalidatePatientHistoria,
 } from '@/lib/cache-revalidate';
+import { CLINICAL_ENTRY_COLUMNS } from '@/lib/db-columns';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -121,7 +122,7 @@ export async function getClinicalEntry(id: string): Promise<ClinicalEntryListRow
 
   const { data: entry, error } = await supabase
     .from('clinical_entries')
-    .select('*')
+    .select(CLINICAL_ENTRY_COLUMNS)
     .eq('id', id)
     .is('deleted_at', null)
     .single();

@@ -16,6 +16,7 @@ import {
 import { createServerClient } from '@/lib/supabase/server';
 import { PermissionError, requirePermission } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
+import { LAB_ORDER_COLUMNS, LAB_ORDER_ITEM_COLUMNS } from '@/lib/db-columns';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -105,7 +106,7 @@ export async function getLabOrder(id: string): Promise<{
 
   const { data: order, error } = await supabase
     .from('lab_orders')
-    .select('*')
+    .select(LAB_ORDER_COLUMNS)
     .eq('id', id)
     .is('deleted_at', null)
     .single();
@@ -120,7 +121,7 @@ export async function getLabOrder(id: string): Promise<{
       : Promise.resolve({ data: null }),
     supabase
       .from('lab_order_items')
-      .select('*')
+      .select(LAB_ORDER_ITEM_COLUMNS)
       .eq('lab_order_id', id)
       .is('deleted_at', null)
       .order('sort_order', { ascending: true }),

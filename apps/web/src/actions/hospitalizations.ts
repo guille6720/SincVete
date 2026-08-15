@@ -18,6 +18,7 @@ import {
 import { createServerClient } from '@/lib/supabase/server';
 import { PermissionError, requirePermission } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
+import { HOSPITALIZATION_COLUMNS, HOSPITALIZATION_NOTE_COLUMNS } from '@/lib/db-columns';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -120,7 +121,7 @@ export async function getHospitalization(id: string): Promise<{
 
   const { data: stay, error } = await supabase
     .from('hospitalizations')
-    .select('*')
+    .select(HOSPITALIZATION_COLUMNS)
     .eq('id', id)
     .is('deleted_at', null)
     .single();
@@ -135,7 +136,7 @@ export async function getHospitalization(id: string): Promise<{
       : Promise.resolve({ data: null }),
     supabase
       .from('hospitalization_notes')
-      .select('*')
+      .select(HOSPITALIZATION_NOTE_COLUMNS)
       .eq('hospitalization_id', id)
       .is('deleted_at', null)
       .order('recorded_at', { ascending: false }),

@@ -12,6 +12,7 @@ import {
 import { createServerClient } from '@/lib/supabase/server';
 import { PermissionError, requirePermission } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
+import { OWNER_COLUMNS } from '@/lib/db-columns';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -87,7 +88,7 @@ export async function getOwner(id: string): Promise<Owner | null> {
 
   const { data, error } = await supabase
     .from('owners')
-    .select('*')
+    .select(OWNER_COLUMNS)
     .eq('id', id)
     .is('deleted_at', null)
     .single();
