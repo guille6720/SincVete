@@ -16,7 +16,18 @@ import { createServerClient } from '@/lib/supabase/server';
 import { PermissionError, requirePermission } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
 
+function isNextRedirect(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'digest' in error &&
+    typeof (error as { digest?: unknown }).digest === 'string' &&
+    (error as { digest: string }).digest.startsWith('NEXT_REDIRECT')
+  );
+}
+
 function actionError<T = void>(error: unknown): ActionResult<T> {
+  if (isNextRedirect(error)) throw error;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
