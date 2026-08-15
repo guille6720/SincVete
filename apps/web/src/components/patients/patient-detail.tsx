@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { deletePatient } from '@/actions/patients';
 import { PatientVaccineStatus } from '@/components/vaccinations/patient-vaccine-status';
+import { PatientClinicalRecent } from '@/components/patients/patient-clinical-recent';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -29,6 +30,7 @@ import {
   SPECIES_EMOJI,
   buildClinicalAiPath,
   buildWhatsAppComposePath,
+  type ClinicalEntryListRow,
   type HospitalizationStatus,
   type Owner,
   type Patient,
@@ -45,6 +47,7 @@ interface PatientDetailProps {
   canWriteBilling?: boolean;
   canSendWhatsApp?: boolean;
   clinicalEntryCount?: number;
+  recentClinicalEntries?: ClinicalEntryListRow[];
   activeHospitalization?: { id: string; status: HospitalizationStatus } | null;
   activeSurgery?: { id: string; status: SurgeryStatus } | null;
   vaccineStatus?: VaccinationDueRow[];
@@ -79,6 +82,7 @@ export function PatientDetail({
   canWriteBilling = false,
   canSendWhatsApp = false,
   clinicalEntryCount = 0,
+  recentClinicalEntries = [],
   activeHospitalization = null,
   activeSurgery = null,
   vaccineStatus = [],
@@ -326,6 +330,15 @@ export function PatientDetail({
           )}
         </CardContent>
       </Card>
+
+      {canReadClinical && (
+        <PatientClinicalRecent
+          patientId={patient.id}
+          entries={recentClinicalEntries}
+          total={clinicalEntryCount}
+          canWrite={canWriteClinical}
+        />
+      )}
 
       {canReadClinical && (
         <PatientVaccineStatus

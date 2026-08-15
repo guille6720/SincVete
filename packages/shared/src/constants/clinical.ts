@@ -42,3 +42,9 @@ export const CLINICAL_FIELD_LABELS = {
   weightKg: 'Peso (kg)',
   temperatureC: 'Temperatura (°C)',
 } as const;
+
+/** Initial patient history page size (server-side). */
+export const CLINICAL_HISTORY_PAGE_SIZE = 20;
+
+/** Recent evolutions on patient detail hub. */
+export const CLINICAL_RECENT_PAGE_SIZE = 5;

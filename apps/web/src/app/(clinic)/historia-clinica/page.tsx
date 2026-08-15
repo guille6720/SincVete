@@ -3,7 +3,7 @@ import { Suspense } from 'react';
 import { listClinicalEntries } from '@/actions/clinical-entries';
 import { ClinicalEntriesList } from '@/components/clinical/clinical-entries-list';
 import { getSessionContext } from '@/lib/session';
-import { CLINICAL_ENTRY_TYPES, type ClinicalEntryType } from '@sincvete/shared';
+import { CLINICAL_ENTRY_TYPES, CLINICAL_HISTORY_PAGE_SIZE, type ClinicalEntryType } from '@sincvete/shared';
 
 interface HistoriaClinicaPageProps {
   searchParams: Promise<{ page?: string; search?: string; type?: string }>;
@@ -22,7 +22,7 @@ export default async function HistoriaClinicaPage({ searchParams }: HistoriaClin
 
   const data = await listClinicalEntries({
     page,
-    pageSize: 25,
+    pageSize: CLINICAL_HISTORY_PAGE_SIZE,
     search: search || undefined,
     entryType,
   });

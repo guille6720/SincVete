@@ -352,4 +352,16 @@ Helper: `apps/web/src/lib/cache-revalidate.ts`
 
 **Sin optimistic UI clínico** (no se muestran estados médicos falsos).
 
+## 14. Fase 5 aplicada — Historia clínica acotada
+
+| Cambio | Detalle |
+| --- | --- |
+| `search_clinical_entries` | Lista sin SOAP completo (anamnesis/examen/plan/notes null; diagnosis/treatment truncados) |
+| Page size | 20 en historia paciente y global (`CLINICAL_HISTORY_PAGE_SIZE`) |
+| Ficha paciente | Últimas 5 evoluciones + total + “Ver anteriores” (`CLINICAL_RECENT_PAGE_SIZE`) |
+| UI | Botón “Ver anteriores” server-side (`?page=N`); skeleton loading |
+| Detalle entrada | Sigue cargando SOAP completo solo en `/historia-clinica/[id]` |
+
+No se traen años de historia para ocultarlos en el cliente.
+
 **Producción (`main`): no modificada.**

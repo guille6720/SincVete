@@ -27,6 +27,8 @@ interface ClinicalEntriesListProps {
   patientId?: string;
   patientName?: string;
   basePath?: string;
+  /** Show explicit "Ver anteriores" for patient history pagination. */
+  showLoadOlder?: boolean;
 }
 
 export function ClinicalEntriesList({
@@ -37,6 +39,7 @@ export function ClinicalEntriesList({
   patientId,
   patientName,
   basePath = '/historia-clinica',
+  showLoadOlder = false,
 }: ClinicalEntriesListProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -181,12 +184,21 @@ export function ClinicalEntriesList({
           </div>
 
           {data.totalPages > 1 && (
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-muted-foreground">
                 {data.total} entrada{data.total !== 1 ? 's' : ''} · Página {data.page} de{' '}
                 {data.totalPages}
               </p>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
+                {showLoadOlder && data.page < data.totalPages && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => goToPage(data.page + 1)}
+                  >
+                    Ver anteriores
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"

@@ -6,7 +6,7 @@ import { getPatient } from '@/actions/patients';
 import { ClinicalEntriesList } from '@/components/clinical/clinical-entries-list';
 import { Button } from '@/components/ui/button';
 import { getSessionContext } from '@/lib/session';
-import { SPECIES_EMOJI } from '@sincvete/shared';
+import { CLINICAL_HISTORY_PAGE_SIZE, SPECIES_EMOJI } from '@sincvete/shared';
 import { Suspense } from 'react';
 
 interface PatientHistoriaPageProps {
@@ -32,7 +32,7 @@ export default async function PatientHistoriaPage({
     getPatient(id),
     listClinicalEntries({
       page,
-      pageSize: 25,
+      pageSize: CLINICAL_HISTORY_PAGE_SIZE,
       search: search || undefined,
       patientId: id,
     }),
@@ -57,6 +57,9 @@ export default async function PatientHistoriaPage({
           </h1>
           <p className="text-muted-foreground">
             Historia clínica · {totalEntries} entrada{totalEntries !== 1 ? 's' : ''}
+            {totalEntries > CLINICAL_HISTORY_PAGE_SIZE
+              ? ` · mostrando ${CLINICAL_HISTORY_PAGE_SIZE} por página`
+              : ''}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -78,6 +81,7 @@ export default async function PatientHistoriaPage({
           initialSearch={search}
           patientId={id}
           patientName={patient.name}
+          showLoadOlder
         />
       </Suspense>
     </div>

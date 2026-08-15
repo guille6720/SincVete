@@ -1,12 +1,13 @@
 import { notFound, redirect } from 'next/navigation';
 import { getPatient } from '@/actions/patients';
 import { getOwner } from '@/actions/owners';
-import { countPatientClinicalEntries } from '@/actions/clinical-entries';
+import { listClinicalEntries } from '@/actions/clinical-entries';
 import { getActiveHospitalizationByPatient } from '@/actions/hospitalizations';
 import { listPatientVaccineStatus } from '@/actions/vaccinations';
 import { getActiveSurgeryByPatient } from '@/actions/surgeries';
 import { PatientDetail } from '@/components/patients/patient-detail';
 import { getSessionContext } from '@/lib/session';
+import { CLINICAL_RECENT_PAGE_SIZE } from '@sincvete/shared';
 
 interface PatientPageProps {
   params: Promise<{ id: string }>;
@@ -19,28 +20,32 @@ export default async function PacienteDetailPage({ params }: PatientPageProps) {
   const patient = await getPatient(id);
   if (!patient) notFound();
 
-  const [
-    owner,
-    clinicalEntryCount,
-    activeHospitalization,
-    activeSurgery,
-    vaccineStatus,
-  ] = await Promise.all([
-    getOwner(patient.owner_id),
-    countPatientClinicalEntries(id).catch(() => 0),
-    getActiveHospitalizationByPatient(id),
-    getActiveSurgeryByPatient(id),
-    listPatientVaccineStatus(id),
-  ]);
+  const canReadClinical = session.permissions.includes('clinical:read');
+
+  const [owner, recentClinical, activeHospitalization, activeSurgery, vaccineStatus] =
+    await Promise.all([
+      getOwner(patient.owner_id),
+      canReadClinical
+        ? listClinicalEntries({
+            page: 1,
+            pageSize: CLINICAL_RECENT_PAGE_SIZE,
+            patientId: id,
+          }).catch(() => null)
+        : Promise.resolve(null),
+      getActiveHospitalizationByPatient(id),
+      getActiveSurgeryByPatient(id),
+      listPatientVaccineStatus(id),
+    ]);
 
   return (
     <PatientDetail
       patient={patient}
       owner={owner}
       canWrite={session.permissions.includes('patients:write')}
-      canReadClinical={session.permissions.includes('clinical:read')}
+      canReadClinical={canReadClinical}
       canWriteClinical={session.permissions.includes('clinical:write')}
-      clinicalEntryCount={clinicalEntryCount}
+      clinicalEntryCount={recentClinical?.total ?? 0}
+      recentClinicalEntries={recentClinical?.data ?? []}
       activeHospitalization={activeHospitalization}
       activeSurgery={activeSurgery}
       vaccineStatus={vaccineStatus}
