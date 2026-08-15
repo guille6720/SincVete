@@ -1,7 +1,9 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { Camera } from 'lucide-react';
 import { createPatient, updatePatient } from '@/actions/patients';
 import { OwnerPicker } from '@/components/patients/owner-picker';
 import { Button } from '@/components/ui/button';
@@ -14,6 +16,7 @@ import {
   PATIENT_SPECIES,
   PATIENT_SEX,
   SPECIES_EMOJI,
+  type ActionResult,
   type Patient,
 } from '@sincvete/shared';
 
@@ -32,8 +35,32 @@ export function PatientForm({
   defaultBranchId,
   defaultOwnerId,
 }: PatientFormProps) {
+  const router = useRouter();
   const action = patient ? updatePatient.bind(null, patient.id) : createPatient;
-  const [state, formAction, pending] = useActionState(action, null);
+  const [state, formAction, pending] = useActionState(action, null as ActionResult<{ id: string }> | null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(patient?.photo_url ?? null);
+
+  useEffect(() => {
+    if (!state?.success || !state.data?.id) return;
+    if (!patient) {
+      router.push(`/pacientes/${state.data.id}`);
+    }
+  }, [state, patient, router]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl?.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  const onPhotoChange = (file: File | null) => {
+    if (previewUrl?.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
+    if (!file) {
+      setPreviewUrl(patient?.photo_url ?? null);
+      return;
+    }
+    setPreviewUrl(URL.createObjectURL(file));
+  };
 
   return (
     <Card>
@@ -42,6 +69,35 @@ export function PatientForm({
       </CardHeader>
       <CardContent>
         <form action={formAction} className="grid max-w-2xl gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="photo">Foto</Label>
+            <div className="flex items-center gap-4">
+              <label
+                htmlFor="photo"
+                className="relative flex h-24 w-24 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-dashed border-muted-foreground/40 bg-muted/40 transition hover:border-primary hover:bg-muted"
+              >
+                {previewUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={previewUrl} alt="Foto del paciente" className="h-full w-full object-cover" />
+                ) : (
+                  <Camera className="h-7 w-7 text-muted-foreground" />
+                )}
+                <input
+                  id="photo"
+                  name="photo"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  className="sr-only"
+                  onChange={(e) => onPhotoChange(e.target.files?.[0] ?? null)}
+                />
+              </label>
+              <div className="text-sm text-muted-foreground">
+                <p>Subí una foto del paciente (opcional).</p>
+                <p>JPG, PNG, WebP o GIF · máx. 5 MB</p>
+              </div>
+            </div>
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="name">Nombre *</Label>
             <Input

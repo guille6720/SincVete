@@ -1,7 +1,8 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { createOwner, updateOwner } from '@/actions/owners';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,6 +14,7 @@ import {
   ARGENTINA_PROVINCES,
   DOCUMENT_TYPES,
   DOCUMENT_TYPE_LABELS,
+  type ActionResult,
   type Owner,
 } from '@sincvete/shared';
 
@@ -23,8 +25,14 @@ interface OwnerFormProps {
 }
 
 export function OwnerForm({ owner, branches, defaultBranchId }: OwnerFormProps) {
+  const router = useRouter();
   const action = owner ? updateOwner.bind(null, owner.id) : createOwner;
-  const [state, formAction, pending] = useActionState(action, null);
+  const [state, formAction, pending] = useActionState(action, null as ActionResult<{ id: string }> | null);
+
+  useEffect(() => {
+    if (!state?.success || !state.data?.id || owner) return;
+    router.push(`/propietarios/${state.data.id}`);
+  }, [state, owner, router]);
 
   return (
     <Card>

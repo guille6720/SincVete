@@ -1,7 +1,6 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
 import {
   buildPaginatedResult,
   ownerListSchema,
@@ -136,11 +135,12 @@ export async function createOwner(
       .single();
 
     if (error) {
-      return { success: false, error: 'No se pudo crear el propietario' };
+      console.error('[createOwner]', error);
+      return { success: false, error: error.message || 'No se pudo crear el propietario' };
     }
 
     revalidatePath('/propietarios');
-    redirect(`/propietarios/${data.id}`);
+    return { success: true, data: { id: data.id } };
   } catch (error) {
     return actionError(error);
   }

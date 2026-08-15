@@ -242,22 +242,32 @@ export function PatientDetail({
 
       <Card>
         <CardHeader>
-          <div className="flex flex-wrap items-center gap-2">
-            <CardTitle>
-              {SPECIES_EMOJI[patient.species]} {patient.name}
-            </CardTitle>
-            {patient.is_deceased ? (
-              <Badge variant="destructive">Fallecido</Badge>
-            ) : (
-              <Badge variant={patient.is_active ? 'success' : 'destructive'}>
-                {patient.is_active ? 'Activo' : 'Inactivo'}
-              </Badge>
-            )}
-            {activeHospitalization && (
-              <Badge variant="warning">
-                {HOSPITALIZATION_STATUS_LABELS[activeHospitalization.status]}
-              </Badge>
-            )}
+          <div className="flex flex-wrap items-center gap-3">
+            {patient.photo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={patient.photo_url}
+                alt={patient.name}
+                className="h-16 w-16 rounded-full object-cover ring-2 ring-border"
+              />
+            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle>
+                {SPECIES_EMOJI[patient.species]} {patient.name}
+              </CardTitle>
+              {patient.is_deceased ? (
+                <Badge variant="destructive">Fallecido</Badge>
+              ) : (
+                <Badge variant={patient.is_active ? 'success' : 'destructive'}>
+                  {patient.is_active ? 'Activo' : 'Inactivo'}
+                </Badge>
+              )}
+              {activeHospitalization && (
+                <Badge variant="warning">
+                  {HOSPITALIZATION_STATUS_LABELS[activeHospitalization.status]}
+                </Badge>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">

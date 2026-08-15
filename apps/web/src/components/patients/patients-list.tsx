@@ -137,13 +137,29 @@ export function PatientsList({
                     <td className="px-4 py-3">
                       <Link
                         href={`/pacientes/${patient.id}`}
-                        className="font-medium hover:text-primary hover:underline"
+                        className="flex items-center gap-3 font-medium hover:text-primary hover:underline"
                       >
-                        {SPECIES_EMOJI[patient.species]} {patient.name}
+                        {patient.photo_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={patient.photo_url}
+                            alt=""
+                            className="h-9 w-9 shrink-0 rounded-full object-cover"
+                          />
+                        ) : (
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-base">
+                            {SPECIES_EMOJI[patient.species]}
+                          </span>
+                        )}
+                        <span>
+                          {patient.name}
+                          {patient.microchip && (
+                            <span className="block text-xs font-normal text-muted-foreground">
+                              Chip: {patient.microchip}
+                            </span>
+                          )}
+                        </span>
                       </Link>
-                      {patient.microchip && (
-                        <p className="text-xs text-muted-foreground">Chip: {patient.microchip}</p>
-                      )}
                     </td>
                     <td className="hidden px-4 py-3 md:table-cell">
                       <Link

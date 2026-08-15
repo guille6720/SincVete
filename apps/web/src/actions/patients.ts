@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
+import { randomUUID } from 'crypto';
 import {
   buildPaginatedResult,
   patientListSchema,
@@ -14,6 +14,9 @@ import {
 import { createServerClient } from '@/lib/supabase/server';
 import { PermissionError, requirePermission } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
+
+const PATIENT_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
+const PATIENT_PHOTO_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -44,19 +47,65 @@ function parsePatientForm(formData: FormData) {
     birthDate: formData.get('birthDate'),
     color: formData.get('color'),
     microchip: formData.get('microchip'),
-    isNeutered: formData.has('isNeutered')
-      ? formData.get('isNeutered') === 'true'
-      : false,
-    isDeceased: formData.has('isDeceased')
-      ? formData.get('isDeceased') === 'true'
-      : false,
+    isNeutered: formData.getAll('isNeutered').includes('true'),
+    isDeceased: formData.getAll('isDeceased').includes('true'),
     deceasedAt: formData.get('deceasedAt'),
     notes: formData.get('notes'),
     branchId: formData.get('branchId'),
     isActive: formData.has('isActive')
-      ? formData.get('isActive') === 'true'
+      ? formData.getAll('isActive').includes('true')
       : true,
   });
+}
+
+function photoExtension(mime: string): string | null {
+  switch (mime) {
+    case 'image/jpeg':
+      return 'jpg';
+    case 'image/png':
+      return 'png';
+    case 'image/webp':
+      return 'webp';
+    case 'image/gif':
+      return 'gif';
+    default:
+      return null;
+  }
+}
+
+async function uploadPatientPhoto(
+  organizationId: string,
+  patientId: string,
+  file: File
+): Promise<{ url: string } | { error: string }> {
+  if (!PATIENT_PHOTO_MIME.has(file.type)) {
+    return { error: 'Formato de foto no permitido (JPG, PNG, WebP o GIF)' };
+  }
+  if (file.size > PATIENT_PHOTO_MAX_BYTES) {
+    return { error: 'La foto no puede superar los 5 MB' };
+  }
+
+  const ext = photoExtension(file.type);
+  if (!ext) {
+    return { error: 'Formato de foto no permitido' };
+  }
+
+  const path = `${organizationId}/${patientId}/${randomUUID()}.${ext}`;
+  const supabase = await createServerClient();
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  const { error } = await supabase.storage.from('patient-photos').upload(path, buffer, {
+    contentType: file.type,
+    upsert: false,
+  });
+
+  if (error) {
+    console.error('[uploadPatientPhoto]', error);
+    return { error: error.message || 'No se pudo subir la foto' };
+  }
+
+  const { data } = supabase.storage.from('patient-photos').getPublicUrl(path);
+  return { url: data.publicUrl };
 }
 
 function toPatientListRow(row: PatientListRow & { total_count?: number }): PatientListRow {
@@ -154,14 +203,25 @@ export async function createPatient(
       .single();
 
     if (error) {
+      console.error('[createPatient]', error);
       if (error.code === '23505') {
         return { success: false, error: 'Ya existe un paciente con ese microchip' };
       }
-      return { success: false, error: 'No se pudo crear el paciente' };
+      return { success: false, error: error.message || 'No se pudo crear el paciente' };
+    }
+
+    const photo = formData.get('photo');
+    if (photo instanceof File && photo.size > 0) {
+      const uploaded = await uploadPatientPhoto(session.organizationId, data.id, photo);
+      if (!('error' in uploaded)) {
+        await supabase.from('patients').update({ photo_url: uploaded.url }).eq('id', data.id);
+      } else {
+        console.error('[createPatient] photo', uploaded.error);
+      }
     }
 
     revalidatePath('/pacientes');
-    redirect(`/pacientes/${data.id}`);
+    return { success: true, data: { id: data.id } };
   } catch (error) {
     return actionError(error);
   }
@@ -184,7 +244,22 @@ export async function updatePatient(
       };
     }
 
+    const session = await getSessionContext();
+    if (!session) {
+      return { success: false, error: 'Sesión no válida' };
+    }
+
     const supabase = await createServerClient();
+    let photoUrl: string | undefined;
+    const photo = formData.get('photo');
+    if (photo instanceof File && photo.size > 0) {
+      const uploaded = await uploadPatientPhoto(session.organizationId, patientId, photo);
+      if ('error' in uploaded) {
+        return { success: false, error: uploaded.error };
+      }
+      photoUrl = uploaded.url;
+    }
+
     const { error } = await supabase
       .from('patients')
       .update({
@@ -202,19 +277,21 @@ export async function updatePatient(
         deceased_at: parsed.data.deceasedAt ?? null,
         notes: parsed.data.notes ?? null,
         is_active: parsed.data.isActive,
+        ...(photoUrl ? { photo_url: photoUrl } : {}),
       })
       .eq('id', patientId);
 
     if (error) {
+      console.error('[updatePatient]', error);
       if (error.code === '23505') {
         return { success: false, error: 'Ya existe un paciente con ese microchip' };
       }
-      return { success: false, error: 'No se pudo actualizar el paciente' };
+      return { success: false, error: error.message || 'No se pudo actualizar el paciente' };
     }
 
     revalidatePath('/pacientes');
     revalidatePath(`/pacientes/${patientId}`);
-    return { success: true };
+    return { success: true, data: { id: patientId } };
   } catch (error) {
     return actionError(error);
   }
