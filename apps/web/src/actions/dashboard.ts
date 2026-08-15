@@ -11,7 +11,7 @@ import {
   type DashboardSummary,
   type PatientSpecies,
 } from '@sincvete/shared';
-import { getSessionContext } from '@/actions/auth';
+import { getSessionContext } from '@/lib/session';
 import { createServerClient } from '@/lib/supabase/server';
 
 interface DashboardSummaryRow {

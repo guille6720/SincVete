@@ -1,12 +1,8 @@
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
-import {
-  listAppointments,
-  getAssignableStaff,
-  canManageAppointments,
-  canReadAppointments,
-} from '@/actions/appointments';
+import { listAppointments, getAssignableStaff } from '@/actions/appointments';
 import { AppointmentsAgenda } from '@/components/appointments/appointments-agenda';
+import { getSessionContext } from '@/lib/session';
 import {
   APPOINTMENT_STATUSES,
   getWeekStartDate,
@@ -24,10 +20,9 @@ interface AgendaPageProps {
 }
 
 export default async function AgendaPage({ searchParams }: AgendaPageProps) {
-  const canRead = await canReadAppointments();
-  if (!canRead) redirect('/dashboard');
+  const [session, params] = await Promise.all([getSessionContext(), searchParams]);
+  if (!session?.permissions.includes('appointments:read')) redirect('/dashboard');
 
-  const params = await searchParams;
   const selectedDate = parseDateParam(params.date);
   const weekStart = params.week ?? getWeekStartDate(selectedDate);
   const statusParam = params.status?.trim() ?? '';
@@ -35,14 +30,13 @@ export default async function AgendaPage({ searchParams }: AgendaPageProps) {
     ? (statusParam as AppointmentStatus)
     : undefined;
 
-  const [appointments, staff, canWrite] = await Promise.all([
+  const [appointments, staff] = await Promise.all([
     listAppointments({
       weekStart,
       status,
       assignedUserId: params.assigned,
     }),
     getAssignableStaff(),
-    canManageAppointments(),
   ]);
 
   return (
@@ -57,7 +51,7 @@ export default async function AgendaPage({ searchParams }: AgendaPageProps) {
           appointments={appointments}
           weekStart={weekStart}
           selectedDate={selectedDate}
-          canWrite={canWrite}
+          canWrite={session.permissions.includes('appointments:write')}
           staff={staff}
           initialStatus={status ?? ''}
           initialAssignedUserId={params.assigned ?? ''}

@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { cache } from 'react';
 import {
   branchListSchema,
   branchSchema,
@@ -540,6 +541,10 @@ export async function setActiveBranch(branchId: string): Promise<ActionResult> {
 export async function getUserBranches(): Promise<
   Array<{ id: string; name: string; code: string; is_main: boolean; is_active: boolean }>
 > {
+  return loadUserBranches();
+}
+
+const loadUserBranches = cache(async () => {
   const session = await requireSession();
   const supabase = await createServerClient();
 
@@ -563,4 +568,4 @@ export async function getUserBranches(): Promise<
 
   if (error) throw error;
   return data ?? [];
-}
+});

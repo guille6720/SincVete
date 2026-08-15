@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getSessionContext } from '@/actions/auth';
+import { getSessionContext } from '@/lib/session';
 import { countUnreadNotifications } from '@/actions/notifications';
 import { getUserBranches } from '@/actions/settings';
 import { AppShell } from '@/components/layout/app-shell';
@@ -17,14 +17,15 @@ export default async function ClinicLayout({ children }: { children: React.React
     redirect(session.kind === 'portal' ? '/portal' : '/login');
   }
 
-  const branches = await getUserBranches();
-  const activeBranchId = session.branchId;
-  const unreadNotifications = await countUnreadNotifications();
+  const [branches, unreadNotifications] = await Promise.all([
+    getUserBranches(),
+    countUnreadNotifications(),
+  ]);
 
-  let branchName = branches.find((b) => b.id === activeBranchId)?.name;
-  if (!branchName && activeBranchId) {
+  let branchName = branches.find((b) => b.id === session.branchId)?.name;
+  if (!branchName && session.branchId) {
     const supabase = await createServerClient();
-    const { data } = await supabase.from('branches').select('name').eq('id', activeBranchId).single();
+    const { data } = await supabase.from('branches').select('name').eq('id', session.branchId).single();
     branchName = data?.name;
   }
   branchName ??= branches.find((b) => b.is_main)?.name ?? branches[0]?.name;
@@ -35,7 +36,7 @@ export default async function ClinicLayout({ children }: { children: React.React
       role={staffRole}
       branchName={branchName}
       branches={branches}
-      activeBranchId={activeBranchId}
+      activeBranchId={session.branchId}
       unreadNotifications={unreadNotifications}
     >
       {children}

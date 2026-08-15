@@ -1,11 +1,8 @@
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
-import {
-  listClinicalEntries,
-  canManageClinical,
-  canReadClinical,
-} from '@/actions/clinical-entries';
+import { listClinicalEntries } from '@/actions/clinical-entries';
 import { ClinicalEntriesList } from '@/components/clinical/clinical-entries-list';
+import { getSessionContext } from '@/lib/session';
 import { CLINICAL_ENTRY_TYPES, type ClinicalEntryType } from '@sincvete/shared';
 
 interface HistoriaClinicaPageProps {
@@ -13,10 +10,9 @@ interface HistoriaClinicaPageProps {
 }
 
 export default async function HistoriaClinicaPage({ searchParams }: HistoriaClinicaPageProps) {
-  const canRead = await canReadClinical();
-  if (!canRead) redirect('/dashboard');
+  const [session, params] = await Promise.all([getSessionContext(), searchParams]);
+  if (!session?.permissions.includes('clinical:read')) redirect('/dashboard');
 
-  const params = await searchParams;
   const page = Math.max(1, Number(params.page) || 1);
   const search = params.search?.trim() ?? '';
   const typeParam = params.type?.trim() ?? '';
@@ -24,10 +20,12 @@ export default async function HistoriaClinicaPage({ searchParams }: HistoriaClin
     ? (typeParam as ClinicalEntryType)
     : undefined;
 
-  const [data, canWrite] = await Promise.all([
-    listClinicalEntries({ page, pageSize: 25, search: search || undefined, entryType }),
-    canManageClinical(),
-  ]);
+  const data = await listClinicalEntries({
+    page,
+    pageSize: 25,
+    search: search || undefined,
+    entryType,
+  });
 
   return (
     <div className="space-y-6">
@@ -39,7 +37,7 @@ export default async function HistoriaClinicaPage({ searchParams }: HistoriaClin
       <Suspense fallback={<div className="text-sm text-muted-foreground">Cargando...</div>}>
         <ClinicalEntriesList
           data={data}
-          canWrite={canWrite}
+          canWrite={session.permissions.includes('clinical:write')}
           initialSearch={search}
           initialEntryType={entryType ?? ''}
         />

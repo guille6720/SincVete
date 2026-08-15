@@ -5,8 +5,7 @@ import {
   type Role,
   type SessionContext,
 } from '@sincvete/shared';
-import { getSessionContext } from '@/actions/auth';
-
+import { getSessionContext } from '@/lib/session';
 export class PermissionError extends Error {
   constructor(message = 'No tenés permisos para esta acción') {
     super(message);

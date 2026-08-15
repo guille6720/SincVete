@@ -70,12 +70,11 @@ function parseItemsFromForm(formData: FormData) {
 }
 
 export async function listActivePrescriptions(): Promise<PrescriptionListRow[]> {
-  await requirePermission('clinical:read');
-  const session = await getSessionContext();
+  const session = await requirePermission('clinical:read');
   const supabase = await createServerClient();
 
   const { data, error } = await supabase.rpc('list_active_prescriptions', {
-    p_branch_id: session?.branchId ?? null,
+    p_branch_id: session.branchId ?? null,
   });
 
   if (error) throw error;

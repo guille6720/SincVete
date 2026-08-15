@@ -13,7 +13,7 @@ import {
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
 import { PermissionError, requirePermission } from '@/lib/permissions';
-import { getSessionContext } from '@/actions/auth';
+import { getSessionContext } from '@/lib/session';
 
 const PATIENT_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 const PATIENT_PHOTO_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);

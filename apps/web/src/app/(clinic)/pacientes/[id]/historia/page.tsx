@@ -1,15 +1,11 @@
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import {
-  listClinicalEntries,
-  canManageClinical,
-  canReadClinical,
-  countPatientClinicalEntries,
-} from '@/actions/clinical-entries';
+import { listClinicalEntries } from '@/actions/clinical-entries';
 import { getPatient } from '@/actions/patients';
 import { ClinicalEntriesList } from '@/components/clinical/clinical-entries-list';
 import { Button } from '@/components/ui/button';
+import { getSessionContext } from '@/lib/session';
 import { SPECIES_EMOJI } from '@sincvete/shared';
 import { Suspense } from 'react';
 
@@ -22,27 +18,29 @@ export default async function PatientHistoriaPage({
   params,
   searchParams,
 }: PatientHistoriaPageProps) {
-  const canRead = await canReadClinical();
-  if (!canRead) redirect('/dashboard');
+  const [session, { id }, query] = await Promise.all([
+    getSessionContext(),
+    params,
+    searchParams,
+  ]);
+  if (!session?.permissions.includes('clinical:read')) redirect('/dashboard');
 
-  const { id } = await params;
-  const query = await searchParams;
   const page = Math.max(1, Number(query.page) || 1);
   const search = query.search?.trim() ?? '';
 
-  const patient = await getPatient(id);
-  if (!patient) notFound();
-
-  const [data, canWrite, totalEntries] = await Promise.all([
+  const [patient, data] = await Promise.all([
+    getPatient(id),
     listClinicalEntries({
       page,
       pageSize: 25,
       search: search || undefined,
       patientId: id,
     }),
-    canManageClinical(),
-    countPatientClinicalEntries(id),
   ]);
+  if (!patient) notFound();
+
+  const canWrite = session.permissions.includes('clinical:write');
+  const totalEntries = data.total;
 
   return (
     <div className="space-y-6">

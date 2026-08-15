@@ -1,33 +1,26 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { canManageClinical } from '@/actions/clinical-entries';
-import { getSessionContext } from '@/actions/auth';
 import { getOwner } from '@/actions/owners';
 import { getPatient } from '@/actions/patients';
 import { getUserBranches } from '@/actions/settings';
 import { ClinicalEntryForm } from '@/components/clinical/clinical-entry-form';
 import { Button } from '@/components/ui/button';
+import { getSessionContext } from '@/lib/session';
 
 interface NuevaEntradaPageProps {
   searchParams: Promise<{ patientId?: string; date?: string }>;
 }
 
 export default async function NuevaEntradaClinicaPage({ searchParams }: NuevaEntradaPageProps) {
-  const canWrite = await canManageClinical();
-  if (!canWrite) redirect('/historia-clinica');
+  const [session, params] = await Promise.all([getSessionContext(), searchParams]);
+  if (!session?.permissions.includes('clinical:write')) redirect('/historia-clinica');
 
-  const params = await searchParams;
-  const session = await getSessionContext();
-
-  let patient = null;
-  let owner = null;
-  if (params.patientId) {
-    patient = await getPatient(params.patientId);
-    if (patient) owner = await getOwner(patient.owner_id);
-  }
-
-  const branches = await getUserBranches();
+  const [branches, patient] = await Promise.all([
+    getUserBranches(),
+    params.patientId ? getPatient(params.patientId) : Promise.resolve(null),
+  ]);
+  const owner = patient ? await getOwner(patient.owner_id) : null;
   const defaultEntryDate = params.date ? `${params.date}T09:00` : undefined;
 
   return (
@@ -40,7 +33,7 @@ export default async function NuevaEntradaClinicaPage({ searchParams }: NuevaEnt
       </Button>
       <ClinicalEntryForm
         branches={branches}
-        defaultBranchId={session?.branchId}
+        defaultBranchId={session.branchId}
         defaultPatientId={patient?.id}
         defaultPatientName={patient?.name}
         defaultOwnerId={patient?.owner_id}

@@ -1,13 +1,9 @@
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
-import {
-  listActivePrescriptions,
-  listPrescriptions,
-  canManagePharmacy,
-  canReadPharmacy,
-} from '@/actions/pharmacy';
+import { listActivePrescriptions, listPrescriptions } from '@/actions/pharmacy';
 import { PrescriptionsBoard } from '@/components/pharmacy/prescriptions-board';
 import { PrescriptionsHistory } from '@/components/pharmacy/prescriptions-history';
+import { getSessionContext } from '@/lib/session';
 import { PRESCRIPTION_STATUSES, type PrescriptionStatus } from '@sincvete/shared';
 
 interface FarmaciaPageProps {
@@ -15,10 +11,9 @@ interface FarmaciaPageProps {
 }
 
 export default async function FarmaciaPage({ searchParams }: FarmaciaPageProps) {
-  const canRead = await canReadPharmacy();
-  if (!canRead) redirect('/dashboard');
+  const [session, params] = await Promise.all([getSessionContext(), searchParams]);
+  if (!session?.permissions.includes('clinical:read')) redirect('/dashboard');
 
-  const params = await searchParams;
   const page = Math.max(1, Number(params.page) || 1);
   const search = params.search?.trim() ?? '';
   const statusParam = params.status?.trim() ?? '';
@@ -26,7 +21,7 @@ export default async function FarmaciaPage({ searchParams }: FarmaciaPageProps) 
     ? (statusParam as PrescriptionStatus)
     : undefined;
 
-  const [queue, history, canWrite] = await Promise.all([
+  const [queue, history] = await Promise.all([
     listActivePrescriptions(),
     listPrescriptions({
       page,
@@ -34,7 +29,6 @@ export default async function FarmaciaPage({ searchParams }: FarmaciaPageProps) 
       search: search || undefined,
       status,
     }),
-    canManagePharmacy(),
   ]);
 
   return (
@@ -44,7 +38,10 @@ export default async function FarmaciaPage({ searchParams }: FarmaciaPageProps) 
         <p className="text-muted-foreground">Recetas, dispensación y descuento de stock</p>
       </div>
 
-      <PrescriptionsBoard items={queue} canWrite={canWrite} />
+      <PrescriptionsBoard
+        items={queue}
+        canWrite={session.permissions.includes('clinical:write')}
+      />
 
       <Suspense fallback={<div className="text-sm text-muted-foreground">Cargando historial...</div>}>
         <PrescriptionsHistory data={history} initialSearch={search} initialStatus={status ?? ''} />
