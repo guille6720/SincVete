@@ -90,7 +90,9 @@ export function PatientDetail({
     const result = await deletePatient(patient.id);
     if (result.success) {
       router.push('/pacientes');
+      return;
     }
+    window.alert(result.error ?? 'No se pudo eliminar el paciente');
   };
 
   return (
