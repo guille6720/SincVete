@@ -23,6 +23,7 @@ import { PatientVaccineStatus } from '@/components/vaccinations/patient-vaccine-
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { usePendingAction } from '@/lib/hooks/use-pending-action';
 import {
   HOSPITALIZATION_STATUS_LABELS,
   SPECIES_EMOJI,
@@ -83,14 +84,15 @@ export function PatientDetail({
   vaccineStatus = [],
 }: PatientDetailProps) {
   const router = useRouter();
+  const [pending, runPending] = usePendingAction();
   const age = formatAge(patient.birth_date);
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!confirm('¿Eliminar este paciente? Esta acción no se puede deshacer.')) return;
-    const result = await deletePatient(patient.id);
-    if (result.success) {
-      router.push('/pacientes');
-    }
+    void runPending(async () => {
+      const result = await deletePatient(patient.id);
+      if (result.success) router.push('/pacientes');
+    });
   };
 
   return (
@@ -230,9 +232,20 @@ export function PatientDetail({
                     Editar
                   </Link>
                 </Button>
-                <Button variant="destructive" size="sm" onClick={handleDelete}>
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Eliminar
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDelete}
+                  isPending={pending}
+                >
+                  {pending ? (
+                    'Eliminando...'
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4" />
+                      Eliminar
+                    </>
+                  )}
                 </Button>
               </>
             )}

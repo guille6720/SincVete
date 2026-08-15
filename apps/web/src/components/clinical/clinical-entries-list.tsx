@@ -43,7 +43,7 @@ export function ClinicalEntriesList({
   const searchParams = useSearchParams();
   const [search, setSearch] = useState(initialSearch);
   const debouncedSearch = useDebouncedValue(search);
-  const [, startTransition] = useTransition();
+  const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     const current = searchParams.get('search') ?? '';
@@ -136,7 +136,10 @@ export function ClinicalEntriesList({
         </div>
       ) : (
         <>
-          <div className="space-y-2">
+          <div
+            className={`space-y-2 transition-opacity ${isPending ? 'opacity-60' : ''}`}
+            aria-busy={isPending || undefined}
+          >
             {data.data.map((entry) => (
               <Link
                 key={entry.id}

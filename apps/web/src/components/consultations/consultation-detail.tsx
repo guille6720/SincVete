@@ -8,6 +8,7 @@ import { cancelConsultation } from '@/actions/consultations';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { usePendingAction } from '@/lib/hooks/use-pending-action';
 import {
   CLINICAL_FIELD_LABELS,
   CONSULTATION_STATUS_LABELS,
@@ -29,13 +30,16 @@ export function ConsultationDetail({
   canWriteBilling = false,
 }: ConsultationDetailProps) {
   const router = useRouter();
+  const [pending, runPending] = usePendingAction();
   const canCancel =
     canWrite && (consultation.status === 'en_curso' || consultation.status === 'en_espera');
 
-  const handleCancel = async () => {
+  const handleCancel = () => {
     if (!confirm('¿Cancelar esta consulta?')) return;
-    const result = await cancelConsultation(consultation.id);
-    if (result.success) router.refresh();
+    void runPending(async () => {
+      const result = await cancelConsultation(consultation.id);
+      if (result.success) router.refresh();
+    });
   };
 
   return (
@@ -124,8 +128,13 @@ export function ConsultationDetail({
             </Button>
           )}
           {canCancel && (
-            <Button variant="destructive" size="sm" onClick={handleCancel}>
-              Cancelar consulta
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleCancel}
+              isPending={pending}
+            >
+              {pending ? 'Cancelando...' : 'Cancelar consulta'}
             </Button>
           )}
         </div>

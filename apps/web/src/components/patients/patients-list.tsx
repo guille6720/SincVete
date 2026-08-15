@@ -34,7 +34,7 @@ export function PatientsList({
   const searchParams = useSearchParams();
   const [search, setSearch] = useState(initialSearch);
   const debouncedSearch = useDebouncedValue(search);
-  const [, startTransition] = useTransition();
+  const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     const current = searchParams.get('search') ?? '';
@@ -121,7 +121,10 @@ export function PatientsList({
         </div>
       ) : (
         <>
-          <div className="overflow-hidden rounded-lg border">
+          <div
+            className={`overflow-hidden rounded-lg border transition-opacity ${isPending ? 'opacity-60' : ''}`}
+            aria-busy={isPending || undefined}
+          >
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40">
                 <tr>

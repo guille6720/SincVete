@@ -340,4 +340,16 @@ Helper: `apps/web/src/lib/cache-revalidate.ts`
 
 **Trade-off consciente:** contadores del dashboard pueden quedar un momento desactualizados hasta la próxima visita a `/dashboard`. La historia clínica del paciente y el registro editado se invalidan siempre.
 
+## 13. Fase 4 aplicada — UX instantánea de botones
+
+| Pieza | Cambio |
+| --- | --- |
+| `Button.isPending` | spinner + disabled inmediato |
+| `usePendingAction` | pending síncrono al click |
+| Paciente / historia / consulta / agenda / farmacia | acciones async con spinner + texto |
+| Formularios críticos | `isPending` en submit |
+| Lista pacientes | opacity durante transición de búsqueda |
+
+**Sin optimistic UI clínico** (no se muestran estados médicos falsos).
+
 **Producción (`main`): no modificada.**

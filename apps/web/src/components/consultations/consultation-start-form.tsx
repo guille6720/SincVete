@@ -71,7 +71,7 @@ export function ConsultationStartForm({
           {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
 
           <div className="flex gap-2">
-            <Button type="submit" disabled={pending}>
+            <Button type="submit" isPending={pending}>
               {pending ? 'Iniciando...' : 'Iniciar consulta'}
             </Button>
             <Button variant="outline" asChild>

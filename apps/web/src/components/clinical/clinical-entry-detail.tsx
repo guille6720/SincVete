@@ -8,6 +8,7 @@ import { deleteClinicalEntry } from '@/actions/clinical-entries';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { usePendingAction } from '@/lib/hooks/use-pending-action';
 import {
   CLINICAL_ENTRY_TYPE_LABELS,
   CLINICAL_ENTRY_TYPE_VARIANT,
@@ -25,13 +26,16 @@ interface ClinicalEntryDetailProps {
 
 export function ClinicalEntryDetail({ entry, canWrite }: ClinicalEntryDetailProps) {
   const router = useRouter();
+  const [pending, runPending] = usePendingAction();
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!confirm('¿Eliminar esta entrada clínica?')) return;
-    const result = await deleteClinicalEntry(entry.id);
-    if (result.success) {
-      router.push(`/pacientes/${entry.patient_id}/historia`);
-    }
+    void runPending(async () => {
+      const result = await deleteClinicalEntry(entry.id);
+      if (result.success) {
+        router.push(`/pacientes/${entry.patient_id}/historia`);
+      }
+    });
   };
 
   return (
@@ -71,9 +75,20 @@ export function ClinicalEntryDetail({ entry, canWrite }: ClinicalEntryDetailProp
                 Editar
               </Link>
             </Button>
-            <Button variant="destructive" size="sm" onClick={handleDelete}>
-              <Trash2 className="mr-2 h-4 w-4" />
-              Eliminar
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleDelete}
+              isPending={pending}
+            >
+              {pending ? (
+                'Eliminando...'
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4" />
+                  Eliminar
+                </>
+              )}
             </Button>
           </div>
         )}

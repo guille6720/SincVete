@@ -9,6 +9,7 @@ import { dispensePrescription, voidPrescription } from '@/actions/pharmacy';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { usePendingAction } from '@/lib/hooks/use-pending-action';
 import {
   PRESCRIPTION_STATUS_LABELS,
   PRESCRIPTION_STATUS_VARIANT,
@@ -32,27 +33,27 @@ export function PrescriptionDetail({
 }: PrescriptionDetailProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
+  const [pending, runPending] = usePendingAction();
   const canOperate = canWrite && prescription.status === 'activa';
 
-  const handleDispense = async () => {
-    setPending(true);
-    setError(null);
-    const result = await dispensePrescription(prescription.id);
-    setPending(false);
-    if (result.success) router.refresh();
-    else setError(result.error ?? 'No se pudo dispensar');
+  const handleDispense = () => {
+    void runPending(async () => {
+      setError(null);
+      const result = await dispensePrescription(prescription.id);
+      if (result.success) router.refresh();
+      else setError(result.error ?? 'No se pudo dispensar');
+    });
   };
 
-  const handleVoid = async () => {
+  const handleVoid = () => {
     if (!confirm('¿Anular esta receta? No se podrá dispensar.')) return;
     const reason = window.prompt('Motivo (opcional)') ?? undefined;
-    setPending(true);
-    setError(null);
-    const result = await voidPrescription(prescription.id, reason);
-    setPending(false);
-    if (result.success) router.refresh();
-    else setError(result.error ?? 'No se pudo anular');
+    void runPending(async () => {
+      setError(null);
+      const result = await voidPrescription(prescription.id, reason);
+      if (result.success) router.refresh();
+      else setError(result.error ?? 'No se pudo anular');
+    });
   };
 
   return (
@@ -157,11 +158,11 @@ export function PrescriptionDetail({
 
       {canOperate && (
         <div className="flex flex-wrap gap-2">
-          <Button onClick={handleDispense} disabled={pending}>
+          <Button onClick={handleDispense} isPending={pending}>
             {pending ? 'Dispensando...' : 'Dispensar'}
           </Button>
-          <Button variant="destructive" onClick={handleVoid} disabled={pending}>
-            Anular
+          <Button variant="destructive" onClick={handleVoid} isPending={pending}>
+            {pending ? 'Anulando...' : 'Anular'}
           </Button>
         </div>
       )}

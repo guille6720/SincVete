@@ -238,7 +238,7 @@ export function PatientForm({
           )}
 
           <div className="flex gap-2">
-            <Button type="submit" disabled={pending}>
+            <Button type="submit" isPending={pending}>
               {pending ? 'Guardando...' : patient ? 'Guardar cambios' : 'Crear paciente'}
             </Button>
             <Button variant="outline" asChild>

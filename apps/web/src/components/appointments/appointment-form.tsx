@@ -201,7 +201,7 @@ export function AppointmentForm({
           )}
 
           <div className="flex gap-2">
-            <Button type="submit" disabled={pending}>
+            <Button type="submit" isPending={pending}>
               {pending ? 'Guardando...' : appointment ? 'Guardar cambios' : 'Crear cita'}
             </Button>
             <Button variant="outline" asChild>

@@ -6,6 +6,7 @@ import { Plus } from 'lucide-react';
 import { dispensePrescription } from '@/actions/pharmacy';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { usePendingAction } from '@/lib/hooks/use-pending-action';
 import {
   PRESCRIPTION_STATUS_LABELS,
   PRESCRIPTION_STATUS_VARIANT,
@@ -67,11 +68,14 @@ function BoardRow({
   canWrite: boolean;
 }) {
   const router = useRouter();
+  const [pending, runPending] = usePendingAction();
 
-  const handleDispense = async () => {
-    const result = await dispensePrescription(prescription.id);
-    if (result.success) router.refresh();
-    else if (result.error) alert(result.error);
+  const handleDispense = () => {
+    void runPending(async () => {
+      const result = await dispensePrescription(prescription.id);
+      if (result.success) router.refresh();
+      else if (result.error) alert(result.error);
+    });
   };
 
   return (
@@ -97,8 +101,8 @@ function BoardRow({
         </p>
       </Link>
       {canWrite && (
-        <Button size="sm" onClick={handleDispense}>
-          Dispensar
+        <Button size="sm" onClick={handleDispense} isPending={pending}>
+          {pending ? 'Dispensando...' : 'Dispensar'}
         </Button>
       )}
     </div>

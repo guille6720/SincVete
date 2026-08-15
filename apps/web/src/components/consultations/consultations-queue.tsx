@@ -152,7 +152,7 @@ function QueueRow({
           </Button>
         )}
         {!item.consultation_id && item.appointment_id && canWrite && (
-          <Button size="sm" disabled={pending} onClick={handleStart}>
+          <Button size="sm" isPending={pending} onClick={handleStart}>
             {pending ? 'Iniciando...' : 'Atender'}
           </Button>
         )}
