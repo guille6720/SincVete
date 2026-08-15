@@ -214,12 +214,12 @@ export async function recordVaccinationAction(
     const result = data as { vaccination_id?: string; clinical_entry_id?: string } | null;
 
     revalidatePath('/vacunacion');
-    revalidatePath('/dashboard');
-    revalidatePath('/historia-clinica');
     revalidatePath(`/pacientes/${parsed.data.patientId}`);
+    revalidatePath(`/pacientes/${parsed.data.patientId}/historia`);
 
     if (result?.clinical_entry_id) {
       revalidatePath(`/historia-clinica/${result.clinical_entry_id}`);
+      revalidatePath('/historia-clinica');
     }
 
     if (result?.vaccination_id) {
@@ -274,7 +274,6 @@ export async function updateVaccination(
 
     revalidatePath('/vacunacion');
     revalidatePath(`/vacunacion/${vaccinationId}`);
-    revalidatePath('/dashboard');
     return { success: true };
   } catch (error) {
     return actionError(error);

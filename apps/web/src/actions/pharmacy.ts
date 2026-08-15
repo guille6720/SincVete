@@ -1,6 +1,5 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
   buildPaginatedResult,
@@ -15,6 +14,11 @@ import {
 import { createServerClient } from '@/lib/supabase/server';
 import { PermissionError, requirePermission } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
+import {
+  revalidatePrescription,
+  revalidatePrescriptionBoard,
+} from '@/lib/cache-revalidate';
+import { revalidatePath } from 'next/cache';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -223,9 +227,7 @@ export async function createPrescription(
       return { success: false, error: 'No se pudo crear la receta' };
     }
 
-    revalidatePath('/farmacia');
-    revalidatePath('/dashboard');
-    revalidatePath(`/pacientes/${parsed.data.patientId}`);
+    revalidatePrescriptionBoard(parsed.data.patientId);
     redirect(`/farmacia/${result.prescription_id}`);
   } catch (error) {
     return actionError(error);
@@ -245,9 +247,7 @@ export async function dispensePrescription(prescriptionId: string): Promise<Acti
       return { success: false, error: rpcErrorMessage(error, 'No se pudo dispensar la receta') };
     }
 
-    revalidatePath('/farmacia');
-    revalidatePath(`/farmacia/${prescriptionId}`);
-    revalidatePath('/dashboard');
+    revalidatePrescription(prescriptionId);
     revalidatePath('/inventario');
     return { success: true };
   } catch (error) {
@@ -272,9 +272,7 @@ export async function voidPrescription(
       return { success: false, error: rpcErrorMessage(error, 'No se pudo anular la receta') };
     }
 
-    revalidatePath('/farmacia');
-    revalidatePath(`/farmacia/${prescriptionId}`);
-    revalidatePath('/dashboard');
+    revalidatePrescription(prescriptionId);
     return { success: true };
   } catch (error) {
     return actionError(error);

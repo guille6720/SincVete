@@ -240,7 +240,6 @@ export async function uploadClinicalImage(
     }
 
     revalidatePath('/imagenes');
-    revalidatePath('/dashboard');
     revalidatePath(`/pacientes/${parsed.data.patientId}`);
     if (parsed.data.consultationId) {
       revalidatePath(`/consultas/${parsed.data.consultationId}`);
@@ -283,7 +282,6 @@ export async function deleteClinicalImage(id: string): Promise<ActionResult> {
 
     revalidatePath('/imagenes');
     revalidatePath(`/imagenes/${id}`);
-    revalidatePath('/dashboard');
     revalidatePath(`/pacientes/${image.patient_id}`);
     return { success: true };
   } catch (error) {

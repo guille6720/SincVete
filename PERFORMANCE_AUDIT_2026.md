@@ -325,12 +325,19 @@ Cuando indiques, continúo con **Fase 2+** en ese orden, en rama staging/preview
 | `list_active_prescriptions` LIMIT 100 (migration `00035`) | cap P0 farmacia |
 | `loading.tsx` clinic + pacientes | feedback de navegación inmediato |
 
-**Producción (`main`): no modificada.** Push solo a rama staging.
+## 12. Fase 3 aplicada — `revalidatePath` acotado
 
-**Estimado post-Fase 2 (orden de magnitud):**
+Helper: `apps/web/src/lib/cache-revalidate.ts`
 
-| Ruta | Antes | Después (est.) |
-| --- | ---: | ---: |
-| Layout | 11–14 | ~5–7 |
-| `/pacientes/[id]` + layout | 50–60 | ~12–18 |
-| `/pacientes` + layout | 21–24 | ~8–12 |
+| Antes (típico) | Después |
+| --- | --- |
+| Mutación → `/dashboard` + listas hermanas | Solo entidad + paciente/historia afectados |
+| Completar consulta → 6–7 paths | consultas + agenda puntual + entrada clínica + historia del paciente |
+| Receta create/dispense/void → dashboard | `/farmacia` (+ inventario solo al dispensar) |
+| Draft consulta → lista completa | solo `/consultas/:id` |
+| Update cita → dashboard | solo agenda (+ dashboard en create/delete) |
+| Notificaciones → dashboard | solo `/notificaciones` |
+
+**Trade-off consciente:** contadores del dashboard pueden quedar un momento desactualizados hasta la próxima visita a `/dashboard`. La historia clínica del paciente y el registro editado se invalidan siempre.
+
+**Producción (`main`): no modificada.**

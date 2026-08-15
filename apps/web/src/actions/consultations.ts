@@ -1,6 +1,5 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
   buildPaginatedResult,
@@ -16,6 +15,13 @@ import {
 import { createServerClient } from '@/lib/supabase/server';
 import { PermissionError, requirePermission } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
+import {
+  revalidateAgenda,
+  revalidateClinicalEntry,
+  revalidateConsultation,
+  revalidateConsultationDetail,
+  revalidatePatientHistoria,
+} from '@/lib/cache-revalidate';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -216,8 +222,7 @@ export async function startWalkInConsultation(
       return { success: false, error: 'No se pudo iniciar la consulta' };
     }
 
-    revalidatePath('/consultas');
-    revalidatePath('/dashboard');
+    revalidateConsultation(data.id);
     redirect(`/consultas/${data.id}`);
   } catch (error) {
     return actionError(error);
@@ -284,9 +289,8 @@ export async function startConsultationFromAppointment(
         .eq('id', appointment.id);
     }
 
-    revalidatePath('/consultas');
-    revalidatePath('/agenda');
-    revalidatePath(`/agenda/${appointmentId}`);
+    revalidateConsultation(data.id);
+    revalidateAgenda(appointmentId);
     redirect(`/consultas/${data.id}`);
   } catch (error) {
     return actionError(error);
@@ -331,8 +335,7 @@ export async function saveConsultationDraft(
       return { success: false, error: 'No se pudo guardar el borrador' };
     }
 
-    revalidatePath('/consultas');
-    revalidatePath(`/consultas/${consultationId}`);
+    revalidateConsultationDetail(consultationId);
     return { success: true };
   } catch (error) {
     return actionError(error);
@@ -377,6 +380,12 @@ export async function completeConsultationAction(
       return { success: false, error: 'No se pudo guardar la consulta' };
     }
 
+    const { data: consultationMeta } = await supabase
+      .from('consultations')
+      .select('patient_id, appointment_id')
+      .eq('id', consultationId)
+      .single();
+
     const { data, error } = await supabase.rpc('complete_consultation', {
       p_consultation_id: consultationId,
     });
@@ -387,14 +396,13 @@ export async function completeConsultationAction(
 
     const result = data as { consultation_id?: string; clinical_entry_id?: string } | null;
 
-    revalidatePath('/consultas');
-    revalidatePath(`/consultas/${consultationId}`);
-    revalidatePath('/historia-clinica');
-    revalidatePath('/agenda');
-    revalidatePath('/dashboard');
+    revalidateConsultation(consultationId);
+    revalidateAgenda(consultationMeta?.appointment_id);
 
     if (result?.clinical_entry_id) {
-      revalidatePath(`/historia-clinica/${result.clinical_entry_id}`);
+      revalidateClinicalEntry(result.clinical_entry_id, consultationMeta?.patient_id);
+    } else if (consultationMeta?.patient_id) {
+      revalidatePatientHistoria(consultationMeta.patient_id);
     }
 
     redirect(`/consultas/${consultationId}`);
@@ -408,6 +416,12 @@ export async function cancelConsultation(consultationId: string): Promise<Action
     await requirePermission('clinical:write');
     const supabase = await createServerClient();
 
+    const { data: consultationMeta } = await supabase
+      .from('consultations')
+      .select('appointment_id')
+      .eq('id', consultationId)
+      .single();
+
     const { error } = await supabase
       .from('consultations')
       .update({ status: 'cancelada' })
@@ -418,9 +432,8 @@ export async function cancelConsultation(consultationId: string): Promise<Action
       return { success: false, error: 'No se pudo cancelar la consulta' };
     }
 
-    revalidatePath('/consultas');
-    revalidatePath(`/consultas/${consultationId}`);
-    revalidatePath('/agenda');
+    revalidateConsultation(consultationId);
+    revalidateAgenda(consultationMeta?.appointment_id);
     return { success: true };
   } catch (error) {
     return actionError(error);

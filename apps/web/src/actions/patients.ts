@@ -1,6 +1,5 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
 import { randomUUID } from 'crypto';
 import {
   buildPaginatedResult,
@@ -14,6 +13,7 @@ import {
 import { createServerClient } from '@/lib/supabase/server';
 import { PermissionError, requirePermission } from '@/lib/permissions';
 import { getSessionContext } from '@/lib/session';
+import { revalidatePatient, revalidatePatientsList } from '@/lib/cache-revalidate';
 
 const PATIENT_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 const PATIENT_PHOTO_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
@@ -220,7 +220,7 @@ export async function createPatient(
       }
     }
 
-    revalidatePath('/pacientes');
+    revalidatePatientsList();
     return { success: true, data: { id: data.id } };
   } catch (error) {
     return actionError<{ id: string }>(error);
@@ -289,8 +289,8 @@ export async function updatePatient(
       return { success: false, error: error.message || 'No se pudo actualizar el paciente' };
     }
 
-    revalidatePath('/pacientes');
-    revalidatePath(`/pacientes/${patientId}`);
+    revalidatePatientsList();
+    revalidatePatient(patientId);
     return { success: true, data: { id: patientId } };
   } catch (error) {
     return actionError<{ id: string }>(error);
@@ -311,7 +311,7 @@ export async function deletePatient(patientId: string): Promise<ActionResult> {
       return { success: false, error: 'No se pudo eliminar el paciente' };
     }
 
-    revalidatePath('/pacientes');
+    revalidatePatientsList();
     return { success: true };
   } catch (error) {
     return actionError(error);

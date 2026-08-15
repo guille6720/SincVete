@@ -217,7 +217,6 @@ export async function createLabOrder(
     }
 
     revalidatePath('/laboratorio');
-    revalidatePath('/dashboard');
     revalidatePath(`/pacientes/${parsed.data.patientId}`);
     redirect(`/laboratorio/${order.id}`);
   } catch (error) {
@@ -245,7 +244,6 @@ export async function startLabOrder(orderId: string): Promise<ActionResult> {
 
     revalidatePath('/laboratorio');
     revalidatePath(`/laboratorio/${orderId}`);
-    revalidatePath('/dashboard');
     return { success: true };
   } catch (error) {
     return actionError(error);
@@ -347,11 +345,10 @@ export async function completeLabOrderAction(
 
     revalidatePath('/laboratorio');
     revalidatePath(`/laboratorio/${orderId}`);
-    revalidatePath('/historia-clinica');
-    revalidatePath('/dashboard');
 
     if (result?.clinical_entry_id) {
       revalidatePath(`/historia-clinica/${result.clinical_entry_id}`);
+      revalidatePath('/historia-clinica');
     }
 
     redirect(`/laboratorio/${orderId}`);
@@ -377,7 +374,6 @@ export async function cancelLabOrder(orderId: string): Promise<ActionResult> {
 
     revalidatePath('/laboratorio');
     revalidatePath(`/laboratorio/${orderId}`);
-    revalidatePath('/dashboard');
     return { success: true };
   } catch (error) {
     return actionError(error);

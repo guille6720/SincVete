@@ -1,6 +1,5 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
   buildPaginatedResult,
@@ -15,6 +14,11 @@ import {
 import { createServerClient } from '@/lib/supabase/server';
 import { PermissionError, requirePermission } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
+import {
+  revalidateClinicalEntry,
+  revalidateClinicalEntryList,
+  revalidatePatientHistoria,
+} from '@/lib/cache-revalidate';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -195,9 +199,8 @@ export async function createClinicalEntry(
       return { success: false, error: 'No se pudo crear la entrada clínica' };
     }
 
-    revalidatePath('/historia-clinica');
-    revalidatePath(`/pacientes/${parsed.data.patientId}`);
-    revalidatePath(`/pacientes/${parsed.data.patientId}/historia`);
+    revalidateClinicalEntryList();
+    revalidatePatientHistoria(parsed.data.patientId);
     redirect(`/historia-clinica/${data.id}`);
   } catch (error) {
     return actionError(error);
@@ -247,10 +250,7 @@ export async function updateClinicalEntry(
       return { success: false, error: 'No se pudo actualizar la entrada clínica' };
     }
 
-    revalidatePath('/historia-clinica');
-    revalidatePath(`/historia-clinica/${entryId}`);
-    revalidatePath(`/pacientes/${parsed.data.patientId}`);
-    revalidatePath(`/pacientes/${parsed.data.patientId}/historia`);
+    revalidateClinicalEntry(entryId, parsed.data.patientId);
     return { success: true };
   } catch (error) {
     return actionError(error);
@@ -277,10 +277,9 @@ export async function deleteClinicalEntry(entryId: string): Promise<ActionResult
       return { success: false, error: 'No se pudo eliminar la entrada clínica' };
     }
 
-    revalidatePath('/historia-clinica');
+    revalidateClinicalEntryList();
     if (entry?.patient_id) {
-      revalidatePath(`/pacientes/${entry.patient_id}`);
-      revalidatePath(`/pacientes/${entry.patient_id}/historia`);
+      revalidatePatientHistoria(entry.patient_id);
     }
     return { success: true };
   } catch (error) {

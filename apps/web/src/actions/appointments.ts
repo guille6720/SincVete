@@ -1,6 +1,5 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
   appointmentListSchema,
@@ -17,6 +16,7 @@ import {
 import { createServerClient } from '@/lib/supabase/server';
 import { PermissionError, requirePermission } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
+import { revalidateAgenda, revalidateDashboard } from '@/lib/cache-revalidate';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -162,8 +162,8 @@ export async function createAppointment(
       return { success: false, error: 'No se pudo crear la cita' };
     }
 
-    revalidatePath('/agenda');
-    revalidatePath('/dashboard');
+    revalidateAgenda(data.id);
+    revalidateDashboard();
     redirect(`/agenda/${data.id}`);
   } catch (error) {
     return actionError(error);
@@ -212,9 +212,7 @@ export async function updateAppointment(
       return { success: false, error: 'No se pudo actualizar la cita' };
     }
 
-    revalidatePath('/agenda');
-    revalidatePath(`/agenda/${appointmentId}`);
-    revalidatePath('/dashboard');
+    revalidateAgenda(appointmentId);
     return { success: true };
   } catch (error) {
     return actionError(error);
@@ -243,9 +241,7 @@ export async function updateAppointmentStatus(
       return { success: false, error: 'No se pudo actualizar el estado' };
     }
 
-    revalidatePath('/agenda');
-    revalidatePath(`/agenda/${appointmentId}`);
-    revalidatePath('/dashboard');
+    revalidateAgenda(appointmentId);
     return { success: true };
   } catch (error) {
     return actionError(error);
@@ -266,8 +262,8 @@ export async function deleteAppointment(appointmentId: string): Promise<ActionRe
       return { success: false, error: 'No se pudo eliminar la cita' };
     }
 
-    revalidatePath('/agenda');
-    revalidatePath('/dashboard');
+    revalidateAgenda();
+    revalidateDashboard();
     return { success: true };
   } catch (error) {
     return actionError(error);

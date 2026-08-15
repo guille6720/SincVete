@@ -251,7 +251,6 @@ export async function admitHospitalization(
     }
 
     revalidatePath('/internacion');
-    revalidatePath('/dashboard');
     revalidatePath(`/pacientes/${parsed.data.patientId}`);
     redirect(`/internacion/${data.id}`);
   } catch (error) {
@@ -303,7 +302,6 @@ export async function updateHospitalization(
 
     revalidatePath('/internacion');
     revalidatePath(`/internacion/${hospitalizationId}`);
-    revalidatePath('/dashboard');
     return { success: true };
   } catch (error) {
     return actionError(error);
@@ -387,6 +385,12 @@ export async function dischargeHospitalizationAction(
     }
 
     const supabase = await createServerClient();
+    const { data: stay } = await supabase
+      .from('hospitalizations')
+      .select('patient_id')
+      .eq('id', hospitalizationId)
+      .single();
+
     const { data, error } = await supabase.rpc('discharge_hospitalization', {
       p_hospitalization_id: hospitalizationId,
       p_outcome: parsed.data.outcome,
@@ -401,12 +405,14 @@ export async function dischargeHospitalizationAction(
 
     revalidatePath('/internacion');
     revalidatePath(`/internacion/${hospitalizationId}`);
-    revalidatePath('/historia-clinica');
-    revalidatePath('/dashboard');
-    revalidatePath('/pacientes');
+    if (stay?.patient_id) {
+      revalidatePath(`/pacientes/${stay.patient_id}`);
+      revalidatePath(`/pacientes/${stay.patient_id}/historia`);
+    }
 
     if (result?.clinical_entry_id) {
       revalidatePath(`/historia-clinica/${result.clinical_entry_id}`);
+      revalidatePath('/historia-clinica');
     }
 
     redirect(`/internacion/${hospitalizationId}`);

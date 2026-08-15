@@ -67,7 +67,6 @@ function rpcMessage(error: { message?: string } | null): string {
 function revalidateReminderPaths() {
   revalidatePath('/recordatorios');
   revalidatePath('/whatsapp');
-  revalidatePath('/dashboard');
 }
 
 export async function canReadReminders(): Promise<boolean> {

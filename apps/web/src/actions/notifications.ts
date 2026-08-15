@@ -55,7 +55,6 @@ function toNotificationRow(
 
 function revalidateNotificationPaths() {
   revalidatePath('/notificaciones');
-  revalidatePath('/dashboard');
 }
 
 export async function canReadNotifications(): Promise<boolean> {
