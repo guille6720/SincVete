@@ -97,9 +97,9 @@ export async function getOwner(id: string): Promise<Owner | null> {
 }
 
 export async function createOwner(
-  _prev: ActionResult | null,
+  _prev: ActionResult<{ id: string }> | null,
   formData: FormData
-): Promise<ActionResult> {
+): Promise<ActionResult<{ id: string }>> {
   try {
     const session = await requirePermission('patients:write');
     const parsed = parseOwnerForm(formData);
@@ -142,15 +142,15 @@ export async function createOwner(
     revalidatePath('/propietarios');
     return { success: true, data: { id: data.id } };
   } catch (error) {
-    return actionError(error);
+    return actionError<{ id: string }>(error);
   }
 }
 
 export async function updateOwner(
   ownerId: string,
-  _prev: ActionResult | null,
+  _prev: ActionResult<{ id: string }> | null,
   formData: FormData
-): Promise<ActionResult> {
+): Promise<ActionResult<{ id: string }>> {
   try {
     await requirePermission('patients:write');
     const parsed = parseOwnerForm(formData);
@@ -189,7 +189,7 @@ export async function updateOwner(
 
     revalidatePath('/propietarios');
     revalidatePath(`/propietarios/${ownerId}`);
-    return { success: true };
+    return { success: true, data: { id: ownerId } };
   } catch (error) {
     return actionError(error);
   }

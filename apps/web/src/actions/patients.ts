@@ -164,9 +164,9 @@ export async function getPatient(id: string): Promise<Patient | null> {
 }
 
 export async function createPatient(
-  _prev: ActionResult | null,
+  _prev: ActionResult<{ id: string }> | null,
   formData: FormData
-): Promise<ActionResult> {
+): Promise<ActionResult<{ id: string }>> {
   try {
     const session = await requirePermission('patients:write');
     const parsed = parsePatientForm(formData);
@@ -223,15 +223,15 @@ export async function createPatient(
     revalidatePath('/pacientes');
     return { success: true, data: { id: data.id } };
   } catch (error) {
-    return actionError(error);
+    return actionError<{ id: string }>(error);
   }
 }
 
 export async function updatePatient(
   patientId: string,
-  _prev: ActionResult | null,
+  _prev: ActionResult<{ id: string }> | null,
   formData: FormData
-): Promise<ActionResult> {
+): Promise<ActionResult<{ id: string }>> {
   try {
     await requirePermission('patients:write');
     const parsed = parsePatientForm(formData);
@@ -293,7 +293,7 @@ export async function updatePatient(
     revalidatePath(`/pacientes/${patientId}`);
     return { success: true, data: { id: patientId } };
   } catch (error) {
-    return actionError(error);
+    return actionError<{ id: string }>(error);
   }
 }
 
