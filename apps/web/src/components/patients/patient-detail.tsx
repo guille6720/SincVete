@@ -95,7 +95,11 @@ export function PatientDetail({
     if (!confirm('¿Eliminar este paciente? Esta acción no se puede deshacer.')) return;
     void runPending(async () => {
       const result = await deletePatient(patient.id);
-      if (result.success) router.push('/pacientes');
+      if (result.success) {
+        router.push('/pacientes');
+        return;
+      }
+      window.alert(result.error ?? 'No se pudo eliminar el paciente');
     });
   };
 

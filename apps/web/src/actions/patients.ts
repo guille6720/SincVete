@@ -303,13 +303,24 @@ export async function deletePatient(patientId: string): Promise<ActionResult> {
     await requirePermission('patients:write');
     const supabase = await createServerClient();
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('patients')
       .update({ deleted_at: new Date().toISOString(), is_active: false })
-      .eq('id', patientId);
+      .eq('id', patientId)
+      .is('deleted_at', null)
+      .select('id')
+      .maybeSingle();
 
     if (error) {
-      return { success: false, error: 'No se pudo eliminar el paciente' };
+      console.error('[deletePatient]', error);
+      return { success: false, error: error.message || 'No se pudo eliminar el paciente' };
+    }
+
+    if (!data) {
+      return {
+        success: false,
+        error: 'No se pudo eliminar el paciente (sin permiso o ya eliminado)',
+      };
     }
 
     revalidatePatientsList();
