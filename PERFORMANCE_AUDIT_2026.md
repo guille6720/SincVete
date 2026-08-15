@@ -415,3 +415,17 @@ Nueva migración `20240811000038_performance_hot_path_indexes.sql`:
 `EXPLAIN ANALYZE` en prod no disponible aquí; índices son aditivos `IF NOT EXISTS`.
 
 **Producción (`main`): no modificada.**
+
+## 18. Fase 9 aplicada — navegación instantánea
+
+| Área | Cambio |
+| --- | --- |
+| Sidebar | Ya usaba `Link`; prefetch explícito + barra de progreso al click + prefetch de módulos críticos al montar |
+| Command palette | `router.prefetch` al abrir + `startTransition` al navegar |
+| Agenda week nav | `button`/`router.push` → `Link` (prefetch de días/semana) |
+| Pacientes filtros | paginación/especie con `startTransition` |
+| `loading.tsx` | farmacia, agenda, consultas, dashboard, ficha paciente, propietarios + skeleton compartido `RouteLoading` |
+
+Sensación de respuesta inmediata: el shell permanece visible y el segmento muestra skeleton sin esperar el RSC completo.
+
+**Producción (`main`): no modificada.**

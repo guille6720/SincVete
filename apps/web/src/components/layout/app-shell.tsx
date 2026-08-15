@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   BedDouble,
   BarChart3,
@@ -29,7 +29,7 @@ import {
   Inbox,
   ScrollText,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { signOut } from '@/actions/auth';
 import { BranchSelector } from '@/components/layout/branch-selector';
 import { Button } from '@/components/ui/button';
@@ -64,6 +64,16 @@ const NAV_ITEMS = [
   { label: 'Configuración', href: '/configuracion', icon: Settings },
 ] as const;
 
+/** Critical clinical modules — prefetch on shell mount for snappier sidebar nav. */
+const PREFETCH_HREFS = [
+  '/dashboard',
+  '/agenda',
+  '/pacientes',
+  '/historia-clinica',
+  '/consultas',
+  '/farmacia',
+] as const;
+
 interface AppShellProps {
   children: React.ReactNode;
   userName: string;
@@ -84,11 +94,32 @@ export function AppShell({
   unreadNotifications = 0,
 }: AppShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPendingHref(null);
+  }, [pathname]);
+
+  useEffect(() => {
+    for (const href of PREFETCH_HREFS) {
+      router.prefetch(href);
+    }
+  }, [router]);
 
   return (
     <div className="flex min-h-screen bg-[linear-gradient(180deg,#f3faf7_0%,#f8fafc_42%,#eef6f3_100%)]">
       <CommandPalette />
+
+      {pendingHref ? (
+        <div
+          className="pointer-events-none fixed inset-x-0 top-0 z-[60] h-0.5 overflow-hidden bg-teal-100"
+          aria-hidden
+        >
+          <div className="h-full w-1/3 animate-[nav-progress_1s_ease-in-out_infinite] bg-teal-600" />
+        </div>
+      ) : null}
 
       {/* Mobile overlay */}
       {sidebarOpen && (
@@ -136,19 +167,27 @@ export function AppShell({
           </div>
         )}
 
-        <nav className="flex-1 space-y-1 p-3">
+        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
           {NAV_ITEMS.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const isPending = pendingHref === item.href;
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                onClick={() => setSidebarOpen(false)}
+                prefetch
+                onClick={() => {
+                  if (!isActive) setPendingHref(item.href);
+                  setSidebarOpen(false);
+                }}
+                aria-current={isActive ? 'page' : undefined}
+                aria-busy={isPending || undefined}
                 className={cn(
                   'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
                   isActive
                     ? 'bg-teal-600 text-white shadow-sm shadow-teal-700/20'
-                    : 'text-slate-600 hover:bg-teal-50 hover:text-teal-900'
+                    : 'text-slate-600 hover:bg-teal-50 hover:text-teal-900',
+                  isPending && !isActive && 'bg-teal-50/80 text-teal-900'
                 )}
               >
                 <span

@@ -1,6 +1,7 @@
 'use client';
 
-import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -19,37 +20,50 @@ function shiftWeek(weekStart: string, weeks: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+function agendaHref(
+  pathname: string,
+  searchParams: URLSearchParams,
+  date: string,
+  week?: string
+): string {
+  const params = new URLSearchParams(searchParams.toString());
+  params.set('date', date);
+  if (week) params.set('week', week);
+  const qs = params.toString();
+  return qs ? `${pathname}?${qs}` : pathname;
+}
+
 export function AppointmentsWeekNav({
   weekStart,
   selectedDate,
   countsByDay,
 }: AppointmentsWeekNavProps) {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const weekDays = getWeekDays(weekStart);
   const today = formatDateParam(new Date());
-
-  const navigate = (date: string, week?: string) => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set('date', date);
-    if (week) params.set('week', week);
-    router.push(`${pathname}?${params.toString()}`);
-  };
+  const prevWeek = shiftWeek(weekStart, -1);
+  const nextWeek = shiftWeek(weekStart, 1);
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <Button variant="outline" size="sm" onClick={() => navigate(selectedDate, shiftWeek(weekStart, -1))}>
-          <ChevronLeft className="h-4 w-4" />
+        <Button variant="outline" size="sm" asChild>
+          <Link href={agendaHref(pathname, searchParams, selectedDate, prevWeek)} prefetch>
+            <ChevronLeft className="h-4 w-4" />
+          </Link>
         </Button>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => navigate(today, getWeekStartDate(today))}>
-            Hoy
+          <Button variant="outline" size="sm" asChild>
+            <Link href={agendaHref(pathname, searchParams, today, getWeekStartDate(today))} prefetch>
+              Hoy
+            </Link>
           </Button>
         </div>
-        <Button variant="outline" size="sm" onClick={() => navigate(selectedDate, shiftWeek(weekStart, 1))}>
-          <ChevronRight className="h-4 w-4" />
+        <Button variant="outline" size="sm" asChild>
+          <Link href={agendaHref(pathname, searchParams, selectedDate, nextWeek)} prefetch>
+            <ChevronRight className="h-4 w-4" />
+          </Link>
         </Button>
       </div>
 
@@ -60,10 +74,10 @@ export function AppointmentsWeekNav({
           const count = countsByDay[day] ?? 0;
 
           return (
-            <button
+            <Link
               key={day}
-              type="button"
-              onClick={() => navigate(day, weekStart)}
+              href={agendaHref(pathname, searchParams, day, weekStart)}
+              prefetch
               className={cn(
                 'rounded-lg border px-2 py-3 text-center transition-colors hover:bg-accent',
                 isSelected && 'border-primary bg-primary/5',
@@ -75,7 +89,7 @@ export function AppointmentsWeekNav({
               <p className="mt-1 text-xs text-muted-foreground">
                 {count} cita{count !== 1 ? 's' : ''}
               </p>
-            </button>
+            </Link>
           );
         })}
       </div>

@@ -27,7 +27,7 @@ import {
   ScrollText,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useTransition } from 'react';
 import { cn } from '@/lib/utils';
 
 const NAV_ITEMS = [
@@ -78,16 +78,33 @@ const QUICK_ACTIONS = [
   { label: 'IA clínica', href: '/ia-clinica', keywords: 'resumen soap indicaciones inteligencia' },
 ] as const;
 
+const PREFETCH_ON_OPEN = [
+  '/dashboard',
+  '/agenda',
+  '/pacientes',
+  '/historia-clinica',
+  '/consultas',
+  '/farmacia',
+  '/pacientes/nuevo',
+  '/agenda/nueva',
+  '/farmacia/nueva',
+  '/consultas/nueva',
+  '/historia-clinica/nuevo',
+] as const;
+
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const router = useRouter();
+  const [, startTransition] = useTransition();
 
   const navigate = useCallback(
     (href: string) => {
       setOpen(false);
-      router.push(href);
+      startTransition(() => {
+        router.push(href);
+      });
     },
-    [router]
+    [router, startTransition]
   );
 
   useEffect(() => {
@@ -101,6 +118,13 @@ export function CommandPalette() {
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    for (const href of PREFETCH_ON_OPEN) {
+      router.prefetch(href);
+    }
+  }, [open, router]);
 
   if (!open) return null;
 

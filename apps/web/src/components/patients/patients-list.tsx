@@ -56,7 +56,9 @@ export function PatientsList({
   const goToPage = (page: number) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set('page', String(page));
-    router.push(`${pathname}?${params.toString()}`);
+    startTransition(() => {
+      router.push(`${pathname}?${params.toString()}`);
+    });
   };
 
   const setSpecies = (species: string) => {
@@ -67,7 +69,9 @@ export function PatientsList({
       params.delete('species');
     }
     params.delete('page');
-    router.push(`${pathname}?${params.toString()}`);
+    startTransition(() => {
+      router.push(`${pathname}?${params.toString()}`);
+    });
   };
 
   return (
