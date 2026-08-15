@@ -193,12 +193,14 @@ export function PatientsList({
             </table>
           </div>
 
-          {data.totalPages > 1 && (
-            <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
-                {data.total} paciente{data.total !== 1 ? 's' : ''} · Página {data.page} de{' '}
-                {data.totalPages}
+                {data.total} paciente{data.total !== 1 ? 's' : ''}
+                {data.totalPages > 1
+                  ? ` · Página ${data.page} de ${data.totalPages}`
+                  : ` · ${data.pageSize} por página`}
               </p>
+              {data.totalPages > 1 && (
               <div className="flex gap-2">
                 <Button
                   variant="outline"
@@ -217,8 +219,8 @@ export function PatientsList({
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
+              )}
             </div>
-          )}
         </>
       )}
     </div>

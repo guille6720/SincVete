@@ -3,7 +3,7 @@ import { Suspense } from 'react';
 import { listPatients } from '@/actions/patients';
 import { PatientsList } from '@/components/patients/patients-list';
 import { getSessionContext } from '@/lib/session';
-import { PATIENT_SPECIES } from '@sincvete/shared';
+import { PATIENT_LIST_PAGE_SIZE, PATIENT_SPECIES } from '@sincvete/shared';
 
 interface PacientesPageProps {
   searchParams: Promise<{ page?: string; search?: string; species?: string }>;
@@ -22,7 +22,7 @@ export default async function PacientesPage({ searchParams }: PacientesPageProps
 
   const data = await listPatients({
     page,
-    pageSize: 25,
+    pageSize: PATIENT_LIST_PAGE_SIZE,
     search: search || undefined,
     species,
   });

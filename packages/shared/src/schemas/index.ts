@@ -209,11 +209,14 @@ export const patientSchema = z.object({
   isActive: z.coerce.boolean().default(true),
 });
 
-export const patientListSchema = paginationSchema.extend({
-  ownerId: z.string().uuid().optional(),
-  branchId: z.string().uuid().optional(),
-  species: z.enum(['Canino', 'Felino', 'Ave', 'Roedor', 'Reptil', 'Equino', 'Bovino', 'Otro']).optional(),
-});
+export const patientListSchema = paginationSchema
+  .omit({ pageSize: true })
+  .extend({
+    pageSize: z.coerce.number().int().min(1).max(50).default(25),
+    ownerId: z.string().uuid().optional(),
+    branchId: z.string().uuid().optional(),
+    species: z.enum(['Canino', 'Felino', 'Ave', 'Roedor', 'Reptil', 'Equino', 'Bovino', 'Otro']).optional(),
+  });
 
 export type PatientInput = z.infer<typeof patientSchema>;
 export type PatientListInput = z.infer<typeof patientListSchema>;

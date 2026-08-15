@@ -154,12 +154,14 @@ export async function getPatient(id: string): Promise<Patient | null> {
 
   const { data, error } = await supabase
     .from('patients')
-    .select('*')
+    .select(
+      'id, organization_id, branch_id, owner_id, name, species, breed, sex, birth_date, color, microchip, is_neutered, is_deceased, deceased_at, notes, photo_url, is_active, created_at, updated_at, deleted_at'
+    )
     .eq('id', id)
     .is('deleted_at', null)
     .single();
 
-  if (error) return null;
+  if (error || !data) return null;
   return data as Patient;
 }
 
@@ -324,7 +326,7 @@ export async function countActivePatients(): Promise<number> {
 
   const { count, error } = await supabase
     .from('patients')
-    .select('*', { count: 'exact', head: true })
+    .select('id', { count: 'exact', head: true })
     .is('deleted_at', null)
     .eq('is_active', true)
     .eq('is_deceased', false);

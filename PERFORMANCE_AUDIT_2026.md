@@ -364,4 +364,17 @@ Helper: `apps/web/src/lib/cache-revalidate.ts`
 
 No se traen años de historia para ocultarlos en el cliente.
 
+## 15. Fase 6 aplicada — Pacientes
+
+| Estado previo | Mejora |
+| --- | --- |
+| Ya había RPC `search_patients` paginado (no client filter) | Confirmado + documentado |
+| Page size 25, max SQL 100 | Cap **25–50** (`PATIENT_LIST_PAGE_SIZE` / RPC) |
+| ILIKE parcial sin trgm | `pg_trgm` en `patients.name`, `microchip`, `owners.full_name` |
+| Filtro especie | índice `(organization_id, species)` |
+| List payload con notes | `notes` omitido en lista |
+| `getPatient` `select('*')` | columnas explícitas |
+
+Nota: en SincVete el paciente tiene `name` (mascota); documento/apellido viven en `owners` (ya indexados).
+
 **Producción (`main`): no modificada.**
