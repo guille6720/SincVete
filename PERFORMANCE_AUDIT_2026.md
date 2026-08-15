@@ -462,3 +462,11 @@ KPIs prioritarios: citas hoy, consultas, pacientes, internados, recetas activas,
 Acciones rápidas reordenadas (agenda → consulta → paciente → receta primero).
 
 **Producción (`main`): no modificada.**
+
+## 21. Fase 12 — medición post-optimización
+
+Ver **[PERFORMANCE_RESULTS_2026.md](./PERFORMANCE_RESULTS_2026.md)**.
+
+Gates: typecheck / lint / unit (shared) / build = PASS.  
+`performance:gate` / Lighthouse = N/A en repo.  
+Comparativa RT estimada documentada; TTFB live pendiente en preview tras migraciones `00035`–`00038`.
