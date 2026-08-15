@@ -397,3 +397,21 @@ Centralizado en `apps/web/src/lib/db-columns.ts`. Detalle (`get*`) ya no usa `*`
 **Fuera de alcance deliberado:** `audit`, `billing`, `cash`, `inventory`, `settings`, `images` (no hot path clínico del brief).
 
 **Producción (`main`): no modificada.**
+
+## 17. Fase 8 aplicada — índices hot path
+
+Auditoría de migraciones existentes: pacientes/historia/agenda/farmacia **ya tenían** índices `(organization_id, fecha)`, `(patient_id, fecha)`, status y trgm de Fase 6. **No se duplicaron.**
+
+Nueva migración `20240811000038_performance_hot_path_indexes.sql`:
+
+| Índice | Motivo |
+| --- | --- |
+| `appointments (patient_id, starts_at)` | timeline del paciente (reemplaza índice solo `patient_id`) |
+| `*_owner_*` en citas, historia, consultas, Rx, vacunas, lab, internación, cirugía | portal / hub por `owner_id` (antes sin índice FK) |
+| `prescriptions` parcial `status = 'activa'` | board farmacia acotado |
+| `consultations` parcial walk-in (`appointment_id IS NULL`) | cola del día |
+| `owners` trgm `document_number` / `phone` | ILIKE en `search_owners` |
+
+`EXPLAIN ANALYZE` en prod no disponible aquí; índices son aditivos `IF NOT EXISTS`.
+
+**Producción (`main`): no modificada.**
