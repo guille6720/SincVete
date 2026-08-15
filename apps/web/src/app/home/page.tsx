@@ -19,7 +19,10 @@ export default async function HomeRouterPage() {
   } = await supabase.auth.getUser();
 
   if (user) {
+    // Auth ok but no clinic profile yet — send back to login with a clear reason
+    // instead of signing out silently (looks like "can't enter").
     await supabase.auth.signOut();
+    redirect('/login?error=incomplete_account');
   }
 
   redirect('/login');

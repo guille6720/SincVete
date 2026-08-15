@@ -62,6 +62,12 @@ export function LoginForm({ redirectTo, errorCode }: LoginFormProps) {
           {errorCode === 'portal_denied' && (
             <p className="text-sm text-destructive">Esta cuenta no tiene acceso a SincVete.</p>
           )}
+          {errorCode === 'incomplete_account' && (
+            <p className="text-sm text-destructive">
+              Tu usuario existe pero la clínica no quedó configurada. Volvé a registrarte con un
+              identificador nuevo, o pedí soporte para reparar la cuenta.
+            </p>
+          )}
 
           <Button type="submit" className="w-full" disabled={pending}>
             {pending ? 'Ingresando…' : 'Ingresar'}
