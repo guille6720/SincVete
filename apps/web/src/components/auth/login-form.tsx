@@ -45,15 +45,7 @@ export function LoginForm({ redirectTo, errorCode }: LoginFormProps) {
             )}
           </div>
           <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <Label htmlFor="password">Contraseña</Label>
-              <Link
-                href="/recuperar-contrasena"
-                className="text-xs font-medium text-primary hover:underline"
-              >
-                ¿Olvidaste tu contraseña?
-              </Link>
-            </div>
+            <Label htmlFor="password">Contraseña</Label>
             <Input
               id="password"
               name="password"
@@ -64,6 +56,14 @@ export function LoginForm({ redirectTo, errorCode }: LoginFormProps) {
             {state?.fieldErrors?.password && (
               <p className="text-sm text-destructive">{state.fieldErrors.password[0]}</p>
             )}
+            <p className="text-right">
+              <Link
+                href="/recuperar-contrasena"
+                className="text-sm font-medium text-primary hover:underline"
+              >
+                ¿Olvidaste tu contraseña?
+              </Link>
+            </p>
           </div>
 
           {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
