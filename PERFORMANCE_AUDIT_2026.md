@@ -449,3 +449,16 @@ N/A en SincVete vs brief DrFlow: specialties, clinical templates, feature flags.
 Invalidación: sigue `cache-revalidate.ts` (paths acotados, Fase 3).
 
 **Producción (`main`): no modificada.**
+
+## 20. Fase 11 aplicada — dashboard streaming
+
+| Antes | Después |
+| --- | --- |
+| `await getDashboardData()` bloqueaba header + stats + activity | Header + acciones rápidas pintan con sesión/org cacheada |
+| Un solo waterfall visual | `Suspense` 1: KPIs del día; `Suspense` 2: resto + activity + listas |
+| Summary y activity en paralelo pero UI esperaba ambos | Activity solo en bloque secundario; summary compartido vía `React.cache` |
+
+KPIs prioritarios: citas hoy, consultas, pacientes, internados, recetas activas, vacunas vencidas.  
+Acciones rápidas reordenadas (agenda → consulta → paciente → receta primero).
+
+**Producción (`main`): no modificada.**
