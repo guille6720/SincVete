@@ -1,10 +1,13 @@
 'use server';
 
 import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import {
   getPermissionsForRole,
+  requestPasswordResetSchema,
   signInSchema,
   signUpSchema,
+  updatePasswordSchema,
   type ActionResult,
   type SessionContext,
 } from '@sincvete/shared';
@@ -183,6 +186,123 @@ export async function signOut(): Promise<void> {
   const supabase = await createServerClient();
   await supabase.auth.signOut();
   redirect('/login');
+}
+
+function getAppOrigin(headerStore: Headers): string {
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '');
+  if (configured) return configured;
+
+  const forwardedHost = headerStore.get('x-forwarded-host');
+  const host = forwardedHost ?? headerStore.get('host');
+  const proto = headerStore.get('x-forwarded-proto') ?? 'https';
+  if (host) return `${proto}://${host}`;
+
+  return 'http://localhost:3000';
+}
+
+export async function requestPasswordReset(
+  _prevState: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  const parsed = requestPasswordResetSchema.safeParse({
+    email: formData.get('email'),
+  });
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: 'Datos inválidos',
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+
+  try {
+    const supabase = await createServerClient();
+    const headerStore = await headers();
+    const origin = getAppOrigin(headerStore);
+    const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent('/actualizar-contrasena')}`;
+
+    const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
+      redirectTo,
+    });
+
+    if (error) {
+      return {
+        success: false,
+        error:
+          connectionErrorMessage(error.message) ??
+          'No se pudo enviar el email de recuperación. Intentá de nuevo.',
+      };
+    }
+
+    // Always show success to avoid email enumeration
+    return {
+      success: true,
+      data: undefined,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        connectionErrorMessage(error instanceof Error ? error.message : String(error)) ??
+        'No se pudo enviar el email de recuperación',
+    };
+  }
+}
+
+export async function updatePassword(
+  _prevState: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  const parsed = updatePasswordSchema.safeParse({
+    password: formData.get('password'),
+    confirmPassword: formData.get('confirmPassword'),
+  });
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: 'Datos inválidos',
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+
+  try {
+    const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return {
+        success: false,
+        error: 'El enlace expiró o no es válido. Pedí uno nuevo desde recuperar contraseña.',
+      };
+    }
+
+    const { error } = await supabase.auth.updateUser({
+      password: parsed.data.password,
+    });
+
+    if (error) {
+      return {
+        success: false,
+        error:
+          connectionErrorMessage(error.message) ??
+          'No se pudo actualizar la contraseña. Intentá de nuevo.',
+      };
+    }
+
+    redirect('/home');
+  } catch (error) {
+    if (isNextRedirect(error)) throw error;
+    return {
+      success: false,
+      error:
+        connectionErrorMessage(error instanceof Error ? error.message : String(error)) ??
+        'No se pudo actualizar la contraseña',
+    };
+  }
 }
 
 export async function getSessionContext(): Promise<SessionContext | null> {
