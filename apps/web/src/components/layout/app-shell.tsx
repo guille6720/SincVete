@@ -36,6 +36,8 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ROLE_LABELS, type Role } from '@sincvete/shared';
 import { BrandLogo } from '@/components/brand/sincvete-logo';
+import { ThemeControls } from '@/components/theme/theme-controls';
+import { useTheme } from '@/components/theme/theme-provider';
 import { CommandPalette, CommandPaletteTrigger } from './command-palette';
 import { NotificationBell } from '@/components/notifications/notification-bell';
 
@@ -84,10 +86,11 @@ export function AppShell({
   unreadNotifications = 0,
 }: AppShellProps) {
   const pathname = usePathname();
+  const { mode } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex min-h-screen bg-[linear-gradient(180deg,#f3faf7_0%,#f8fafc_42%,#eef6f3_100%)]">
+    <div className="flex min-h-screen" style={{ background: 'var(--shell-bg)' }}>
       <CommandPalette />
 
       {/* Mobile overlay */}
@@ -103,22 +106,32 @@ export function AppShell({
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-teal-900/10 bg-white/95 shadow-sm backdrop-blur transition-transform lg:static lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r shadow-sm backdrop-blur transition-transform lg:static lg:translate-x-0',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
+        style={{
+          borderColor: 'var(--shell-border)',
+          backgroundColor: 'var(--shell-surface)',
+        }}
       >
-        <div className="relative border-b border-teal-900/10 bg-white px-3 pb-2 pt-3">
+        <div
+          className="relative border-b px-3 pb-2 pt-3"
+          style={{
+            borderColor: 'var(--shell-border)',
+            backgroundColor: 'var(--shell-surface)',
+          }}
+        >
           <BrandLogo
             href="/dashboard"
             size="sidebar"
-            variant="onLight"
+            variant={mode === 'dark' ? 'onDark' : 'onLight'}
             priority
             className="mx-auto object-contain object-center"
           />
           <Button
             variant="ghost"
             size="icon"
-            className="absolute right-1 top-1 text-slate-600 hover:bg-slate-100 lg:hidden"
+            className="absolute right-1 top-1 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 lg:hidden"
             onClick={() => setSidebarOpen(false)}
           >
             <X className="h-5 w-5" />
@@ -126,8 +139,16 @@ export function AppShell({
         </div>
 
         {branchName && (
-          <div className="border-b border-teal-900/10 bg-slate-50 px-4 py-3">
-            <p className="text-xs text-teal-700/80">Sucursal</p>
+          <div
+            className="border-b px-4 py-3"
+            style={{
+              borderColor: 'var(--shell-border)',
+              backgroundColor: 'var(--shell-panel)',
+            }}
+          >
+            <p className="text-xs" style={{ color: 'var(--clinic)' }}>
+              Sucursal
+            </p>
             {branches.length > 1 ? (
               <BranchSelector branches={branches} activeBranchId={activeBranchId ?? null} />
             ) : (
@@ -136,7 +157,7 @@ export function AppShell({
           </div>
         )}
 
-        <nav className="flex-1 space-y-1 p-3">
+        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
           {NAV_ITEMS.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
@@ -147,14 +168,16 @@ export function AppShell({
                 className={cn(
                   'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
                   isActive
-                    ? 'bg-teal-600 text-white shadow-sm shadow-teal-700/20'
-                    : 'text-slate-600 hover:bg-teal-50 hover:text-teal-900'
+                    ? 'bg-[var(--clinic)] text-white shadow-sm shadow-[color-mix(in_oklab,var(--clinic)_25%,transparent)]'
+                    : 'text-[var(--shell-text)] hover:bg-[var(--clinic-soft)] hover:text-[var(--clinic)]'
                 )}
               >
                 <span
                   className={cn(
                     'inline-flex h-7 w-7 items-center justify-center rounded-md',
-                    isActive ? 'bg-white/20' : 'bg-teal-50 text-teal-700'
+                    isActive
+                      ? 'bg-white/20 text-white'
+                      : 'bg-[var(--clinic-soft)] text-[var(--clinic)]'
                   )}
                 >
                   <item.icon className="h-4 w-4" />
@@ -165,7 +188,7 @@ export function AppShell({
           })}
         </nav>
 
-        <div className="border-t p-3">
+        <div className="border-t p-3" style={{ borderColor: 'var(--shell-border)' }}>
           <div className="mb-2 px-3">
             <p className="truncate text-sm font-medium">{userName}</p>
             <p className="text-xs text-muted-foreground">{ROLE_LABELS[role]}</p>
@@ -181,7 +204,13 @@ export function AppShell({
 
       {/* Main content */}
       <div className="flex flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-teal-900/10 bg-white/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/70">
+        <header
+          className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b px-4 backdrop-blur md:gap-4"
+          style={{
+            borderColor: 'var(--shell-border)',
+            backgroundColor: 'var(--shell-header)',
+          }}
+        >
           <Button
             variant="ghost"
             size="icon"
@@ -191,6 +220,7 @@ export function AppShell({
             <Menu className="h-5 w-5" />
           </Button>
           <CommandPaletteTrigger />
+          <ThemeControls />
           {branches.length > 1 && (
             <div className="hidden md:block">
               <BranchSelector branches={branches} activeBranchId={activeBranchId ?? null} />

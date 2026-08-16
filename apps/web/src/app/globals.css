@@ -1,28 +1,153 @@
 @import 'tailwindcss';
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
-  --color-background: oklch(0.99 0 0);
-  --color-foreground: oklch(0.2 0.02 250);
-  --color-card: oklch(1 0 0);
-  --color-card-foreground: oklch(0.2 0.02 250);
-  --color-primary: oklch(0.55 0.15 250);
-  --color-primary-foreground: oklch(0.99 0 0);
-  --color-secondary: oklch(0.96 0.01 250);
-  --color-secondary-foreground: oklch(0.3 0.02 250);
-  --color-muted: oklch(0.96 0.005 250);
-  --color-muted-foreground: oklch(0.5 0.02 250);
-  --color-accent: oklch(0.94 0.02 250);
-  --color-accent-foreground: oklch(0.3 0.02 250);
-  --color-destructive: oklch(0.55 0.2 25);
-  --color-destructive-foreground: oklch(0.99 0 0);
-  --color-border: oklch(0.9 0.01 250);
-  --color-input: oklch(0.9 0.01 250);
-  --color-ring: oklch(0.55 0.15 250);
+  --color-background: var(--sv-background);
+  --color-foreground: var(--sv-foreground);
+  --color-card: var(--sv-card);
+  --color-card-foreground: var(--sv-card-foreground);
+  --color-primary: var(--sv-primary);
+  --color-primary-foreground: var(--sv-primary-foreground);
+  --color-secondary: var(--sv-secondary);
+  --color-secondary-foreground: var(--sv-secondary-foreground);
+  --color-muted: var(--sv-muted);
+  --color-muted-foreground: var(--sv-muted-foreground);
+  --color-accent: var(--sv-accent);
+  --color-accent-foreground: var(--sv-accent-foreground);
+  --color-destructive: var(--sv-destructive);
+  --color-destructive-foreground: var(--sv-destructive-foreground);
+  --color-border: var(--sv-border);
+  --color-input: var(--sv-input);
+  --color-ring: var(--sv-ring);
+  --color-clinic: var(--clinic);
+  --color-clinic-soft: var(--clinic-soft);
+  --color-clinic-muted: var(--clinic-muted);
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
+}
+
+:root {
+  --sv-background: oklch(0.99 0 0);
+  --sv-foreground: oklch(0.2 0.02 250);
+  --sv-card: oklch(1 0 0);
+  --sv-card-foreground: oklch(0.2 0.02 250);
+  --sv-secondary: oklch(0.96 0.01 250);
+  --sv-secondary-foreground: oklch(0.3 0.02 250);
+  --sv-muted: oklch(0.96 0.005 250);
+  --sv-muted-foreground: oklch(0.5 0.02 250);
+  --sv-accent: oklch(0.94 0.02 250);
+  --sv-accent-foreground: oklch(0.3 0.02 250);
+  --sv-destructive: oklch(0.55 0.2 25);
+  --sv-destructive-foreground: oklch(0.99 0 0);
+  --sv-border: oklch(0.9 0.01 250);
+  --sv-input: oklch(0.9 0.01 250);
+  --sv-primary-foreground: oklch(0.99 0 0);
+
+  --shell-bg: linear-gradient(180deg, #f3faf7 0%, #f8fafc 42%, #eef6f3 100%);
+  --shell-surface: rgba(255, 255, 255, 0.95);
+  --shell-header: rgba(255, 255, 255, 0.8);
+  --shell-panel: #f8fafc;
+  --shell-border: color-mix(in oklab, var(--clinic) 18%, transparent);
+  --shell-text: #334155;
+  --shell-text-muted: #64748b;
+}
+
+.dark {
+  --sv-background: oklch(0.16 0.02 250);
+  --sv-foreground: oklch(0.96 0.01 250);
+  --sv-card: oklch(0.2 0.02 250);
+  --sv-card-foreground: oklch(0.96 0.01 250);
+  --sv-secondary: oklch(0.24 0.02 250);
+  --sv-secondary-foreground: oklch(0.92 0.01 250);
+  --sv-muted: oklch(0.24 0.015 250);
+  --sv-muted-foreground: oklch(0.72 0.02 250);
+  --sv-accent: oklch(0.26 0.03 250);
+  --sv-accent-foreground: oklch(0.96 0.01 250);
+  --sv-destructive: oklch(0.6 0.2 25);
+  --sv-destructive-foreground: oklch(0.99 0 0);
+  --sv-border: oklch(0.3 0.02 250);
+  --sv-input: oklch(0.3 0.02 250);
+  --sv-primary-foreground: oklch(0.99 0 0);
+
+  --shell-bg: linear-gradient(180deg, #0b1220 0%, #0f172a 45%, #0c1a1a 100%);
+  --shell-surface: rgba(15, 23, 42, 0.96);
+  --shell-header: rgba(15, 23, 42, 0.88);
+  --shell-panel: #111827;
+  --shell-border: color-mix(in oklab, var(--clinic) 28%, transparent);
+  --shell-text: #cbd5e1;
+  --shell-text-muted: #94a3b8;
+}
+
+:root,
+[data-accent='teal'] {
+  --clinic: #0d9488;
+  --clinic-soft: #f0fdfa;
+  --clinic-muted: #ccfbf1;
+  --sv-primary: #0d9488;
+  --sv-ring: #0d9488;
+}
+
+[data-accent='emerald'] {
+  --clinic: #059669;
+  --clinic-soft: #ecfdf5;
+  --clinic-muted: #d1fae5;
+  --sv-primary: #059669;
+  --sv-ring: #059669;
+}
+
+[data-accent='sky'] {
+  --clinic: #0284c7;
+  --clinic-soft: #f0f9ff;
+  --clinic-muted: #e0f2fe;
+  --sv-primary: #0284c7;
+  --sv-ring: #0284c7;
+}
+
+[data-accent='indigo'] {
+  --clinic: #4f46e5;
+  --clinic-soft: #eef2ff;
+  --clinic-muted: #e0e7ff;
+  --sv-primary: #4f46e5;
+  --sv-ring: #4f46e5;
+}
+
+[data-accent='violet'] {
+  --clinic: #7c3aed;
+  --clinic-soft: #f5f3ff;
+  --clinic-muted: #ede9fe;
+  --sv-primary: #7c3aed;
+  --sv-ring: #7c3aed;
+}
+
+[data-accent='rose'] {
+  --clinic: #e11d48;
+  --clinic-soft: #fff1f2;
+  --clinic-muted: #ffe4e6;
+  --sv-primary: #e11d48;
+  --sv-ring: #e11d48;
+}
+
+[data-accent='amber'] {
+  --clinic: #d97706;
+  --clinic-soft: #fffbeb;
+  --clinic-muted: #fef3c7;
+  --sv-primary: #d97706;
+  --sv-ring: #d97706;
+}
+
+.dark[data-accent='teal'],
+.dark[data-accent='emerald'],
+.dark[data-accent='sky'],
+.dark[data-accent='indigo'],
+.dark[data-accent='violet'],
+.dark[data-accent='rose'],
+.dark[data-accent='amber'] {
+  --clinic-soft: color-mix(in oklab, var(--clinic) 16%, #0f172a);
+  --clinic-muted: color-mix(in oklab, var(--clinic) 28%, #0f172a);
 }
 
 @layer base {
