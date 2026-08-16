@@ -3,10 +3,12 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { Moon, Palette, Settings, Sun } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { useTheme } from '@/components/theme/theme-provider';
 import { COLOR_PRESETS } from '@/lib/theme';
 import { cn } from '@/lib/utils';
+
+const controlClass =
+  'inline-flex h-9 items-center gap-1.5 rounded-md border border-[color-mix(in_oklab,var(--clinic)_22%,transparent)] bg-background px-2.5 text-sm font-medium text-foreground shadow-sm transition hover:bg-[var(--clinic-soft)] hover:text-[var(--clinic)]';
 
 export function ThemeControls() {
   const { mode, accent, toggleMode, setAccent } = useTheme();
@@ -35,24 +37,16 @@ export function ThemeControls() {
   }, [paletteOpen]);
 
   return (
-    <div className="flex items-center gap-1">
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-9 w-9 text-slate-600 hover:bg-teal-50 hover:text-teal-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-        asChild
-      >
-        <Link href="/configuracion" aria-label="Configuración" title="Configuración">
-          <Settings className="h-4 w-4" />
-        </Link>
-      </Button>
+    <div className="flex shrink-0 items-center gap-1.5">
+      <Link href="/configuracion" className={controlClass} title="Configuración">
+        <Settings className="h-4 w-4" />
+        <span className="hidden sm:inline">Config</span>
+      </Link>
 
       <div className="relative" ref={paletteRef}>
-        <Button
-          variant="ghost"
-          size="icon"
+        <button
           type="button"
-          className="h-9 w-9 text-slate-600 hover:bg-teal-50 hover:text-teal-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+          className={controlClass}
           aria-label="Paleta de colores"
           aria-expanded={paletteOpen}
           aria-haspopup="dialog"
@@ -60,17 +54,20 @@ export function ThemeControls() {
           onClick={() => setPaletteOpen((open) => !open)}
         >
           <Palette className="h-4 w-4" />
-        </Button>
+          <span
+            className="h-3.5 w-3.5 rounded-full border border-black/10"
+            style={{ backgroundColor: COLOR_PRESETS.find((p) => p.id === accent)?.swatch }}
+          />
+          <span className="hidden sm:inline">Color</span>
+        </button>
 
         {paletteOpen ? (
           <div
             role="dialog"
             aria-label="Elegir color de acento"
-            className="absolute left-0 top-full z-50 mt-2 w-56 rounded-xl border border-teal-900/10 bg-white p-3 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+            className="absolute left-0 top-full z-50 mt-2 w-56 rounded-xl border border-border bg-card p-3 shadow-lg"
           >
-            <p className="mb-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-              Color de acento
-            </p>
+            <p className="mb-2 text-xs font-medium text-muted-foreground">Color de acento</p>
             <div className="grid grid-cols-4 gap-2">
               {COLOR_PRESETS.map((preset) => {
                 const selected = accent === preset.id;
@@ -88,7 +85,7 @@ export function ThemeControls() {
                     className={cn(
                       'flex h-9 w-9 items-center justify-center rounded-full border-2 transition',
                       selected
-                        ? 'border-slate-900 scale-105 dark:border-white'
+                        ? 'scale-105 border-foreground'
                         : 'border-transparent hover:scale-105'
                     )}
                   >
@@ -104,17 +101,16 @@ export function ThemeControls() {
         ) : null}
       </div>
 
-      <Button
-        variant="ghost"
-        size="icon"
+      <button
         type="button"
-        className="h-9 w-9 text-slate-600 hover:bg-teal-50 hover:text-teal-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+        className={controlClass}
         aria-label={mode === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
         title={mode === 'dark' ? 'Modo claro' : 'Modo oscuro'}
         onClick={toggleMode}
       >
         {mode === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-      </Button>
+        <span className="hidden sm:inline">{mode === 'dark' ? 'Claro' : 'Oscuro'}</span>
+      </button>
     </div>
   );
 }
