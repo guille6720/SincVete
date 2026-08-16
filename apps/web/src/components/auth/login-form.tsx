@@ -56,14 +56,6 @@ export function LoginForm({ redirectTo, errorCode }: LoginFormProps) {
             {state?.fieldErrors?.password && (
               <p className="text-sm text-destructive">{state.fieldErrors.password[0]}</p>
             )}
-            <p className="text-right">
-              <Link
-                href="/recuperar-contrasena"
-                className="text-sm font-medium text-primary hover:underline"
-              >
-                ¿Olvidaste tu contraseña?
-              </Link>
-            </p>
           </div>
 
           {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
@@ -80,6 +72,15 @@ export function LoginForm({ redirectTo, errorCode }: LoginFormProps) {
           <Button type="submit" className="w-full" disabled={pending}>
             {pending ? 'Ingresando…' : 'Ingresar'}
           </Button>
+
+          <p className="text-center text-sm">
+            <Link
+              href="/recuperar-contrasena"
+              className="font-medium text-teal-700 underline underline-offset-2 hover:text-teal-900"
+            >
+              ¿Olvidaste tu contraseña? Recuperarla
+            </Link>
+          </p>
         </form>
 
         <p className="mt-6 text-center text-sm text-muted-foreground">
