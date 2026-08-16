@@ -38,6 +38,7 @@ import { ROLE_LABELS, type Role } from '@sincvete/shared';
 import { BrandLogo } from '@/components/brand/sincvete-logo';
 import { ThemeControls } from '@/components/theme/theme-controls';
 import { useTheme } from '@/components/theme/theme-provider';
+import { AppUpdateBanner } from '@/components/layout/app-update-banner';
 import { CommandPalette, CommandPaletteTrigger } from './command-palette';
 import { NotificationBell } from '@/components/notifications/notification-bell';
 
@@ -91,6 +92,7 @@ export function AppShell({
 
   return (
     <div className="flex min-h-screen" style={{ background: 'var(--shell-bg)' }}>
+      <AppUpdateBanner />
       <CommandPalette />
 
       {/* Mobile overlay */}
