@@ -10,8 +10,8 @@ const PLANS = [
     id: 'esencial',
     name: 'Esencial',
     tagline: 'Para consultorios que están arrancando',
-    price: '24.900',
-    annual: '249.000',
+    price: '29.990',
+    annual: '299.900',
     seats: 'Hasta 3 profesionales',
     recommended: false,
     highlights: [

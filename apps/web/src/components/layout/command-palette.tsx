@@ -198,14 +198,14 @@ export function CommandPaletteTrigger() {
   return (
     <button
       type="button"
-      className="hidden items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent md:flex"
+      className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent"
       onClick={() => {
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
       }}
     >
       <Search className="h-4 w-4" />
-      <span>Buscar...</span>
-      <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 text-xs">⌘K</kbd>
+      <span className="hidden sm:inline">Buscar...</span>
+      <kbd className="hidden rounded border border-border bg-muted px-1.5 py-0.5 text-xs md:inline">⌘K</kbd>
     </button>
   );
 }
