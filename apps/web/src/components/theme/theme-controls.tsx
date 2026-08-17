@@ -8,7 +8,8 @@ import {
   DEFAULT_THEME,
   applyThemePreferences,
   parseThemePreferences,
-  THEME_STORAGE_KEY,
+  readStoredThemeRaw,
+  writeStoredTheme,
   type ColorPresetId,
   type ThemeMode,
   type ThemePreferences,
@@ -20,12 +21,12 @@ const controlClass =
 
 function readPrefs(): ThemePreferences {
   if (typeof window === 'undefined') return DEFAULT_THEME;
-  return parseThemePreferences(localStorage.getItem(THEME_STORAGE_KEY));
+  return parseThemePreferences(readStoredThemeRaw());
 }
 
 function writePrefs(next: ThemePreferences) {
   applyThemePreferences(next);
-  localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(next));
+  writeStoredTheme(next);
 }
 
 /**

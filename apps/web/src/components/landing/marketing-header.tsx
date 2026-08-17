@@ -3,13 +3,14 @@
 import Link from 'next/link';
 import { Menu, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { BrandLogo } from '@/components/brand/sincvete-logo';
+import { APP_NAME } from '@sincvete/shared';
+import { BrandLogo } from '@/components/brand/syncvete-logo';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 const NAV = [
   { href: '/#producto', label: 'Producto' },
-  { href: '/#por-que', label: 'Por qué SincVete' },
+  { href: '/#por-que', label: `Por qué ${APP_NAME}` },
   { href: '/#planes', label: 'Planes' },
   { href: '/#faq', label: 'FAQ' },
 ] as const;

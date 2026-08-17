@@ -1,4 +1,4 @@
-# PERFORMANCE_AUDIT_2026 — SincVete
+# PERFORMANCE_AUDIT_2026 — SyncVete
 
 **Fecha:** 2026-08-15  
 **Fase:** 1 — Medición (sin cambios de código de aplicación)  
@@ -9,9 +9,9 @@
 
 ## 0. Mapeo de estructura (vs. prompt DrFlow)
 
-El prompt menciona `src/features/*`, `src/core/*` y una arquitectura de caché tipo DrFlow. **En SincVete no existen.**
+El prompt menciona `src/features/*`, `src/core/*` y una arquitectura de caché tipo DrFlow. **En SyncVete no existen.**
 
-| Pedido (DrFlow) | Realidad en SincVete |
+| Pedido (DrFlow) | Realidad en SyncVete |
 | --- | --- |
 | `src/features/pacientes/` | `apps/web/src/app/(clinic)/pacientes/` + `actions/patients.ts` + `components/patients/` |
 | `src/features/historias/` | `historia-clinica/` + `pacientes/[id]/historia` + `actions/clinical-entries.ts` |
@@ -194,7 +194,7 @@ Presente en (entre otros):
 
 ### 4.12 Caché (Fase 10)
 
-**No inventar** otra arquitectura. SincVete hoy: **cero** `React.cache` / `unstable_cache`.  
+**No inventar** otra arquitectura. SyncVete hoy: **cero** `React.cache` / `unstable_cache`.  
 Primera pieza segura: `React.cache` alrededor de `getSessionContext` (request-scoped, no cross-tenant).  
 Nunca cachear PHI entre pacientes/orgs con TTL compartido inseguro.
 
@@ -375,7 +375,7 @@ No se traen años de historia para ocultarlos en el cliente.
 | List payload con notes | `notes` omitido en lista |
 | `getPatient` `select('*')` | columnas explícitas |
 
-Nota: en SincVete el paciente tiene `name` (mascota); documento/apellido viven en `owners` (ya indexados).
+Nota: en SyncVete el paciente tiene `name` (mascota); documento/apellido viven en `owners` (ya indexados).
 
 **Producción (`main`): no modificada.**
 
@@ -444,7 +444,7 @@ No se introdujo `unstable_cache` / tags / TTL cross-request (riesgo de filtrar P
 | `getDashboardContext/Summary/Activity` | **cache** + context reusa org/branches |
 | Layout clínica | eliminó query extra de `branches.name` |
 
-N/A en SincVete vs brief DrFlow: specialties, clinical templates, feature flags.
+N/A en SyncVete vs brief DrFlow: specialties, clinical templates, feature flags.
 
 Invalidación: sigue `cache-revalidate.ts` (paths acotados, Fase 3).
 

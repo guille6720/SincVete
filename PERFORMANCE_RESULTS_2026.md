@@ -1,4 +1,4 @@
-# PERFORMANCE_RESULTS_2026 — SincVete
+# PERFORMANCE_RESULTS_2026 — SyncVete
 
 **Fecha:** 2026-08-15  
 **Rama:** `staging/perf-phase-2-session`  

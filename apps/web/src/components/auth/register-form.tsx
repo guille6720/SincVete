@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { slugify } from '@sincvete/shared';
-import { BrandLogo } from '@/components/brand/sincvete-logo';
+import { BrandLogo } from '@/components/brand/syncvete-logo';
 
 export function RegisterForm() {
   const [state, formAction, pending] = useActionState(signUp, null);

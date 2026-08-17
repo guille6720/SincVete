@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { APP_NAME } from '@sincvete/shared';
-import { BrandLogo } from '@/components/brand/sincvete-logo';
+import { BrandLogo } from '@/components/brand/syncvete-logo';
 
 export function MarketingFooter() {
   return (

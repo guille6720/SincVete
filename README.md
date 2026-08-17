@@ -1,4 +1,4 @@
-# SincVete
+# SyncVete
 
 Plataforma SaaS profesional de gestión veterinaria multi-tenant.
 

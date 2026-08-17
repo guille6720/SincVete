@@ -34,8 +34,8 @@ import { signOut } from '@/actions/auth';
 import { BranchSelector } from '@/components/layout/branch-selector';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { ROLE_LABELS, type Role } from '@sincvete/shared';
-import { BrandLogo } from '@/components/brand/sincvete-logo';
+import { APP_NAME, ROLE_LABELS, type Role } from '@sincvete/shared';
+import { BrandLogo } from '@/components/brand/syncvete-logo';
 import { ThemeControls } from '@/components/theme/theme-controls';
 import { AppUpdateBanner } from '@/components/layout/app-update-banner';
 import { CommandPalette, CommandPaletteTrigger } from './command-palette';
@@ -160,7 +160,7 @@ export function AppShell({
           <Link
             href="/dashboard"
             className="block w-full"
-            aria-label="SincVete"
+            aria-label={APP_NAME}
           >
             <span className="block dark:hidden">
               <BrandLogo size="sidebar" variant="onLight" priority className="mx-auto object-contain object-center" />

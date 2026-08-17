@@ -13,7 +13,8 @@ import {
   applyThemePreferences,
   DEFAULT_THEME,
   parseThemePreferences,
-  THEME_STORAGE_KEY,
+  readStoredThemeRaw,
+  writeStoredTheme,
   type ColorPresetId,
   type ThemeMode,
   type ThemePreferences,
@@ -31,14 +32,14 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 function persistTheme(next: ThemePreferences) {
   applyThemePreferences(next);
-  localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(next));
+  writeStoredTheme(next);
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [prefs, setPrefs] = useState<ThemePreferences>(DEFAULT_THEME);
 
   useEffect(() => {
-    const stored = parseThemePreferences(localStorage.getItem(THEME_STORAGE_KEY));
+    const stored = parseThemePreferences(readStoredThemeRaw());
     setPrefs(stored);
     applyThemePreferences(stored);
   }, []);

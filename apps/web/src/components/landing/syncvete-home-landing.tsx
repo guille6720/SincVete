@@ -2,7 +2,7 @@ import { ArrowRight, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 import { APP_NAME } from '@sincvete/shared';
 import { Button } from '@/components/ui/button';
-import { BrandLogo } from '@/components/brand/sincvete-logo';
+import { BrandLogo } from '@/components/brand/syncvete-logo';
 import { MarketingFooter } from '@/components/landing/marketing-footer';
 import { MarketingHeader } from '@/components/landing/marketing-header';
 import { PlansPricingSection } from '@/components/landing/plans-pricing-section';
@@ -69,7 +69,7 @@ const FAQ = [
   },
 ] as const;
 
-export function SincVeteHomeLanding() {
+export function SyncVeteHomeLanding() {
   return (
     <div className="landing-root min-h-screen bg-[var(--land-bg)] text-[var(--land-ink)]">
       <MarketingHeader />
@@ -126,7 +126,7 @@ export function SincVeteHomeLanding() {
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <div className="max-w-2xl">
             <p className="text-sm font-medium tracking-wide text-[var(--land-accent)]">
-              Por qué SincVete
+              Por qué {APP_NAME}
             </p>
             <h2 className="mt-3 font-display text-3xl font-semibold tracking-tight md:text-4xl">
               Menos herramientas. Más clínica.
