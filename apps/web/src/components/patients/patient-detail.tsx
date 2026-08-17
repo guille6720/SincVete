@@ -261,44 +261,64 @@ export function PatientDetail({
         )}
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-center gap-3">
+      <Card className="overflow-hidden border-teal-300/50 bg-[linear-gradient(165deg,#f7fbf8_0%,#eef8f3_42%,#f4faf7_100%)] shadow-sm dark:border-teal-800/70 dark:bg-[linear-gradient(165deg,#14241f_0%,#1a2e28_45%,#15231f_100%)]">
+        <CardHeader className="border-b border-teal-900/5 bg-[radial-gradient(ellipse_at_top_left,rgba(13,148,136,0.12),transparent_55%)] pb-5 dark:border-teal-400/10 dark:bg-[radial-gradient(ellipse_at_top_left,rgba(45,212,191,0.12),transparent_55%)]">
+          <div className="flex flex-wrap items-center gap-4">
             {patient.photo_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={patient.photo_url}
                 alt={patient.name}
-                className="h-16 w-16 rounded-full object-cover ring-2 ring-border"
+                className="h-20 w-20 rounded-full object-cover ring-4 ring-teal-600/15 dark:ring-teal-300/20"
               />
-            ) : null}
-            <div className="flex flex-wrap items-center gap-2">
-              <CardTitle>
-                {SPECIES_EMOJI[patient.species]} {patient.name}
-              </CardTitle>
-              {patient.is_deceased ? (
-                <Badge variant="destructive">Fallecido</Badge>
-              ) : (
-                <Badge variant={patient.is_active ? 'success' : 'destructive'}>
-                  {patient.is_active ? 'Activo' : 'Inactivo'}
-                </Badge>
-              )}
-              {activeHospitalization && (
-                <Badge variant="warning">
-                  {HOSPITALIZATION_STATUS_LABELS[activeHospitalization.status]}
-                </Badge>
-              )}
+            ) : (
+              <div
+                className="flex h-20 w-20 items-center justify-center rounded-full bg-teal-100 text-3xl ring-4 ring-teal-600/15 dark:bg-teal-900/60 dark:ring-teal-300/20"
+                aria-hidden
+              >
+                {SPECIES_EMOJI[patient.species]}
+              </div>
+            )}
+            <div className="min-w-0 space-y-2">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <CardTitle className="text-2xl font-semibold tracking-tight text-teal-950 sm:text-3xl dark:text-teal-50">
+                  {patient.photo_url ? `${SPECIES_EMOJI[patient.species]} ` : null}
+                  {patient.name}
+                </CardTitle>
+                {patient.is_deceased ? (
+                  <Badge variant="destructive" className="text-sm">
+                    Fallecido
+                  </Badge>
+                ) : (
+                  <Badge
+                    variant={patient.is_active ? 'success' : 'destructive'}
+                    className="text-sm"
+                  >
+                    {patient.is_active ? 'Activo' : 'Inactivo'}
+                  </Badge>
+                )}
+                {activeHospitalization && (
+                  <Badge variant="warning" className="text-sm">
+                    {HOSPITALIZATION_STATUS_LABELS[activeHospitalization.status]}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-base text-teal-800/80 dark:text-teal-100/75">
+                Ficha del paciente
+                {patient.species ? ` · ${patient.species}` : ''}
+                {patient.breed ? ` · ${patient.breed}` : ''}
+              </p>
             </div>
           </div>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
+        <CardContent className="grid gap-5 p-6 sm:grid-cols-2 sm:gap-x-8 sm:gap-y-5">
           <DetailField
             label="Propietario"
             value={
               owner ? (
                 <Link
                   href={`/propietarios/${owner.id}`}
-                  className="text-primary hover:underline"
+                  className="font-medium text-teal-800 underline-offset-2 hover:underline dark:text-teal-200"
                 >
                   {owner.full_name}
                 </Link>
@@ -367,8 +387,10 @@ function DetailField({
 }) {
   return (
     <div className={className}>
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <div className="mt-0.5 text-sm">{value || '—'}</div>
+      <p className="text-sm font-medium text-teal-800/70 dark:text-teal-200/70">{label}</p>
+      <div className="mt-1 text-base leading-relaxed text-teal-950 dark:text-teal-50">
+        {value || '—'}
+      </div>
     </div>
   );
 }
