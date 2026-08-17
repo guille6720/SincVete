@@ -191,14 +191,14 @@ export function DashboardQuickActions({ canWritePatients }: DashboardQuickAction
   );
 
   return (
-    <section className="rounded-xl border border-teal-200/70 bg-white/80 p-5 shadow-sm backdrop-blur-sm">
+    <section className="rounded-xl border border-teal-200/70 bg-card/95 p-5 text-card-foreground shadow-sm backdrop-blur-sm dark:border-teal-800">
       <div className="mb-4 flex items-center gap-2">
-        <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-teal-100 text-teal-700">
+        <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-200">
           <Zap className="h-4 w-4" />
         </span>
         <div>
-          <h2 className="text-base font-semibold text-slate-900">Acciones rápidas</h2>
-          <p className="text-sm text-slate-500">Operaciones frecuentes en 1 clic</p>
+          <h2 className="text-base font-semibold text-foreground">Acciones rápidas</h2>
+          <p className="text-sm text-muted-foreground">Operaciones frecuentes en 1 clic</p>
         </div>
       </div>
       <div className="flex flex-wrap gap-2">

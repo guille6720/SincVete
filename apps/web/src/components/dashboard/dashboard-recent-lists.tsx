@@ -18,13 +18,16 @@ export function DashboardRecentLists({
 }: DashboardRecentListsProps) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <Card className="border-teal-200/70 bg-white/90 shadow-sm backdrop-blur-sm">
+      <Card className="border-teal-200/70 bg-card/95 text-card-foreground shadow-sm backdrop-blur-sm dark:border-teal-800">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle className="text-lg">Últimos pacientes</CardTitle>
             <CardDescription>Registros recientes</CardDescription>
           </div>
-          <Link href="/pacientes" className="text-sm font-medium text-teal-700 hover:underline">
+          <Link
+            href="/pacientes"
+            className="text-sm font-medium text-teal-700 hover:underline dark:text-teal-300"
+          >
             Ver todos
           </Link>
         </CardHeader>
@@ -32,13 +35,13 @@ export function DashboardRecentLists({
           {recentPatients.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin pacientes registrados.</p>
           ) : (
-            <ul className="divide-y">
+            <ul className="divide-y divide-border">
               {recentPatients.map((patient) => (
                 <li key={patient.id} className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
                   <div>
                     <Link
                       href={`/pacientes/${patient.id}`}
-                      className="font-medium hover:text-teal-700 hover:underline"
+                      className="font-medium text-foreground hover:text-teal-700 hover:underline dark:hover:text-teal-300"
                     >
                       {SPECIES_EMOJI[patient.species]} {patient.name}
                     </Link>
@@ -54,13 +57,16 @@ export function DashboardRecentLists({
         </CardContent>
       </Card>
 
-      <Card className="border-sky-200/70 bg-white/90 shadow-sm backdrop-blur-sm">
+      <Card className="border-sky-200/70 bg-card/95 text-card-foreground shadow-sm backdrop-blur-sm dark:border-sky-800">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle className="text-lg">Últimos propietarios</CardTitle>
             <CardDescription>Registros recientes</CardDescription>
           </div>
-          <Link href="/propietarios" className="text-sm font-medium text-sky-700 hover:underline">
+          <Link
+            href="/propietarios"
+            className="text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
+          >
             Ver todos
           </Link>
         </CardHeader>
@@ -68,12 +74,12 @@ export function DashboardRecentLists({
           {recentOwners.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin propietarios registrados.</p>
           ) : (
-            <ul className="divide-y">
+            <ul className="divide-y divide-border">
               {recentOwners.map((owner) => (
                 <li key={owner.id} className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
                   <Link
                     href={`/propietarios/${owner.id}`}
-                    className="font-medium hover:text-sky-700 hover:underline"
+                    className="font-medium text-foreground hover:text-sky-700 hover:underline dark:hover:text-sky-300"
                   >
                     {owner.full_name}
                   </Link>

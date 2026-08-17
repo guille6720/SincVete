@@ -59,18 +59,18 @@
 .dark {
   --sv-background: oklch(0.16 0.02 250);
   --sv-foreground: oklch(0.96 0.01 250);
-  --sv-card: oklch(0.2 0.02 250);
-  --sv-card-foreground: oklch(0.96 0.01 250);
-  --sv-secondary: oklch(0.24 0.02 250);
-  --sv-secondary-foreground: oklch(0.92 0.01 250);
-  --sv-muted: oklch(0.24 0.015 250);
-  --sv-muted-foreground: oklch(0.72 0.02 250);
-  --sv-accent: oklch(0.26 0.03 250);
+  --sv-card: oklch(0.22 0.02 250);
+  --sv-card-foreground: oklch(0.97 0.01 250);
+  --sv-secondary: oklch(0.26 0.02 250);
+  --sv-secondary-foreground: oklch(0.94 0.01 250);
+  --sv-muted: oklch(0.26 0.015 250);
+  --sv-muted-foreground: oklch(0.78 0.02 250);
+  --sv-accent: oklch(0.28 0.03 250);
   --sv-accent-foreground: oklch(0.96 0.01 250);
   --sv-destructive: oklch(0.6 0.2 25);
   --sv-destructive-foreground: oklch(0.99 0 0);
-  --sv-border: oklch(0.3 0.02 250);
-  --sv-input: oklch(0.3 0.02 250);
+  --sv-border: oklch(0.34 0.02 250);
+  --sv-input: oklch(0.34 0.02 250);
   --sv-primary-foreground: oklch(0.99 0 0);
 
   --shell-bg: linear-gradient(180deg, #0b1220 0%, #0f172a 45%, #0c1a1a 100%);
@@ -78,7 +78,7 @@
   --shell-header: rgba(15, 23, 42, 0.88);
   --shell-panel: #111827;
   --shell-border: color-mix(in oklab, var(--clinic) 28%, transparent);
-  --shell-text: #cbd5e1;
+  --shell-text: #e2e8f0;
   --shell-text-muted: #94a3b8;
 }
 

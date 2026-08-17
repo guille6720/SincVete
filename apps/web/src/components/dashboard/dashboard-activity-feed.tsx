@@ -8,13 +8,16 @@ interface DashboardActivityFeedProps {
 
 export function DashboardActivityFeed({ activity }: DashboardActivityFeedProps) {
   return (
-    <Card className="border-sky-200/70 bg-white/90 shadow-sm backdrop-blur-sm">
+    <Card className="border-sky-200/70 bg-card/95 text-card-foreground shadow-sm backdrop-blur-sm dark:border-sky-800">
       <CardHeader className="flex flex-row items-start justify-between gap-3">
         <div>
           <CardTitle className="text-lg">Actividad reciente</CardTitle>
           <CardDescription>Cambios auditados en la clínica</CardDescription>
         </div>
-        <Link href="/auditoria" className="text-xs font-medium text-teal-700 hover:underline">
+        <Link
+          href="/auditoria"
+          className="text-xs font-medium text-teal-700 hover:underline dark:text-teal-300"
+        >
           Ver auditoría
         </Link>
       </CardHeader>
@@ -22,12 +25,12 @@ export function DashboardActivityFeed({ activity }: DashboardActivityFeedProps) 
         {activity.length === 0 ? (
           <p className="text-sm text-muted-foreground">Sin actividad registrada todavía.</p>
         ) : (
-          <ul className="divide-y">
+          <ul className="divide-y divide-border">
             {activity.map((item) => (
               <li key={item.id} className="py-3 first:pt-0 last:pb-0">
                 <Link
                   href={`/auditoria/${item.id}`}
-                  className="flex items-start justify-between gap-3 hover:text-primary"
+                  className="flex items-start justify-between gap-3 text-foreground hover:text-primary"
                 >
                   <div>
                     <p className="text-sm">{item.summary}</p>
