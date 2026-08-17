@@ -40,6 +40,7 @@ import { ThemeControls } from '@/components/theme/theme-controls';
 import { AppUpdateBanner } from '@/components/layout/app-update-banner';
 import { CommandPalette, CommandPaletteTrigger } from './command-palette';
 import { NotificationBell } from '@/components/notifications/notification-bell';
+/** Entitlements Phase 1: see `@/lib/entitlements/nav` + NAV_FEATURE_BY_HREF (do not hide modules yet). */
 
 const NAV_ITEMS = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },

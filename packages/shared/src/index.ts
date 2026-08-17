@@ -1,6 +1,7 @@
 import { ROLE_PERMISSIONS, type Permission, type Role } from './constants';
 
 export * from './constants';
+export * from './constants/features';
 export * from './constants/settings';
 export * from './constants/owners';
 export * from './constants/patients';
@@ -45,6 +46,7 @@ export * from './types/images';
 export * from './types/notifications';
 export * from './types/audit';
 export * from './schemas';
+export * from './entitlements';
 
 export function getPermissionsForRole(role: Role, custom?: Permission[] | null): Permission[] {
   if (custom && custom.length > 0) {
