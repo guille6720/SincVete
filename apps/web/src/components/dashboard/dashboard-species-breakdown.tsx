@@ -19,7 +19,7 @@ export function DashboardSpeciesBreakdown({ summary }: DashboardSpeciesBreakdown
   ];
 
   return (
-    <Card className="border-teal-200/70 bg-white/90 shadow-sm backdrop-blur-sm">
+    <Card className="border-teal-200/70 bg-card/95 text-card-foreground shadow-sm backdrop-blur-sm dark:border-teal-800">
       <CardHeader>
         <CardTitle className="text-lg">Pacientes por especie</CardTitle>
         <CardDescription>Distribución de pacientes activos</CardDescription>
@@ -36,7 +36,7 @@ export function DashboardSpeciesBreakdown({ summary }: DashboardSpeciesBreakdown
                   <div className="flex items-center justify-between text-sm">
                     <Link
                       href={`/pacientes?species=${encodeURIComponent(item.species)}`}
-                      className="font-medium hover:text-teal-700 hover:underline"
+                      className="font-medium text-foreground hover:text-teal-700 hover:underline dark:hover:text-teal-300"
                     >
                       {SPECIES_EMOJI[item.species]} {item.species}
                     </Link>
@@ -44,7 +44,7 @@ export function DashboardSpeciesBreakdown({ summary }: DashboardSpeciesBreakdown
                       {item.count} ({pct}%)
                     </span>
                   </div>
-                  <div className="h-2.5 overflow-hidden rounded-full bg-teal-50">
+                  <div className="h-2.5 overflow-hidden rounded-full bg-teal-50 dark:bg-teal-950">
                     <div
                       className={`h-full rounded-full ${barColors[index % barColors.length]}`}
                       style={{ width: `${pct}%` }}
