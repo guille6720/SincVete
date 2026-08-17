@@ -3,17 +3,49 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { Moon, Palette, Settings, Sun } from 'lucide-react';
-import { useTheme } from '@/components/theme/theme-provider';
-import { COLOR_PRESETS } from '@/lib/theme';
+import {
+  COLOR_PRESETS,
+  DEFAULT_THEME,
+  applyThemePreferences,
+  parseThemePreferences,
+  THEME_STORAGE_KEY,
+  type ColorPresetId,
+  type ThemeMode,
+  type ThemePreferences,
+} from '@/lib/theme';
 import { cn } from '@/lib/utils';
 
 const controlClass =
-  'inline-flex h-9 items-center gap-1.5 rounded-md border border-[color-mix(in_oklab,var(--clinic)_22%,transparent)] bg-background px-2.5 text-sm font-medium text-foreground shadow-sm transition hover:bg-[var(--clinic-soft)] hover:text-[var(--clinic)]';
+  'inline-flex h-9 items-center gap-1.5 rounded-md border border-teal-700/30 bg-white px-2.5 text-sm font-semibold text-teal-900 shadow-sm transition hover:bg-teal-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800';
 
+function readPrefs(): ThemePreferences {
+  if (typeof window === 'undefined') return DEFAULT_THEME;
+  return parseThemePreferences(localStorage.getItem(THEME_STORAGE_KEY));
+}
+
+function writePrefs(next: ThemePreferences) {
+  applyThemePreferences(next);
+  localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(next));
+}
+
+/**
+ * Header theme controls — self-contained (localStorage) so they still render
+ * even if ThemeProvider context fails to wire across chunks.
+ */
 export function ThemeControls() {
-  const { mode, accent, toggleMode, setAccent } = useTheme();
+  const [mode, setMode] = useState<ThemeMode>(DEFAULT_THEME.mode);
+  const [accent, setAccentState] = useState<ColorPresetId>(DEFAULT_THEME.accent);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const paletteRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const prefs = readPrefs();
+    setMode(prefs.mode);
+    setAccentState(prefs.accent);
+    applyThemePreferences(prefs);
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!paletteOpen) return;
@@ -36,11 +68,21 @@ export function ThemeControls() {
     };
   }, [paletteOpen]);
 
+  function persist(next: ThemePreferences) {
+    setMode(next.mode);
+    setAccentState(next.accent);
+    writePrefs(next);
+  }
+
   return (
-    <div className="flex shrink-0 items-center gap-1.5">
+    <div
+      className="flex shrink-0 items-center gap-1.5 rounded-lg bg-teal-600/10 p-1 dark:bg-teal-400/10"
+      data-testid="theme-controls"
+      aria-label="Tema y configuración"
+    >
       <Link href="/configuracion" className={controlClass} title="Configuración">
         <Settings className="h-4 w-4" />
-        <span className="hidden sm:inline">Config</span>
+        <span>Config</span>
       </Link>
 
       <div className="relative" ref={paletteRef}>
@@ -56,9 +98,11 @@ export function ThemeControls() {
           <Palette className="h-4 w-4" />
           <span
             className="h-3.5 w-3.5 rounded-full border border-black/10"
-            style={{ backgroundColor: COLOR_PRESETS.find((p) => p.id === accent)?.swatch }}
+            style={{
+              backgroundColor: COLOR_PRESETS.find((p) => p.id === accent)?.swatch,
+            }}
           />
-          <span className="hidden sm:inline">Color</span>
+          <span>Color</span>
         </button>
 
         {paletteOpen ? (
@@ -79,7 +123,7 @@ export function ThemeControls() {
                     aria-label={preset.label}
                     aria-pressed={selected}
                     onClick={() => {
-                      setAccent(preset.id);
+                      persist({ mode, accent: preset.id });
                       setPaletteOpen(false);
                     }}
                     className={cn(
@@ -106,10 +150,10 @@ export function ThemeControls() {
         className={controlClass}
         aria-label={mode === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
         title={mode === 'dark' ? 'Modo claro' : 'Modo oscuro'}
-        onClick={toggleMode}
+        onClick={() => persist({ mode: mode === 'dark' ? 'light' : 'dark', accent })}
       >
-        {mode === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-        <span className="hidden sm:inline">{mode === 'dark' ? 'Claro' : 'Oscuro'}</span>
+        {mounted && mode === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        <span>{mounted && mode === 'dark' ? 'Claro' : 'Oscuro'}</span>
       </button>
     </div>
   );

@@ -37,7 +37,6 @@ import { cn } from '@/lib/utils';
 import { ROLE_LABELS, type Role } from '@sincvete/shared';
 import { BrandLogo } from '@/components/brand/sincvete-logo';
 import { ThemeControls } from '@/components/theme/theme-controls';
-import { useTheme } from '@/components/theme/theme-provider';
 import { AppUpdateBanner } from '@/components/layout/app-update-banner';
 import { CommandPalette, CommandPaletteTrigger } from './command-palette';
 import { NotificationBell } from '@/components/notifications/notification-bell';
@@ -87,7 +86,6 @@ export function AppShell({
   unreadNotifications = 0,
 }: AppShellProps) {
   const pathname = usePathname();
-  const { mode } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
@@ -123,13 +121,18 @@ export function AppShell({
             backgroundColor: 'var(--shell-surface)',
           }}
         >
-          <BrandLogo
+          <Link
             href="/dashboard"
-            size="sidebar"
-            variant={mode === 'dark' ? 'onDark' : 'onLight'}
-            priority
-            className="mx-auto object-contain object-center"
-          />
+            className="block w-full"
+            aria-label="SincVete"
+          >
+            <span className="block dark:hidden">
+              <BrandLogo size="sidebar" variant="onLight" priority className="mx-auto object-contain object-center" />
+            </span>
+            <span className="hidden dark:block">
+              <BrandLogo size="sidebar" variant="onDark" priority className="mx-auto object-contain object-center" />
+            </span>
+          </Link>
           <Button
             variant="ghost"
             size="icon"
@@ -223,12 +226,12 @@ export function AppShell({
           </Button>
           <CommandPaletteTrigger />
           <ThemeControls />
-          {branches.length > 1 && (
-            <div className="hidden md:block">
-              <BranchSelector branches={branches} activeBranchId={activeBranchId ?? null} />
-            </div>
-          )}
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            {branches.length > 1 && (
+              <div className="hidden md:block">
+                <BranchSelector branches={branches} activeBranchId={activeBranchId ?? null} />
+              </div>
+            )}
             <NotificationBell unreadCount={unreadNotifications} />
           </div>
         </header>

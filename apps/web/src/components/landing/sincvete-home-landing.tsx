@@ -109,7 +109,7 @@ export function SincVeteHomeLanding() {
               </Button>
             </div>
             <p className="mt-5 text-sm text-[var(--land-muted)]">
-              Desde $ 24.900 / mes · Cancelá cuando quieras
+              Desde $ 29.990 / mes · Cancelá cuando quieras
             </p>
           </div>
 
