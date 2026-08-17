@@ -18,6 +18,17 @@ export type UserRole =
 
 export type OrgPlan = 'trial' | 'basic' | 'professional' | 'enterprise';
 
+export type SubscriptionStatus =
+  | 'trialing'
+  | 'active'
+  | 'past_due'
+  | 'cancelled'
+  | 'expired';
+
+export type FeatureValueType = 'boolean' | 'limit';
+
+export type CommercialPlanKey = 'legacy' | 'trial' | 'basic' | 'pro' | 'premium' | 'enterprise';
+
 export type PatientSpecies =
   | 'Canino'
   | 'Felino'
@@ -2631,6 +2642,309 @@ export interface Database {
           },
         ];
       };
+      plans: {
+        Row: {
+          id: string;
+          key: string;
+          name: string;
+          description: string | null;
+          is_active: boolean;
+          is_public: boolean;
+          is_internal: boolean;
+          display_order: number;
+          metadata: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          key: string;
+          name: string;
+          description?: string | null;
+          is_active?: boolean;
+          is_public?: boolean;
+          is_internal?: boolean;
+          display_order?: number;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          key?: string;
+          name?: string;
+          description?: string | null;
+          is_active?: boolean;
+          is_public?: boolean;
+          is_internal?: boolean;
+          display_order?: number;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      features: {
+        Row: {
+          id: string;
+          key: string;
+          name: string;
+          description: string | null;
+          feature_type: FeatureValueType;
+          default_enabled: boolean;
+          default_limit: number | null;
+          is_active: boolean;
+          usage_metered: boolean;
+          metadata: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          key: string;
+          name: string;
+          description?: string | null;
+          feature_type?: FeatureValueType;
+          default_enabled?: boolean;
+          default_limit?: number | null;
+          is_active?: boolean;
+          usage_metered?: boolean;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          key?: string;
+          name?: string;
+          description?: string | null;
+          feature_type?: FeatureValueType;
+          default_enabled?: boolean;
+          default_limit?: number | null;
+          is_active?: boolean;
+          usage_metered?: boolean;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      plan_features: {
+        Row: {
+          id: string;
+          plan_id: string;
+          feature_id: string;
+          enabled: boolean;
+          limit_value: number | null;
+          value: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          plan_id: string;
+          feature_id: string;
+          enabled?: boolean;
+          limit_value?: number | null;
+          value?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          plan_id?: string;
+          feature_id?: string;
+          enabled?: boolean;
+          limit_value?: number | null;
+          value?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'plan_features_plan_id_fkey';
+            columns: ['plan_id'];
+            isOneToOne: false;
+            referencedRelation: 'plans';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'plan_features_feature_id_fkey';
+            columns: ['feature_id'];
+            isOneToOne: false;
+            referencedRelation: 'features';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      organization_subscriptions: {
+        Row: {
+          id: string;
+          organization_id: string;
+          plan_id: string;
+          status: SubscriptionStatus;
+          starts_at: string;
+          ends_at: string | null;
+          trial_ends_at: string | null;
+          cancelled_at: string | null;
+          metadata: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          plan_id: string;
+          status?: SubscriptionStatus;
+          starts_at?: string;
+          ends_at?: string | null;
+          trial_ends_at?: string | null;
+          cancelled_at?: string | null;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          plan_id?: string;
+          status?: SubscriptionStatus;
+          starts_at?: string;
+          ends_at?: string | null;
+          trial_ends_at?: string | null;
+          cancelled_at?: string | null;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'organization_subscriptions_organization_id_fkey';
+            columns: ['organization_id'];
+            isOneToOne: false;
+            referencedRelation: 'organizations';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'organization_subscriptions_plan_id_fkey';
+            columns: ['plan_id'];
+            isOneToOne: false;
+            referencedRelation: 'plans';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      organization_feature_overrides: {
+        Row: {
+          id: string;
+          organization_id: string;
+          feature_id: string;
+          enabled: boolean | null;
+          limit_value: number | null;
+          value: Json;
+          reason: string | null;
+          starts_at: string | null;
+          ends_at: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          feature_id: string;
+          enabled?: boolean | null;
+          limit_value?: number | null;
+          value?: Json;
+          reason?: string | null;
+          starts_at?: string | null;
+          ends_at?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          feature_id?: string;
+          enabled?: boolean | null;
+          limit_value?: number | null;
+          value?: Json;
+          reason?: string | null;
+          starts_at?: string | null;
+          ends_at?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'organization_feature_overrides_organization_id_fkey';
+            columns: ['organization_id'];
+            isOneToOne: false;
+            referencedRelation: 'organizations';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'organization_feature_overrides_feature_id_fkey';
+            columns: ['feature_id'];
+            isOneToOne: false;
+            referencedRelation: 'features';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      feature_usage: {
+        Row: {
+          id: string;
+          organization_id: string;
+          feature_id: string;
+          period_start: string;
+          period_end: string;
+          usage_count: number;
+          metadata: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          feature_id: string;
+          period_start: string;
+          period_end: string;
+          usage_count?: number;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          feature_id?: string;
+          period_start?: string;
+          period_end?: string;
+          usage_count?: number;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'feature_usage_organization_id_fkey';
+            columns: ['organization_id'];
+            isOneToOne: false;
+            referencedRelation: 'organizations';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'feature_usage_feature_id_fkey';
+            columns: ['feature_id'];
+            isOneToOne: false;
+            referencedRelation: 'features';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -2641,6 +2955,25 @@ export interface Database {
       has_permission: {
         Args: { required_permission: string };
         Returns: boolean;
+      };
+      increment_feature_usage: {
+        Args: {
+          p_feature_key: string;
+          p_amount?: number;
+          p_period_start?: string;
+          p_period_end?: string;
+        };
+        Returns: number;
+      };
+      try_consume_feature_usage: {
+        Args: {
+          p_feature_key: string;
+          p_amount: number;
+          p_limit: number | null;
+          p_period_start?: string;
+          p_period_end?: string;
+        };
+        Returns: number | null;
       };
       handle_new_user_signup: {
         Args: {

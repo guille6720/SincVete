@@ -108,3 +108,54 @@ export const NAV_FEATURE_BY_HREF: Record<string, FeatureKey> = {
   '/auditoria': FEATURES.AUDIT,
   '/ia-clinica': FEATURES.AI,
 };
+
+/** Commercial plan keys in DB (not the legacy organizations.plan enum). */
+export const COMMERCIAL_PLAN_KEYS = {
+  LEGACY: 'legacy',
+  TRIAL: 'trial',
+  BASIC: 'basic',
+  PRO: 'pro',
+  PREMIUM: 'premium',
+  ENTERPRISE: 'enterprise',
+} as const;
+
+export type CommercialPlanKey =
+  (typeof COMMERCIAL_PLAN_KEYS)[keyof typeof COMMERCIAL_PLAN_KEYS];
+
+/**
+ * Product must set this before marketing a timed trial.
+ * null = open-ended `trialing` (trial_ends_at NULL) until Superadmin configures duration.
+ * Maps to plans.metadata.default_trial_days for the `trial` plan.
+ */
+export const ONBOARDING_TRIAL_DAYS: number | null = null;
+
+export const ONBOARDING_PLAN_KEY = COMMERCIAL_PLAN_KEYS.TRIAL;
+
+/** Features allowed for usage counters (must match DB features.usage_metered). */
+export const METERED_FEATURE_KEYS = [
+  FEATURES.AI_MONTHLY_REQUESTS,
+  FEATURES.WHATSAPP_MONTHLY_MESSAGES,
+  FEATURES.STORAGE_MAX_MB,
+] as const satisfies readonly FeatureKey[];
+
+export function isLegacyPlanKey(key: string): boolean {
+  return key === COMMERCIAL_PLAN_KEYS.LEGACY;
+}
+
+/**
+ * Public/commercial assignment helpers for Phase 2 Superadmin.
+ * Legacy is never auto-assignable.
+ */
+export function isAutoAssignableOnboardingPlan(key: string): boolean {
+  return key === ONBOARDING_PLAN_KEY;
+}
+
+export function assertNotLegacyAutoAssign(planKey: string): void {
+  if (isLegacyPlanKey(planKey)) {
+    throw new Error('legacy plan is migration-only and cannot be auto-assigned');
+  }
+}
+
+export function validateUsageIncrementAmount(amount: unknown): amount is number {
+  return typeof amount === 'number' && Number.isFinite(amount) && amount > 0;
+}

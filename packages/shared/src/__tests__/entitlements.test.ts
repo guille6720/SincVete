@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   FEATURES,
+  COMMERCIAL_PLAN_KEYS,
+  ONBOARDING_PLAN_KEY,
+  ONBOARDING_TRIAL_DAYS,
+  METERED_FEATURE_KEYS,
+  assertNotLegacyAutoAssign,
+  isAutoAssignableOnboardingPlan,
+  isLegacyPlanKey,
+  validateUsageIncrementAmount,
   canUseResolvedFeature,
   getResolvedFeatureLimit,
   resolveFeatureEntitlement,
@@ -301,5 +309,55 @@ describe('resolveOrganizationEntitlements helpers', () => {
     );
     expect(canUseResolvedFeature(map, FEATURES.AI)).toBe(true);
     expect(canUseResolvedFeature(map, FEATURES.INVENTORY)).toBe(false);
+  });
+});
+
+describe('onboarding / legacy safeguards', () => {
+  it('legacy is never auto-assignable', () => {
+    expect(isLegacyPlanKey(COMMERCIAL_PLAN_KEYS.LEGACY)).toBe(true);
+    expect(isAutoAssignableOnboardingPlan(COMMERCIAL_PLAN_KEYS.LEGACY)).toBe(false);
+    expect(() => assertNotLegacyAutoAssign(COMMERCIAL_PLAN_KEYS.LEGACY)).toThrow(/migration-only/);
+  });
+
+  it('new organizations use trial onboarding plan, not legacy', () => {
+    expect(ONBOARDING_PLAN_KEY).toBe(COMMERCIAL_PLAN_KEYS.TRIAL);
+    expect(ONBOARDING_PLAN_KEY).not.toBe(COMMERCIAL_PLAN_KEYS.LEGACY);
+    expect(isAutoAssignableOnboardingPlan(COMMERCIAL_PLAN_KEYS.TRIAL)).toBe(true);
+  });
+
+  it('trial duration remains unset until product configures it', () => {
+    expect(ONBOARDING_TRIAL_DAYS).toBeNull();
+  });
+
+  it('legacy plan features stay fully enabled in resolver (existing customers)', () => {
+    const map = resolveOrganizationEntitlements(
+      baseInput({
+        planFeatures: catalog.map((f) => ({
+          featureKey: f.key,
+          enabled: true,
+          limitValue: f.featureType === 'limit' ? null : null,
+        })),
+      })
+    );
+    expect(canUseResolvedFeature(map, FEATURES.AI)).toBe(true);
+    expect(canUseResolvedFeature(map, FEATURES.INVENTORY)).toBe(true);
+    expect(getResolvedFeatureLimit(map, FEATURES.USERS_MAX)).toBeNull();
+  });
+});
+
+describe('usage increment validation helpers', () => {
+  it('accepts positive amounts only', () => {
+    expect(validateUsageIncrementAmount(1)).toBe(true);
+    expect(validateUsageIncrementAmount(10)).toBe(true);
+    expect(validateUsageIncrementAmount(0)).toBe(false);
+    expect(validateUsageIncrementAmount(-1)).toBe(false);
+    expect(validateUsageIncrementAmount(null)).toBe(false);
+    expect(validateUsageIncrementAmount(undefined)).toBe(false);
+  });
+
+  it('documents metered feature keys', () => {
+    expect(METERED_FEATURE_KEYS).toContain(FEATURES.AI_MONTHLY_REQUESTS);
+    expect(METERED_FEATURE_KEYS).toContain(FEATURES.WHATSAPP_MONTHLY_MESSAGES);
+    expect(METERED_FEATURE_KEYS).not.toContain(FEATURES.AI);
   });
 });

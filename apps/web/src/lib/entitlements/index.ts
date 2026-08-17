@@ -20,12 +20,6 @@ export class FeatureNotAvailableError extends Error {
   }
 }
 
-/** Untyped access until Database types are regenerated for Phase 1 tables. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function entitlementDb(): Promise<any> {
-  return createServerClient();
-}
-
 type NestedFeature = { key: string } | { key: string }[] | null;
 
 function featureKeyFromJoin(features: NestedFeature): string | null {
@@ -39,7 +33,7 @@ function featureKeyFromJoin(features: NestedFeature): string | null {
  * Request-scoped via React.cache — never reuse across tenants.
  */
 export const loadOrganizationEntitlementInput = cache(async (organizationId: string) => {
-  const supabase = await entitlementDb();
+  const supabase = await createServerClient();
 
   const [featuresRes, subscriptionRes, overridesRes] = await Promise.all([
     supabase
@@ -69,23 +63,15 @@ export const loadOrganizationEntitlementInput = cache(async (organizationId: str
     throw new Error(`No se pudieron cargar overrides: ${overridesRes.error.message}`);
   }
 
-  const features: FeatureCatalogRow[] = (featuresRes.data ?? []).map(
-    (f: {
-      key: string;
-      feature_type: 'boolean' | 'limit';
-      default_enabled: boolean;
-      default_limit: number | string | null;
-      is_active: boolean;
-    }) => ({
-      key: f.key,
-      featureType: f.feature_type,
-      defaultEnabled: f.default_enabled,
-      defaultLimit: f.default_limit === null ? null : Number(f.default_limit),
-      isActive: f.is_active,
-    })
-  );
+  const features: FeatureCatalogRow[] = (featuresRes.data ?? []).map((f) => ({
+    key: f.key,
+    featureType: f.feature_type,
+    defaultEnabled: f.default_enabled,
+    defaultLimit: f.default_limit === null ? null : Number(f.default_limit),
+    isActive: f.is_active,
+  }));
 
-  const activeSub = subscriptionRes.data as { id: string; plan_id: string } | null;
+  const activeSub = subscriptionRes.data;
   let planFeatures: PlanFeatureRow[] = [];
 
   if (activeSub?.plan_id) {
@@ -99,45 +85,31 @@ export const loadOrganizationEntitlementInput = cache(async (organizationId: str
     }
 
     planFeatures = (pfData ?? [])
-      .map(
-        (row: {
-          enabled: boolean;
-          limit_value: number | string | null;
-          features: NestedFeature;
-        }) => {
-          const key = featureKeyFromJoin(row.features);
-          if (!key) return null;
-          return {
-            featureKey: key,
-            enabled: row.enabled,
-            limitValue: row.limit_value === null ? null : Number(row.limit_value),
-          } satisfies PlanFeatureRow;
-        }
-      )
-      .filter(Boolean) as PlanFeatureRow[];
-  }
-
-  const overrides: FeatureOverrideRow[] = (overridesRes.data ?? [])
-    .map(
-      (row: {
-        enabled: boolean | null;
-        limit_value: number | string | null;
-        starts_at: string | null;
-        ends_at: string | null;
-        features: NestedFeature;
-      }) => {
-        const key = featureKeyFromJoin(row.features);
+      .map((row) => {
+        const key = featureKeyFromJoin(row.features as NestedFeature);
         if (!key) return null;
         return {
           featureKey: key,
           enabled: row.enabled,
           limitValue: row.limit_value === null ? null : Number(row.limit_value),
-          startsAt: row.starts_at,
-          endsAt: row.ends_at,
-        } satisfies FeatureOverrideRow;
-      }
-    )
-    .filter(Boolean) as FeatureOverrideRow[];
+        } satisfies PlanFeatureRow;
+      })
+      .filter((row): row is PlanFeatureRow => row !== null);
+  }
+
+  const overrides: FeatureOverrideRow[] = (overridesRes.data ?? [])
+    .map((row) => {
+      const key = featureKeyFromJoin(row.features as NestedFeature);
+      if (!key) return null;
+      return {
+        featureKey: key,
+        enabled: row.enabled,
+        limitValue: row.limit_value === null ? null : Number(row.limit_value),
+        startsAt: row.starts_at,
+        endsAt: row.ends_at,
+      } satisfies FeatureOverrideRow;
+    })
+    .filter((row): row is FeatureOverrideRow => row !== null);
 
   return {
     features,
@@ -199,6 +171,28 @@ export async function requireFeature(
   if (!allowed) {
     throw new FeatureNotAvailableError(featureKey);
   }
+}
+
+/**
+ * Preferred quota path for metered features:
+ * resolve limit → try_consume_feature_usage (atomic check+increment).
+ * Avoid separate "read usage then increment" in app code (race-prone).
+ */
+export async function tryConsumeFeatureUsage(params: {
+  featureKey: FeatureKey;
+  amount?: number;
+  limit: number | null;
+}): Promise<number | null> {
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc('try_consume_feature_usage', {
+    p_feature_key: params.featureKey,
+    p_amount: params.amount ?? 1,
+    p_limit: params.limit,
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+  return data;
 }
 
 export { FEATURES };
