@@ -78,7 +78,13 @@ export function SuperadminCommercialQueues({
     form.set('eventId', eventId);
     const result = await run(() => skipSuperadminBillingEvent(form));
     if (!result) return;
-    setMessage(result.success ? 'Webhook omitido' : result.error ?? 'No se pudo omitir');
+    setMessage(
+      result.success
+        ? (result.data?.released ?? 0) > 0
+          ? 'Webhook omitido y pago en curso liberado'
+          : 'Webhook omitido'
+        : result.error ?? 'No se pudo omitir'
+    );
     if (result.success) router.refresh();
   }
 
@@ -149,8 +155,8 @@ export function SuperadminCommercialQueues({
           <CardHeader>
             <CardTitle className="text-lg">Webhooks pendientes</CardTitle>
             <CardDescription>
-              Eventos reclamados que todavía no se aplicaron. Reaplicá el mismo apply o omite si el
-              cobro no va a completar. Omitir no cambia el plan.
+              Eventos reclamados que todavía no se aplicaron. Reaplicá el mismo apply u omití si el
+              cobro no va a completar. Omitir no cambia el plan y libera el pago en curso.
             </CardDescription>
           </CardHeader>
           <CardContent>

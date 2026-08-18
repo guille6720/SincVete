@@ -128,6 +128,7 @@ describe('plan pricing catalog', () => {
     expect(shouldReleaseCheckoutIntent('pending')).toBe(false);
     expect(shouldReleaseCheckoutIntent('in_process')).toBe(false);
     expect(shouldReleaseCheckoutIntent('approved')).toBe(false);
+    expect(shouldReversePaidGrant('rejected')).toBe(false);
   });
 
   it('reverses an applied grant only on refund or chargeback', () => {

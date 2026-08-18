@@ -889,7 +889,9 @@ export async function replaySuperadminBillingEvent(formData: FormData): Promise<
   }
 }
 
-export async function skipSuperadminBillingEvent(formData: FormData): Promise<ActionResult> {
+export async function skipSuperadminBillingEvent(
+  formData: FormData
+): Promise<ActionResult<{ released: number }>> {
   try {
     await requireSuperadmin();
     const eventId = String(formData.get('eventId') ?? '').trim();
@@ -904,7 +906,7 @@ export async function skipSuperadminBillingEvent(formData: FormData): Promise<Ac
       return { success: false, error: 'El evento ya se aplicó o no existe' };
     }
     revalidateBillingEvent(asString(row?.organization_id));
-    return { success: true };
+    return { success: true, data: { released: asNumber(row?.released) ?? 0 } };
   } catch (error) {
     return actionError(error);
   }
