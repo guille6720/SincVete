@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   cancelClinicAddon,
+  cancelClinicCheckoutIntents,
   cancelClinicSubscription,
   startAddonCheckout,
   startBillingPortal,
@@ -103,6 +104,24 @@ export function PlanBillingPanel({
     setMessage(result.error ?? 'No se pudo cancelar el extra');
   }
 
+  async function cancelOpenCheckout() {
+    setMessage(null);
+    const result = await run(() => cancelClinicCheckoutIntents());
+    if (!result) return;
+    if (result.success) {
+      setMessage('Pago en curso cancelado. Podés iniciar otro cuando quieras.');
+      router.refresh();
+      return;
+    }
+    setMessage(result.error ?? 'No se pudo cancelar el pago en curso');
+  }
+
+  const planIntentOpen = state.checkoutIntents.some((item) => item.kind === 'plan');
+  const addonIntentKeys = new Set(
+    state.checkoutIntents.filter((item) => item.kind === 'addon').map((item) => item.targetKey)
+  );
+  const hideCancelIntent = checkoutBanner === 'success' || checkoutBanner === 'pending';
+
   return (
     <div className="space-y-6">
       {checkoutBanner === 'success' ? (
@@ -117,6 +136,19 @@ export function PlanBillingPanel({
         <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
           Pago pendiente. Te avisamos cuando Mercado Pago lo acredite.
         </p>
+      ) : null}
+      {state.checkoutIntents.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+          <p className="flex-1">
+            Hay un pago en curso. No inicies otro hasta que se acredite
+            {hideCancelIntent ? '.' : ', o cancelalo si no terminaste el checkout.'}
+          </p>
+          {hideCancelIntent ? null : (
+            <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void cancelOpenCheckout()}>
+              Cancelar pago en curso
+            </Button>
+          )}
+        </div>
       ) : null}
       {message ? <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm">{message}</p> : null}
 
@@ -188,7 +220,7 @@ export function PlanBillingPanel({
                       <Button
                         type="button"
                         size="sm"
-                        disabled={pending || !state.configured}
+                        disabled={pending || !state.configured || addonIntentKeys.has(addon.key)}
                         onClick={() => void checkoutAddon(addon.key, 'monthly')}
                       >
                         {addon.offerState === 'active' ? 'Renovar mensual' : 'Mensual'}
@@ -198,7 +230,7 @@ export function PlanBillingPanel({
                           type="button"
                           size="sm"
                           variant="outline"
-                          disabled={pending || !state.configured}
+                          disabled={pending || !state.configured || addonIntentKeys.has(addon.key)}
                           onClick={() => void checkoutAddon(addon.key, 'annual')}
                         >
                           {addon.offerState === 'active' ? 'Renovar anual' : 'Anual'}
@@ -338,7 +370,11 @@ export function PlanBillingPanel({
                       type="button"
                       size="sm"
                       disabled={
-                        pending || !state.configured || Boolean(seatBlock) || (current && !state.current.canRenew)
+                        pending ||
+                        !state.configured ||
+                        Boolean(seatBlock) ||
+                        planIntentOpen ||
+                        (current && !state.current.canRenew)
                       }
                       onClick={() => void checkout(plan.key, 'monthly')}
                     >
@@ -353,6 +389,7 @@ export function PlanBillingPanel({
                           pending ||
                           !state.configured ||
                           Boolean(seatBlock) ||
+                          planIntentOpen ||
                           (current && !state.current.canRenew)
                         }
                         onClick={() => void checkout(plan.key, 'annual')}

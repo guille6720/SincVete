@@ -3183,6 +3183,48 @@ export interface Database {
         };
         Relationships: [];
       };
+      billing_checkout_intents: {
+        Row: {
+          id: string;
+          organization_id: string;
+          kind: string;
+          target_key: string;
+          billing_interval: string;
+          provider: string;
+          checkout_url: string | null;
+          created_at: string;
+          expires_at: string;
+          consumed_at: string | null;
+          cancelled_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          kind: string;
+          target_key: string;
+          billing_interval: string;
+          provider: string;
+          checkout_url?: string | null;
+          created_at?: string;
+          expires_at: string;
+          consumed_at?: string | null;
+          cancelled_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          kind?: string;
+          target_key?: string;
+          billing_interval?: string;
+          provider?: string;
+          checkout_url?: string | null;
+          created_at?: string;
+          expires_at?: string;
+          consumed_at?: string | null;
+          cancelled_at?: string | null;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -3503,6 +3545,47 @@ export interface Database {
           processed_at: string;
           applied_at: string | null;
         }[];
+      };
+      list_own_open_checkout_intents: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          id: string;
+          kind: string;
+          target_key: string;
+          billing_interval: string;
+          provider: string;
+          checkout_url: string | null;
+          expires_at: string;
+        }[];
+      };
+      billing_begin_own_checkout_intent: {
+        Args: {
+          p_kind: string;
+          p_target_key: string;
+          p_interval: string;
+          p_provider: string;
+          p_ttl_hours?: number;
+        };
+        Returns: Json;
+      };
+      billing_set_own_checkout_intent_url: {
+        Args: {
+          p_id: string;
+          p_checkout_url: string;
+        };
+        Returns: Json;
+      };
+      billing_cancel_own_checkout_intents: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      billing_consume_checkout_intents: {
+        Args: {
+          p_organization_id: string;
+          p_kind: string;
+          p_target_key?: string | null;
+        };
+        Returns: Json;
       };
       handle_new_user_signup: {
         Args: {

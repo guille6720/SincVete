@@ -40,6 +40,7 @@ import {
   canCheckoutAddonOffer,
   canRenewOwnPlan,
   resolveAddonOfferState,
+  resolveCheckoutIntentAction,
   resolveClinicCommercialBanner,
   authorizeCronSecret,
   type EntitlementResolutionInput,
@@ -843,6 +844,56 @@ describe('commercial lifecycle helpers', () => {
         now,
       })?.kind
     ).toBe('plan_ending');
+    expect(
+      resolveClinicCommercialBanner({
+        hasOpenSubscription: true,
+        status: 'active',
+        planKey: 'pro',
+        planName: 'Pro',
+        endsAt: '2026-08-20T12:00:00.000Z',
+        checkoutPending: { kind: 'plan', targetKey: 'pro' },
+        now,
+      })?.kind
+    ).toBe('checkout_pending');
+    expect(
+      resolveClinicCommercialBanner({
+        hasOpenSubscription: false,
+        latestClosedStatus: 'expired',
+        checkoutPending: { kind: 'plan', targetKey: 'basic' },
+        now,
+      })?.kind
+    ).toBe('checkout_pending');
+  });
+
+  it('reuses the same checkout and blocks a second plan payment', () => {
+    expect(
+      resolveCheckoutIntentAction({
+        openIntents: [],
+        kind: 'plan',
+        targetKey: 'pro',
+      })
+    ).toBe('ok');
+    expect(
+      resolveCheckoutIntentAction({
+        openIntents: [{ kind: 'plan', targetKey: 'pro' }],
+        kind: 'plan',
+        targetKey: 'pro',
+      })
+    ).toBe('reuse');
+    expect(
+      resolveCheckoutIntentAction({
+        openIntents: [{ kind: 'plan', targetKey: 'pro' }],
+        kind: 'plan',
+        targetKey: 'basic',
+      })
+    ).toBe('blocked');
+    expect(
+      resolveCheckoutIntentAction({
+        openIntents: [{ kind: 'plan', targetKey: 'pro' }],
+        kind: 'addon',
+        targetKey: 'addon.ai',
+      })
+    ).toBe('ok');
   });
 
   it('authorizes cron bearer without leaking unset secrets', () => {

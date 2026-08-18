@@ -381,11 +381,17 @@ export const getClinicCommercialShell = cache(
       const input = await loadOrganizationEntitlementInput(organizationId);
       const entitlements = resolveOrganizationEntitlements(input);
       const entitledHrefs = getEntitledClinicHrefs(entitlements);
+      const supabase = await createServerClient();
+      const intentsRes = await supabase.rpc('list_own_open_checkout_intents');
+      const openIntent = (intentsRes.data ?? []).find(
+        (row) => row.kind === 'plan' || row.kind === 'addon'
+      );
+      const checkoutPending = openIntent
+        ? { kind: openIntent.kind as 'plan' | 'addon', targetKey: openIntent.target_key }
+        : null;
       let latestClosedStatus: 'expired' | 'cancelled' | null = null;
       let latestClosedPlanName: string | null = null;
-      let supabase: Awaited<ReturnType<typeof createServerClient>> | null = null;
       if (!input.hasActiveSubscription) {
-        supabase = await createServerClient();
         const latest = await supabase
           .from('organization_subscriptions')
           .select('status, plans(name)')
@@ -409,12 +415,12 @@ export const getClinicCommercialShell = cache(
         endsAt: input.endsAt,
         latestClosedStatus,
         latestClosedPlanName,
+        checkoutPending,
       };
       const bannerWithoutAddons = resolveClinicCommercialBanner(bannerInput);
       if (bannerWithoutAddons) {
         return { entitledHrefs, banner: bannerWithoutAddons };
       }
-      supabase ??= await createServerClient();
       const addonsRes = await supabase.rpc('list_own_addons');
       const addonsEnding = (addonsRes.data ?? [])
         .filter((row) => row.status === 'active' && row.ends_at)

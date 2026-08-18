@@ -6,7 +6,7 @@ import {
   listPendingInvitations,
   listTeamMembers,
 } from '@/actions/settings';
-import { getPlanBillingState } from '@/actions/plan-billing';
+import { getPlanBillingState, cancelClinicCheckoutIntents } from '@/actions/plan-billing';
 import { getSeatUsageMeters } from '@/lib/entitlements';
 import { SettingsPageClient } from '@/components/settings/settings-page-client';
 import type { SettingsTab } from '@/components/settings/settings-tabs';
@@ -48,6 +48,10 @@ export default async function ConfiguracionPage({ searchParams }: PageProps) {
     }
     try {
       planBilling = await getPlanBillingState();
+      if (params.checkout === 'cancel') {
+        await cancelClinicCheckoutIntents();
+        planBilling = await getPlanBillingState();
+      }
     } catch {
       planBilling = undefined;
     }

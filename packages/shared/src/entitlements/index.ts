@@ -41,6 +41,7 @@ export {
 } from './nav';
 
 export {
+  COMMERCIAL_CHECKOUT_INTENT_HOURS,
   COMMERCIAL_QUOTA_WARN_RATIO,
   COMMERCIAL_TRIAL_REMIND_DAYS,
   PLAN_BILLING_HREF,
@@ -53,7 +54,14 @@ export {
   isQuotaNearLimit,
   isTrialEndingSoon,
   resolveAddonOfferState,
+  resolveCheckoutIntentAction,
   resolveClinicCommercialBanner,
 } from './lifecycle';
 
-export type { AddonOfferState, ClinicCommercialBanner, ClinicCommercialBannerKind } from './lifecycle';
+export type {
+  AddonOfferState,
+  CheckoutIntentKind,
+  ClinicCommercialBanner,
+  ClinicCommercialBannerKind,
+  OpenCheckoutIntent,
+} from './lifecycle';

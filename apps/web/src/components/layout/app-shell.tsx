@@ -328,6 +328,13 @@ export function AppShell({
                     Actualizar plan
                   </Link>
                 </p>
+              ) : billingBanner.kind === 'checkout_pending' ? (
+                <p>
+                  Estamos confirmando tu pago. No inicies otro hasta que se acredite.{' '}
+                  <Link href="/configuracion?tab=plan" className="font-medium underline underline-offset-4">
+                    Ver plan
+                  </Link>
+                </p>
               ) : billingBanner.kind === 'plan_ending' ? (
                 <p>
                   Tu plan{billingBanner.planName ? ` ${billingBanner.planName}` : ''} vence

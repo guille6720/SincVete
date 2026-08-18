@@ -10,6 +10,7 @@ import {
   canCheckoutPlan,
   canRenewOwnPlan,
   canUseResolvedFeature,
+  COMMERCIAL_CHECKOUT_INTENT_HOURS,
   findSeatDowngradeBlockers,
   formatSeatDowngradeMessage,
   isAddonKey,
@@ -18,9 +19,11 @@ import {
   isPurchasablePlanKey,
   isSubscriptionPeriodOpen,
   resolveAddonOfferState,
+  resolveCheckoutIntentAction,
   type ActionResult,
   type AddonOfferState,
   type BillingInterval,
+  type CheckoutIntentKind,
   type MeteredUsageMeter,
   type SeatUsageMeter,
   type PublicAddonCatalogItem,
@@ -46,6 +49,53 @@ function actionError<T = void>(error: unknown): ActionResult<T> {
   return { success: false, error: 'Ocurrió un error inesperado' };
 }
 
+function parseBeginIntent(data: unknown): { id: string; checkoutUrl: string | null } | null {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+  const row = data as Record<string, unknown>;
+  const id = typeof row.id === 'string' ? row.id : null;
+  if (!id) return null;
+  return {
+    id,
+    checkoutUrl: typeof row.checkout_url === 'string' ? row.checkout_url : null,
+  };
+}
+
+async function continueCheckoutIntent(params: {
+  kind: CheckoutIntentKind;
+  targetKey: string;
+  interval: BillingInterval;
+  provider: 'stripe' | 'mercadopago';
+  createUrl: () => Promise<string>;
+}): Promise<ActionResult<{ url: string }>> {
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc('billing_begin_own_checkout_intent', {
+    p_kind: params.kind,
+    p_target_key: params.targetKey,
+    p_interval: params.interval,
+    p_provider: params.provider,
+    p_ttl_hours: params.provider === 'stripe' ? 24 : COMMERCIAL_CHECKOUT_INTENT_HOURS,
+  });
+  if (error) {
+    return { success: false, error: 'No se pudo iniciar el pago' };
+  }
+  const begun = parseBeginIntent(data);
+  if (!begun) {
+    return { success: false, error: 'No se pudo iniciar el pago' };
+  }
+  if (begun.checkoutUrl) {
+    return { success: true, data: { url: begun.checkoutUrl } };
+  }
+  const url = await params.createUrl();
+  const { error: urlError } = await supabase.rpc('billing_set_own_checkout_intent_url', {
+    p_id: begun.id,
+    p_checkout_url: url,
+  });
+  if (urlError) {
+    return { success: false, error: 'No se pudo guardar el checkout' };
+  }
+  return { success: true, data: { url } };
+}
+
 export type PlanBillingEvent = {
   id: string;
   provider: string;
@@ -59,6 +109,14 @@ export type ClinicAddonOffer = PublicAddonCatalogItem & {
   endsAt: string | null;
   canCancel: boolean;
   endingSoon: boolean;
+};
+
+export type ClinicCheckoutIntent = {
+  kind: CheckoutIntentKind;
+  targetKey: string;
+  interval: BillingInterval;
+  expiresAt: string;
+  checkoutUrl: string | null;
 };
 
 export type PlanBillingState = {
@@ -81,12 +139,13 @@ export type PlanBillingState = {
   seatBlocksByPlan: Record<string, string>;
   events: PlanBillingEvent[];
   addonOffers: ClinicAddonOffer[];
+  checkoutIntents: ClinicCheckoutIntent[];
 };
 
 export async function getPlanBillingState(): Promise<PlanBillingState> {
   const session = await requirePermission('org:manage');
   const supabase = await createServerClient();
-  const [plans, addonCatalog, subRes, customerRes, usage, seats, eventsRes, addonsRes, entitlements] =
+  const [plans, addonCatalog, subRes, customerRes, usage, seats, eventsRes, addonsRes, entitlements, intentsRes] =
     await Promise.all([
     listPublicPlansCatalog(),
     listPublicAddonsCatalog(),
@@ -109,6 +168,7 @@ export async function getPlanBillingState(): Promise<PlanBillingState> {
     supabase.rpc('list_own_billing_events', { p_limit: 12 }),
     supabase.rpc('list_own_addons'),
     getOrganizationEntitlements(session.organizationId),
+    supabase.rpc('list_own_open_checkout_intents'),
   ]);
 
   const planJoin = subRes.data?.plans as { key?: string; name?: string } | { key?: string; name?: string }[] | null;
@@ -192,6 +252,15 @@ export async function getPlanBillingState(): Promise<PlanBillingState> {
         endingSoon: isPeriodEndingSoon({ endsAt: ownedRow?.endsAt ?? null }),
       };
     }),
+    checkoutIntents: (intentsRes.data ?? [])
+      .filter((row) => row.kind === 'plan' || row.kind === 'addon')
+      .map((row) => ({
+        kind: row.kind as CheckoutIntentKind,
+        targetKey: row.target_key,
+        interval: row.billing_interval === 'annual' ? 'annual' : 'monthly',
+        expiresAt: row.expires_at,
+        checkoutUrl: row.checkout_url,
+      })),
   };
 }
 
@@ -223,6 +292,17 @@ export async function startPlanCheckout(formData: FormData): Promise<ActionResul
     if (seatBlock) {
       return { success: false, error: seatBlock };
     }
+    const intentAction = resolveCheckoutIntentAction({
+      openIntents: billingState.checkoutIntents,
+      kind: 'plan',
+      targetKey: planKey,
+    });
+    if (intentAction === 'blocked') {
+      return {
+        success: false,
+        error: 'Ya hay un pago de plan en curso. Cancelalo para elegir otro.',
+      };
+    }
 
     const supabase = await createServerClient();
     const {
@@ -239,13 +319,20 @@ export async function startPlanCheckout(formData: FormData): Promise<ActionResul
       pricing: plan.pricing,
     };
 
-    const url =
-      provider === 'stripe'
-        ? await createStripeCheckoutUrl(checkoutParams)
-        : await createMercadoPagoCheckoutUrl(checkoutParams);
-
-    revalidatePath('/configuracion');
-    return { success: true, data: { url } };
+    const result = await continueCheckoutIntent({
+      kind: 'plan',
+      targetKey: planKey,
+      interval: interval as BillingInterval,
+      provider,
+      createUrl: () =>
+        provider === 'stripe'
+          ? createStripeCheckoutUrl(checkoutParams)
+          : createMercadoPagoCheckoutUrl(checkoutParams),
+    });
+    if (result.success) {
+      revalidatePath('/configuracion');
+    }
+    return result;
   } catch (error) {
     return actionError(error);
   }
@@ -281,12 +368,25 @@ export async function startAddonCheckout(formData: FormData): Promise<ActionResu
       };
     }
 
+    const intentAction = resolveCheckoutIntentAction({
+      openIntents: state.checkoutIntents,
+      kind: 'addon',
+      targetKey: addonKey,
+    });
+    if (intentAction === 'blocked') {
+      return {
+        success: false,
+        error: 'Ya hay un pago de ese extra en curso. Cancelalo para iniciar otro.',
+      };
+    }
+
     const supabase = await createServerClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
+    const organizationId = (await requirePermission('org:manage')).organizationId;
     const checkoutParams = {
-      organizationId: (await requirePermission('org:manage')).organizationId,
+      organizationId,
       organizationName: offer.name,
       customerEmail: user?.email ?? null,
       planKey: addonKey,
@@ -296,13 +396,20 @@ export async function startAddonCheckout(formData: FormData): Promise<ActionResu
       kind: 'addon' as const,
     };
 
-    const url =
-      provider === 'stripe'
-        ? await createStripeCheckoutUrl(checkoutParams)
-        : await createMercadoPagoCheckoutUrl(checkoutParams);
-
-    revalidatePath('/configuracion');
-    return { success: true, data: { url } };
+    const result = await continueCheckoutIntent({
+      kind: 'addon',
+      targetKey: addonKey,
+      interval: interval as BillingInterval,
+      provider,
+      createUrl: () =>
+        provider === 'stripe'
+          ? createStripeCheckoutUrl(checkoutParams)
+          : createMercadoPagoCheckoutUrl(checkoutParams),
+    });
+    if (result.success) {
+      revalidatePath('/configuracion');
+    }
+    return result;
   } catch (error) {
     return actionError(error);
   }
@@ -384,6 +491,25 @@ export async function cancelClinicAddon(formData: FormData): Promise<ActionResul
 
     revalidatePath('/configuracion');
     revalidatePath('/dashboard');
+    return { success: true };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function cancelClinicCheckoutIntents(): Promise<ActionResult> {
+  try {
+    await requirePermission('org:manage');
+    const supabase = await createServerClient();
+    const { error } = await supabase.rpc('billing_cancel_own_checkout_intents');
+    if (error) {
+      if (error.message.includes('not authorized')) {
+        throw new PermissionError();
+      }
+      return { success: false, error: 'No se pudo cancelar el pago en curso' };
+    }
+    revalidatePath('/', 'layout');
+    revalidatePath('/configuracion');
     return { success: true };
   } catch (error) {
     return actionError(error);

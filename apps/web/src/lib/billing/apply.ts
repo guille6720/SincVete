@@ -18,6 +18,22 @@ function assertOrgId(organizationId: string) {
   }
 }
 
+async function consumeCheckoutIntents(params: {
+  organizationId: string;
+  kind: 'plan' | 'addon';
+  targetKey?: string;
+}): Promise<void> {
+  const service = await createServiceClient();
+  const { error } = await service.rpc('billing_consume_checkout_intents', {
+    p_organization_id: params.organizationId,
+    p_kind: params.kind,
+    p_target_key: params.targetKey ?? null,
+  });
+  if (error) {
+    console.error('[billing] consume checkout intents', error.message);
+  }
+}
+
 export async function claimBillingEvent(params: {
   provider: BillingProvider;
   eventId: string;
@@ -101,6 +117,10 @@ export async function applyPaidPlan(params: {
     p_status: params.status ?? 'active',
   });
   if (error) throw new Error(error.message);
+  await consumeCheckoutIntents({
+    organizationId: params.organizationId,
+    kind: 'plan',
+  });
 }
 
 export async function applyPaidAddon(params: {
@@ -123,6 +143,11 @@ export async function applyPaidAddon(params: {
     p_interval: params.interval,
   });
   if (error) throw new Error(error.message);
+  await consumeCheckoutIntents({
+    organizationId: params.organizationId,
+    kind: 'addon',
+    targetKey: params.addonKey,
+  });
 }
 
 export async function extendPaidPlanPeriod(params: {
@@ -144,6 +169,10 @@ export async function extendPaidPlanPeriod(params: {
     p_external_id: params.externalId ?? null,
   });
   if (error) throw new Error(error.message);
+  await consumeCheckoutIntents({
+    organizationId,
+    kind: 'plan',
+  });
   return true;
 }
 

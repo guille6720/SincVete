@@ -10,7 +10,35 @@ export const COMMERCIAL_TRIAL_REMIND_DAYS = 3;
 /** Warn when metered usage reaches this fraction of a finite limit. */
 export const COMMERCIAL_QUOTA_WARN_RATIO = 0.8;
 
+/**
+ * How long a started checkout stays “in progress”.
+ * Not plan duration — Mercado Pago / Stripe still have to confirm the webhook.
+ */
+export const COMMERCIAL_CHECKOUT_INTENT_HOURS = 48;
+
 export const PLAN_BILLING_HREF = '/configuracion?tab=plan';
+
+export type CheckoutIntentKind = 'plan' | 'addon';
+
+export type OpenCheckoutIntent = {
+  kind: CheckoutIntentKind;
+  targetKey: string;
+};
+
+export function resolveCheckoutIntentAction(params: {
+  openIntents: Array<{ kind: string; targetKey: string }>;
+  kind: CheckoutIntentKind;
+  targetKey: string;
+}): 'ok' | 'reuse' | 'blocked' {
+  const match = params.openIntents.some(
+    (item) => item.kind === params.kind && item.targetKey === params.targetKey
+  );
+  if (match) return 'reuse';
+  if (params.kind === 'plan' && params.openIntents.some((item) => item.kind === 'plan')) {
+    return 'blocked';
+  }
+  return 'ok';
+}
 
 export type AddonOfferState = 'available' | 'active' | 'included' | 'blocked';
 
@@ -97,7 +125,8 @@ export type ClinicCommercialBannerKind =
   | 'past_due'
   | 'expired'
   | 'plan_ending'
-  | 'addon_ending';
+  | 'addon_ending'
+  | 'checkout_pending';
 
 export type ClinicCommercialBanner = {
   kind: ClinicCommercialBannerKind;
@@ -117,17 +146,28 @@ export type ClinicCommercialBannerInput = {
   latestClosedStatus?: 'expired' | 'cancelled' | null;
   latestClosedPlanName?: string | null;
   addonsEnding?: Array<{ name: string; endsAt: string }>;
+  checkoutPending?: OpenCheckoutIntent | null;
   now?: Date;
 };
 
 /**
- * One sticky clinic banner. Payment problems beat renewal reminders.
+ * One sticky clinic banner. A checkout in flight beats renewal nags
+ * so Mercado Pago one-time payers are not asked to charge twice.
  * Lead time is COMMERCIAL_TRIAL_REMIND_DAYS, not plan/add-on duration.
  */
 export function resolveClinicCommercialBanner(
   input: ClinicCommercialBannerInput
 ): ClinicCommercialBanner | null {
   const planName = input.planName ?? null;
+  if (input.checkoutPending) {
+    return {
+      kind: 'checkout_pending',
+      planName,
+      trialEndsAt: null,
+      endsAt: null,
+      addonName: null,
+    };
+  }
   if (
     !input.hasOpenSubscription &&
     (input.latestClosedStatus === 'expired' || input.latestClosedStatus === 'cancelled')
