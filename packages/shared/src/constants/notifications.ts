@@ -47,6 +47,8 @@ export const NOTIFICATION_RELATED_TYPES = [
   'plan_ending',
   'addon_ending',
   'addon_expired',
+  'plan_refunded',
+  'addon_refunded',
 ] as const;
 
 export type NotificationRelatedType = (typeof NOTIFICATION_RELATED_TYPES)[number];

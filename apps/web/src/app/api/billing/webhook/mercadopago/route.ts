@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
-import { parseAddonCheckoutReference, parseCheckoutReference, shouldReleaseCheckoutIntent } from '@sincvete/shared';
+import { parseAddonCheckoutReference, parseCheckoutReference, shouldReleaseCheckoutIntent, shouldReversePaidGrant } from '@sincvete/shared';
 import {
   applyPaidAddon,
   applyPaidPlan,
   claimBillingEvent,
   finishBillingEvent,
   releaseCheckoutIntents,
+  reversePaidGrant,
   upsertBillingCustomer,
 } from '@/lib/billing/apply';
 import { verifyMercadoPagoSignature } from '@/lib/billing/crypto';
@@ -93,6 +94,16 @@ async function handleMercadoPagoWebhook(request: Request) {
   }
 
   if (payment.status !== 'approved') {
+    if (shouldReversePaidGrant(payment.status) && organizationId && (addonRef || planRef)) {
+      await reversePaidGrant({
+        organizationId,
+        kind: addonRef ? 'addon' : 'plan',
+        targetKey: addonRef?.addonKey ?? planRef?.planKey ?? null,
+        provider: 'mercadopago',
+        externalId: payment.id,
+        reason: payment.status,
+      });
+    }
     if (shouldReleaseCheckoutIntent(payment.status) && organizationId) {
       await releaseCheckoutIntents({
         organizationId,

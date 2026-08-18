@@ -13,6 +13,7 @@ import {
   formatBillingEventLabel,
   isBillingEventAlreadyApplied,
   shouldReleaseCheckoutIntent,
+  shouldReversePaidGrant,
 } from '../index';
 
 describe('plan pricing catalog', () => {
@@ -80,6 +81,8 @@ describe('plan pricing catalog', () => {
     expect(formatBillingEventLabel('invoice.paid')).toBe('Pago acreditado');
     expect(formatBillingEventLabel('invoice.payment_failed')).toBe('Pago rechazado');
     expect(formatBillingEventLabel('customer.subscription.canceled')).toBe('Cancelación');
+    expect(formatBillingEventLabel('charge.refunded')).toBe('Reembolso');
+    expect(formatBillingEventLabel('charged_back')).toBe('Reembolso');
   });
 
   it('replays webhook apply only while applied_at is empty', () => {
@@ -98,5 +101,15 @@ describe('plan pricing catalog', () => {
     expect(shouldReleaseCheckoutIntent('pending')).toBe(false);
     expect(shouldReleaseCheckoutIntent('in_process')).toBe(false);
     expect(shouldReleaseCheckoutIntent('approved')).toBe(false);
+  });
+
+  it('reverses an applied grant only on refund or chargeback', () => {
+    expect(shouldReversePaidGrant('refunded')).toBe(true);
+    expect(shouldReversePaidGrant('charged_back')).toBe(true);
+    expect(shouldReversePaidGrant('charge.refunded')).toBe(true);
+    expect(shouldReversePaidGrant('rejected')).toBe(false);
+    expect(shouldReversePaidGrant('cancelled')).toBe(false);
+    expect(shouldReversePaidGrant('pending')).toBe(false);
+    expect(shouldReversePaidGrant('approved')).toBe(false);
   });
 });

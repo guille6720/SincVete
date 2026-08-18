@@ -193,6 +193,27 @@ export async function extendPaidPlanPeriod(params: {
   return true;
 }
 
+export async function reversePaidGrant(params: {
+  organizationId: string;
+  kind: 'plan' | 'addon';
+  targetKey?: string | null;
+  provider?: BillingProvider | null;
+  externalId?: string | null;
+  reason?: string | null;
+}): Promise<void> {
+  assertOrgId(params.organizationId);
+  const service = await createServiceClient();
+  const { error } = await service.rpc('billing_reverse_paid_grant', {
+    p_organization_id: params.organizationId,
+    p_kind: params.kind,
+    p_target_key: params.targetKey ?? null,
+    p_provider: params.provider ?? null,
+    p_external_id: params.externalId ?? null,
+    p_reason: params.reason ?? 'refunded',
+  });
+  if (error) throw new Error(error.message);
+}
+
 export async function setPaidSubscriptionStatus(params: {
   organizationId: string;
   status: Extract<SubscriptionStatus, 'active' | 'past_due' | 'cancelled' | 'expired'>;

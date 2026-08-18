@@ -3595,6 +3595,17 @@ export interface Database {
         };
         Returns: Json;
       };
+      billing_reverse_paid_grant: {
+        Args: {
+          p_organization_id: string;
+          p_kind: string;
+          p_target_key?: string | null;
+          p_provider?: string | null;
+          p_external_id?: string | null;
+          p_reason?: string | null;
+        };
+        Returns: Json;
+      };
       superadmin_open_checkout_intents: {
         Args: Record<PropertyKey, never>;
         Returns: number;

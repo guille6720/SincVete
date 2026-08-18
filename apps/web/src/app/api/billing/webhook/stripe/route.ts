@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { parseAddonCheckoutReference, parseCheckoutReference } from '@sincvete/shared';
+import { parseAddonCheckoutReference, parseCheckoutReference, shouldReversePaidGrant } from '@sincvete/shared';
 import {
   applyPaidAddon,
   applyPaidPlan,
@@ -8,6 +8,7 @@ import {
   findOrganizationIdByStripeCustomer,
   finishBillingEvent,
   releaseCheckoutIntents,
+  reversePaidGrant,
   setPaidSubscriptionStatus,
   upsertBillingCustomer,
 } from '@/lib/billing/apply';
@@ -150,6 +151,41 @@ export async function POST(request: Request) {
         });
       } else if (organizationId) {
         await releaseCheckoutIntents({ organizationId });
+      }
+    } else if (
+      event.type === 'charge.refunded' ||
+      (event.type === 'charge.dispute.closed' && object.status === 'lost') ||
+      shouldReversePaidGrant(event.type)
+    ) {
+      const orgId =
+        organizationId ?? (await findOrganizationIdByStripeCustomer(stripeId(object.customer)));
+      if (orgId && (addonRef || planRef)) {
+        await reversePaidGrant({
+          organizationId: orgId,
+          kind: addonRef ? 'addon' : 'plan',
+          targetKey: addonRef?.addonKey ?? planRef?.planKey ?? null,
+          provider: 'stripe',
+          externalId: object.id ?? eventId,
+          reason: event.type,
+        });
+      } else if (orgId && metadata.plan_key) {
+        await reversePaidGrant({
+          organizationId: orgId,
+          kind: 'plan',
+          targetKey: metadata.plan_key,
+          provider: 'stripe',
+          externalId: object.id ?? eventId,
+          reason: event.type,
+        });
+      } else if (orgId && metadata.addon_key) {
+        await reversePaidGrant({
+          organizationId: orgId,
+          kind: 'addon',
+          targetKey: metadata.addon_key,
+          provider: 'stripe',
+          externalId: object.id ?? eventId,
+          reason: event.type,
+        });
       }
     } else if (event.type === 'invoice.paid' || event.type === 'invoice.payment_succeeded') {
       const reason = object.billing_reason ?? '';

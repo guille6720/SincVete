@@ -29,6 +29,17 @@ export function isBillingEventAlreadyApplied(appliedAt: string | null | undefine
   return Boolean(appliedAt);
 }
 
+/** Money already captured, then taken back. Rejected/cancelled checkouts are not this. */
+export function shouldReversePaidGrant(status: string | null | undefined): boolean {
+  const value = (status ?? '').toLowerCase();
+  if (!value) return false;
+  return (
+    value === 'refunded' ||
+    value === 'charged_back' ||
+    value.includes('charge.refunded')
+  );
+}
+
 /** Provider statuses that mean the checkout will not complete. Pending/in_process stay locked. */
 export function shouldReleaseCheckoutIntent(status: string | null | undefined): boolean {
   const value = (status ?? '').toLowerCase();
@@ -51,6 +62,9 @@ export function formatBillingEventLabel(eventType: string | null | undefined): s
   if (!type) return 'Evento de pago';
   if (type.includes('completed') || type.includes('approved') || type === 'payment.created' || type === 'invoice.paid' || type.includes('payment_succeeded')) {
     return 'Pago acreditado';
+  }
+  if (type.includes('refund') || type.includes('charged_back') || type.includes('chargeback') || type.includes('dispute')) {
+    return 'Reembolso';
   }
   if (type.includes('failed') || type.includes('rejected') || type.includes('payment_failed')) {
     return 'Pago rechazado';
