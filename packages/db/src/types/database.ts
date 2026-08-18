@@ -3750,6 +3750,8 @@ export interface Database {
       superadmin_skip_billing_event: {
         Args: {
           p_event_id: string;
+          p_kind?: string | null;
+          p_target_key?: string | null;
         };
         Returns: Json;
       };

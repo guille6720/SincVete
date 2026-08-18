@@ -156,7 +156,7 @@ export function SuperadminCommercialQueues({
             <CardTitle className="text-lg">Webhooks pendientes</CardTitle>
             <CardDescription>
               Eventos reclamados que todavía no se aplicaron. Reaplicá el mismo apply u omití si el
-              cobro no va a completar. Omitir no cambia el plan y libera el pago en curso.
+              cobro no va a completar. Omitir no cambia el plan y solo libera el checkout de ese cobro.
             </CardDescription>
           </CardHeader>
           <CardContent>

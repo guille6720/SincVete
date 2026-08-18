@@ -170,6 +170,22 @@ export function shouldReleaseCheckoutIntent(status: string | null | undefined): 
   );
 }
 
+/** Skip of a refund/invoice must not unlock a different checkout still in flight. */
+export function shouldReleaseCheckoutOnBillingSkip(eventType: string | null | undefined): boolean {
+  const type = (eventType ?? '').toLowerCase();
+  if (!type) return true;
+  if (shouldReversePaidGrant(type)) return false;
+  if (type.includes('charge.dispute')) return false;
+  if (type.includes('customer.subscription')) return false;
+  if (type.includes('invoice.') && !type.includes('checkout')) return false;
+  return (
+    type.includes('checkout.session') ||
+    type === 'payment' ||
+    type === 'payment.created' ||
+    type.includes('payment.updated')
+  );
+}
+
 export type ClinicCheckoutReturnState =
   | 'none'
   | 'cancelled'
@@ -240,6 +256,59 @@ export function mercadoPagoTopicFromBillingPayload(payload: unknown): string {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return 'payment';
   const row = payload as Record<string, unknown>;
   return typeof row.type === 'string' && row.type.trim() ? row.type.trim() : 'payment';
+}
+
+function asCheckoutText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+export function stripeCheckoutReferenceFromObject(params: {
+  metadata?: Record<string, unknown> | null;
+  clientReferenceId?: string | null;
+}): string | null {
+  const metadata = params.metadata ?? {};
+  const fromMetadata = asCheckoutText(metadata.reference);
+  if (fromMetadata) return fromMetadata;
+  const organizationId = asCheckoutText(metadata.organization_id);
+  const addonKey = asCheckoutText(metadata.addon_key);
+  const planKey = asCheckoutText(metadata.plan_key);
+  const interval = asCheckoutText(metadata.interval) ?? 'monthly';
+  const kind = asCheckoutText(metadata.kind);
+  const clientReference = asCheckoutText(params.clientReferenceId);
+  if (kind === 'addon' && organizationId && addonKey) {
+    return `${organizationId}:addon:${addonKey}:${interval}`;
+  }
+  if (organizationId && planKey) {
+    return `${organizationId}:${planKey}:${interval}`;
+  }
+  if (clientReference && planKey) {
+    return `${clientReference}:${planKey}:${interval}`;
+  }
+  return null;
+}
+
+/** Stripe stored webhook, or a Mercado Pago external_reference. MP payment body is not stored. */
+export function checkoutTargetFromBillingPayload(params: {
+  provider: string;
+  payload?: unknown;
+  mercadoPagoExternalReference?: string | null;
+}): RefundCheckoutTarget | null {
+  if (params.provider === 'mercadopago') {
+    return refundCheckoutTargetFromMetadata(null, params.mercadoPagoExternalReference ?? null);
+  }
+  if (params.provider !== 'stripe') return null;
+  const event = stripeEventFromBillingPayload(params.payload);
+  const object = event?.data?.object ?? {};
+  const metadata =
+    object.metadata && typeof object.metadata === 'object' && !Array.isArray(object.metadata)
+      ? (object.metadata as Record<string, unknown>)
+      : {};
+  const clientReferenceId = asCheckoutText(object.client_reference_id);
+  const reference = stripeCheckoutReferenceFromObject({
+    metadata,
+    clientReferenceId,
+  });
+  return refundCheckoutTargetFromMetadata(metadata, reference ?? clientReferenceId);
 }
 
 export function formatBillingEventLabel(eventType: string | null | undefined): string {

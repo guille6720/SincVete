@@ -16,7 +16,9 @@ import {
   mercadoPagoPaymentIdFromBillingPayload,
   mercadoPagoTopicFromBillingPayload,
   shouldReleaseCheckoutIntent,
+  shouldReleaseCheckoutOnBillingSkip,
   shouldReversePaidGrant,
+  checkoutTargetFromBillingPayload,
   resolveClinicCheckoutReturn,
   shouldStripClinicCheckoutQuery,
   isFullProviderRefund,
@@ -131,6 +133,45 @@ describe('plan pricing catalog', () => {
     expect(shouldReleaseCheckoutIntent('in_process')).toBe(false);
     expect(shouldReleaseCheckoutIntent('approved')).toBe(false);
     expect(shouldReversePaidGrant('rejected')).toBe(false);
+  });
+
+  it('skips unlock only the matching checkout, not refunds or other in-flight payments', () => {
+    expect(shouldReleaseCheckoutOnBillingSkip('checkout.session.completed')).toBe(true);
+    expect(shouldReleaseCheckoutOnBillingSkip('checkout.session.expired')).toBe(true);
+    expect(shouldReleaseCheckoutOnBillingSkip('payment')).toBe(true);
+    expect(shouldReleaseCheckoutOnBillingSkip('charge.refunded')).toBe(false);
+    expect(shouldReleaseCheckoutOnBillingSkip('invoice.paid')).toBe(false);
+    expect(shouldReleaseCheckoutOnBillingSkip('customer.subscription.updated')).toBe(false);
+    expect(
+      checkoutTargetFromBillingPayload({
+        provider: 'stripe',
+        payload: {
+          type: 'checkout.session.completed',
+          data: {
+            object: {
+              metadata: {
+                organization_id: '11111111-1111-1111-1111-111111111111',
+                plan_key: COMMERCIAL_PLAN_KEYS.PRO,
+                interval: 'monthly',
+              },
+            },
+          },
+        },
+      })
+    ).toMatchObject({ kind: 'plan', targetKey: COMMERCIAL_PLAN_KEYS.PRO });
+    expect(
+      checkoutTargetFromBillingPayload({
+        provider: 'mercadopago',
+        payload: { paymentId: '123' },
+      })
+    ).toBeNull();
+    expect(
+      checkoutTargetFromBillingPayload({
+        provider: 'mercadopago',
+        mercadoPagoExternalReference:
+          '11111111-1111-1111-1111-111111111111:addon:addon.ai:monthly',
+      })
+    ).toMatchObject({ kind: 'addon', targetKey: 'addon.ai' });
   });
 
   it('clinic return URL follows open checkout, not the query string alone', () => {

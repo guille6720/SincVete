@@ -7,6 +7,7 @@ import {
   refundCheckoutTargetFromMetadata,
   shouldReleaseCheckoutIntent,
   shouldReversePaidGrant,
+  stripeCheckoutReferenceFromObject,
   stripeEventFromBillingPayload,
   type StoredStripeBillingEvent,
 } from '@sincvete/shared';
@@ -64,16 +65,11 @@ export async function dispatchStripeBillingEvent(event: StoredStripeBillingEvent
     throw new Error('evento inválido');
   }
 
-  const metadata = asMetadata(object.metadata);
-  const rawReference =
-    metadata.reference ??
-    (metadata.kind === 'addon' && metadata.organization_id && metadata.addon_key
-      ? `${metadata.organization_id}:addon:${metadata.addon_key}:${metadata.interval ?? 'monthly'}`
-      : metadata.organization_id && metadata.plan_key
-        ? `${metadata.organization_id}:${metadata.plan_key}:${metadata.interval ?? 'monthly'}`
-        : object.client_reference_id && metadata.plan_key
-          ? `${object.client_reference_id}:${metadata.plan_key}:${metadata.interval ?? 'monthly'}`
-          : null);
+    const metadata = asMetadata(object.metadata);
+  const rawReference = stripeCheckoutReferenceFromObject({
+    metadata,
+    clientReferenceId: object.client_reference_id ?? null,
+  });
   const addonRef = parseAddonCheckoutReference(rawReference);
   const planRef = addonRef ? null : parseCheckoutReference(rawReference);
   const organizationId =

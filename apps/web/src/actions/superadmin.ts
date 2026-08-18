@@ -18,6 +18,9 @@ import {
   SEAT_FEATURE_KEYS,
   SEAT_USAGE_LABELS,
   utcMonthPeriod,
+  checkoutTargetFromBillingPayload,
+  mercadoPagoPaymentIdFromBillingPayload,
+  shouldReleaseCheckoutOnBillingSkip,
   type ActionResult,
   type AddonFeatureRow,
   type EntitlementResolutionInput,
@@ -34,6 +37,7 @@ import type { Json } from '@sincvete/db';
 import { PermissionError, requireSuperadmin } from '@/lib/permissions';
 import { createServerClient } from '@/lib/supabase/server';
 import { replayClaimedBillingEvent } from '@/lib/billing/dispatch';
+import { fetchMercadoPagoPayment } from '@/lib/billing/mercadopago';
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (error instanceof PermissionError) {
@@ -889,6 +893,29 @@ export async function replaySuperadminBillingEvent(formData: FormData): Promise<
   }
 }
 
+async function resolveSkipCheckoutRelease(params: {
+  provider: string;
+  eventType: string | null;
+  payload: unknown;
+}): Promise<{ kind: 'plan' | 'addon'; targetKey: string } | null> {
+  if (!shouldReleaseCheckoutOnBillingSkip(params.eventType)) return null;
+  if (params.provider === 'mercadopago') {
+    const paymentId = mercadoPagoPaymentIdFromBillingPayload(params.payload);
+    if (!paymentId) return null;
+    const payment = await fetchMercadoPagoPayment(paymentId);
+    const target = checkoutTargetFromBillingPayload({
+      provider: 'mercadopago',
+      mercadoPagoExternalReference: payment?.externalReference ?? null,
+    });
+    return target ? { kind: target.kind, targetKey: target.targetKey } : null;
+  }
+  const target = checkoutTargetFromBillingPayload({
+    provider: params.provider,
+    payload: params.payload,
+  });
+  return target ? { kind: target.kind, targetKey: target.targetKey } : null;
+}
+
 export async function skipSuperadminBillingEvent(
   formData: FormData
 ): Promise<ActionResult<{ released: number }>> {
@@ -897,15 +924,28 @@ export async function skipSuperadminBillingEvent(
     const eventId = String(formData.get('eventId') ?? '').trim();
     if (!eventId) return { success: false, error: 'Evento inválido' };
     const supabase = await createServerClient();
+    const loaded = await supabase.rpc('superadmin_get_unapplied_billing_event', {
+      p_event_id: eventId,
+    });
+    if (loaded.error) return { success: false, error: loaded.error.message };
+    const event = loaded.data?.[0];
+    if (!event) return { success: false, error: 'El evento ya se aplicó o no existe' };
+    const release = await resolveSkipCheckoutRelease({
+      provider: event.provider,
+      eventType: event.event_type,
+      payload: event.payload,
+    });
     const { data, error } = await supabase.rpc('superadmin_skip_billing_event', {
       p_event_id: eventId,
+      p_kind: release?.kind ?? null,
+      p_target_key: release?.targetKey ?? null,
     });
     if (error) return { success: false, error: error.message };
     const row = asObject(data);
     if ((asNumber(row?.skipped) ?? 0) < 1) {
       return { success: false, error: 'El evento ya se aplicó o no existe' };
     }
-    revalidateBillingEvent(asString(row?.organization_id));
+    revalidateBillingEvent(asString(row?.organization_id) ?? event.organization_id);
     return { success: true, data: { released: asNumber(row?.released) ?? 0 } };
   } catch (error) {
     return actionError(error);

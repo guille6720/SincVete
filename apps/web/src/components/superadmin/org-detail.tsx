@@ -601,8 +601,8 @@ export function SuperadminOrgDetail({
         <CardHeader>
           <CardTitle>Pagos</CardTitle>
           <CardDescription>
-            Webhooks de Mercado Pago / Stripe. Sin payload completo. Omitir un pendiente libera el
-            pago en curso y no revierte el plan.
+            Webhooks de Mercado Pago / Stripe. Sin payload completo. Omitir un pendiente libera solo
+            el checkout de ese cobro y no revierte el plan.
           </CardDescription>
         </CardHeader>
         <CardContent>
