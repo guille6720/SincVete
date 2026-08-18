@@ -3641,6 +3641,38 @@ export interface Database {
           created_at: string;
         }[];
       };
+      superadmin_list_open_checkout_intents: {
+        Args: {
+          p_limit?: number;
+        };
+        Returns: {
+          id: string;
+          organization_id: string;
+          organization_name: string;
+          organization_slug: string;
+          kind: string;
+          target_key: string;
+          billing_interval: string;
+          provider: string;
+          expires_at: string;
+          created_at: string;
+        }[];
+      };
+      superadmin_list_unapplied_billing_events: {
+        Args: {
+          p_limit?: number;
+        };
+        Returns: {
+          id: string;
+          organization_id: string | null;
+          organization_name: string | null;
+          organization_slug: string | null;
+          provider: string;
+          event_id: string;
+          event_type: string | null;
+          processed_at: string;
+        }[];
+      };
       superadmin_cancel_checkout_intents: {
         Args: {
           p_organization_id: string;

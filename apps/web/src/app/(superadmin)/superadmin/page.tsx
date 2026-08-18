@@ -1,7 +1,13 @@
 import { redirect } from 'next/navigation';
-import { getSuperadminCommercialSummary, listSuperadminOrganizations } from '@/actions/superadmin';
+import {
+  getSuperadminCommercialSummary,
+  listSuperadminOpenCheckoutIntents,
+  listSuperadminOrganizations,
+  listSuperadminUnappliedBillingEvents,
+} from '@/actions/superadmin';
 import { SuperadminOrgList } from '@/components/superadmin/org-list';
 import { SuperadminCommercialOps } from '@/components/superadmin/commercial-ops';
+import { SuperadminCommercialQueues } from '@/components/superadmin/commercial-queues';
 import { getSessionContext } from '@/lib/session';
 
 interface PageProps {
@@ -16,7 +22,7 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
   const search = params.search?.trim() ?? '';
   const planKey = params.plan?.trim() ?? '';
   const status = params.status?.trim() ?? '';
-  const [data, summary] = await Promise.all([
+  const [data, summary, checkoutIntents, pendingEvents] = await Promise.all([
     listSuperadminOrganizations({
       page,
       pageSize: 25,
@@ -25,6 +31,8 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
       status: status || undefined,
     }),
     getSuperadminCommercialSummary(),
+    listSuperadminOpenCheckoutIntents(),
+    listSuperadminUnappliedBillingEvents(),
   ]);
 
   return (
@@ -37,6 +45,7 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
         </p>
       </div>
       <SuperadminCommercialOps summary={summary} />
+      <SuperadminCommercialQueues checkoutIntents={checkoutIntents} pendingEvents={pendingEvents} />
       <SuperadminOrgList
         data={data}
         initialSearch={search}

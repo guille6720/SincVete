@@ -837,6 +837,61 @@ export async function cancelSuperadminCheckoutIntents(formData: FormData): Promi
   }
 }
 
+export type SuperadminOpenCheckoutIntentRow = SuperadminCheckoutIntent & {
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+};
+
+export async function listSuperadminOpenCheckoutIntents(): Promise<SuperadminOpenCheckoutIntentRow[]> {
+  await requireSuperadmin();
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc('superadmin_list_open_checkout_intents', {
+    p_limit: 50,
+  });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    organizationId: row.organization_id,
+    organizationName: row.organization_name,
+    organizationSlug: row.organization_slug,
+    kind: row.kind,
+    targetKey: row.target_key,
+    interval: row.billing_interval,
+    provider: row.provider,
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
+  }));
+}
+
+export type SuperadminUnappliedBillingEvent = SuperadminBillingEvent & {
+  organizationId: string | null;
+  organizationName: string | null;
+  organizationSlug: string | null;
+};
+
+export async function listSuperadminUnappliedBillingEvents(): Promise<
+  SuperadminUnappliedBillingEvent[]
+> {
+  await requireSuperadmin();
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc('superadmin_list_unapplied_billing_events', {
+    p_limit: 50,
+  });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    organizationId: row.organization_id,
+    organizationName: row.organization_name,
+    organizationSlug: row.organization_slug,
+    provider: row.provider,
+    eventId: row.event_id,
+    eventType: row.event_type,
+    processedAt: row.processed_at,
+    appliedAt: null,
+  }));
+}
+
 export async function reverseSuperadminPaidGrant(formData: FormData): Promise<ActionResult> {
   try {
     await requireSuperadmin();

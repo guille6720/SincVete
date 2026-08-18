@@ -29,7 +29,7 @@ export function SuperadminCommercialOps({ summary }: { summary: SuperadminCommer
     setMessage(result.error ?? 'No se pudo ejecutar el ciclo');
   }
 
-  const cards = [
+  const cards: Array<{ label: string; value: number; href?: string }> = [
     { label: 'Clínicas', value: summary.organizations },
     { label: 'Trial', value: summary.trialing },
     { label: 'Activas', value: summary.active },
@@ -40,8 +40,8 @@ export function SuperadminCommercialOps({ summary }: { summary: SuperadminCommer
     { label: 'Extras activos', value: summary.addonsActive },
     { label: 'Extras por vencer', value: summary.addonsEndingSoon },
     { label: 'Sobre cupos', value: summary.orgsOverSeats },
-    { label: 'Webhooks pendientes', value: summary.billingEventsPending },
-    { label: 'Pagos en curso', value: summary.checkoutIntentsOpen },
+    { label: 'Webhooks pendientes', value: summary.billingEventsPending, href: '#webhooks-pendientes' },
+    { label: 'Pagos en curso', value: summary.checkoutIntentsOpen, href: '#pagos-en-curso' },
   ];
 
   return (
@@ -51,7 +51,13 @@ export function SuperadminCommercialOps({ summary }: { summary: SuperadminCommer
           <Card key={card.label}>
             <CardContent className="pt-4">
               <p className="text-xs text-muted-foreground">{card.label}</p>
-              <p className="text-2xl font-semibold">{card.value}</p>
+              {card.href && card.value > 0 ? (
+                <a href={card.href} className="text-2xl font-semibold hover:underline">
+                  {card.value}
+                </a>
+              ) : (
+                <p className="text-2xl font-semibold">{card.value}</p>
+              )}
             </CardContent>
           </Card>
         ))}
