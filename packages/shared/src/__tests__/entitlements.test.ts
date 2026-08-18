@@ -40,6 +40,7 @@ import {
   canCheckoutAddonOffer,
   canRenewOwnPlan,
   resolveAddonOfferState,
+  resolveClinicCommercialBanner,
   authorizeCronSecret,
   type EntitlementResolutionInput,
   type FeatureCatalogRow,
@@ -766,6 +767,82 @@ describe('commercial lifecycle helpers', () => {
     expect(isPeriodEndingSoon({ endsAt: '2026-08-20T12:00:00.000Z', now })).toBe(true);
     expect(isPeriodEndingSoon({ endsAt: '2026-09-18T12:00:00.000Z', now })).toBe(false);
     expect(isPeriodEndingSoon({ endsAt: '2026-08-18T11:00:00.000Z', now })).toBe(false);
+  });
+
+  it('shows plan/add-on ending banners after trial and payment problems', () => {
+    expect(
+      resolveClinicCommercialBanner({
+        hasOpenSubscription: false,
+        latestClosedStatus: 'expired',
+        latestClosedPlanName: 'Pro',
+        endsAt: '2026-08-20T12:00:00.000Z',
+        now,
+      })?.kind
+    ).toBe('expired');
+    expect(
+      resolveClinicCommercialBanner({
+        hasOpenSubscription: true,
+        status: 'past_due',
+        planKey: 'pro',
+        planName: 'Pro',
+        endsAt: '2026-08-20T12:00:00.000Z',
+        now,
+      })?.kind
+    ).toBe('past_due');
+    expect(
+      resolveClinicCommercialBanner({
+        hasOpenSubscription: true,
+        status: 'trialing',
+        planKey: 'trial',
+        trialEndsAt: '2026-08-20T12:00:00.000Z',
+        now,
+      })?.kind
+    ).toBe('trial');
+    expect(
+      resolveClinicCommercialBanner({
+        hasOpenSubscription: true,
+        status: 'active',
+        planKey: 'pro',
+        planName: 'Pro',
+        endsAt: '2026-08-20T12:00:00.000Z',
+        now,
+      })
+    ).toEqual({
+      kind: 'plan_ending',
+      planName: 'Pro',
+      trialEndsAt: null,
+      endsAt: '2026-08-20T12:00:00.000Z',
+      addonName: null,
+    });
+    expect(
+      resolveClinicCommercialBanner({
+        hasOpenSubscription: true,
+        status: 'active',
+        planKey: 'legacy',
+        endsAt: '2026-08-20T12:00:00.000Z',
+        now,
+      })
+    ).toBeNull();
+    expect(
+      resolveClinicCommercialBanner({
+        hasOpenSubscription: true,
+        status: 'active',
+        planKey: 'basic',
+        endsAt: '2026-09-18T12:00:00.000Z',
+        addonsEnding: [{ name: 'IA clínica', endsAt: '2026-08-20T12:00:00.000Z' }],
+        now,
+      })
+    ).toMatchObject({ kind: 'addon_ending', addonName: 'IA clínica' });
+    expect(
+      resolveClinicCommercialBanner({
+        hasOpenSubscription: true,
+        status: 'active',
+        planKey: 'pro',
+        endsAt: '2026-08-20T12:00:00.000Z',
+        addonsEnding: [{ name: 'IA clínica', endsAt: '2026-08-19T12:00:00.000Z' }],
+        now,
+      })?.kind
+    ).toBe('plan_ending');
   });
 
   it('authorizes cron bearer without leaking unset secrets', () => {

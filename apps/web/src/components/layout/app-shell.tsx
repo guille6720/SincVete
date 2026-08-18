@@ -328,6 +328,28 @@ export function AppShell({
                     Actualizar plan
                   </Link>
                 </p>
+              ) : billingBanner.kind === 'plan_ending' ? (
+                <p>
+                  Tu plan{billingBanner.planName ? ` ${billingBanner.planName}` : ''} vence
+                  {billingBanner.endsAt
+                    ? ` el ${new Date(billingBanner.endsAt).toLocaleDateString('es-AR')}`
+                    : ' pronto'}
+                  . Renovalo para no perder el acceso.{' '}
+                  <Link href="/configuracion?tab=plan" className="font-medium underline underline-offset-4">
+                    Renovar plan
+                  </Link>
+                </p>
+              ) : billingBanner.kind === 'addon_ending' ? (
+                <p>
+                  El extra{billingBanner.addonName ? ` ${billingBanner.addonName}` : ''} vence
+                  {billingBanner.endsAt
+                    ? ` el ${new Date(billingBanner.endsAt).toLocaleDateString('es-AR')}`
+                    : ' pronto'}
+                  . Renovalo para no perder el módulo.{' '}
+                  <Link href="/configuracion?tab=plan" className="font-medium underline underline-offset-4">
+                    Renovar extra
+                  </Link>
+                </p>
               ) : (
                 <p>
                   Tu plan venció{billingBanner.planName ? ` (${billingBanner.planName})` : ''}. Elegí uno

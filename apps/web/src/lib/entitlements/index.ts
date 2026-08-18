@@ -6,6 +6,7 @@ import {
   getResolvedFeatureLimit,
   isSubscriptionPeriodOpen,
   resolveOrganizationEntitlements,
+  resolveClinicCommercialBanner,
   validateUsageIncrementAmount,
   wouldExceedLimit,
   utcMonthPeriod,
@@ -14,6 +15,7 @@ import {
   SEAT_FEATURE_KEYS,
   SEAT_USAGE_LABELS,
   type ActionResult,
+  type ClinicCommercialBanner,
   type FeatureCatalogRow,
   type FeatureKey,
   type FeatureOverrideRow,
@@ -366,11 +368,7 @@ export async function assertWithinLimit(params: {
 
 export { FEATURES };
 
-export type ClinicCommercialBanner = {
-  kind: 'trial' | 'past_due' | 'expired';
-  planName: string | null;
-  trialEndsAt: string | null;
-};
+export type { ClinicCommercialBanner };
 
 export type ClinicCommercialShell = {
   entitledHrefs: string[] | null;
@@ -382,21 +380,12 @@ export const getClinicCommercialShell = cache(
     try {
       const input = await loadOrganizationEntitlementInput(organizationId);
       const entitlements = resolveOrganizationEntitlements(input);
-      let banner: ClinicCommercialBanner | null = null;
-      if (input.hasActiveSubscription && input.subscriptionStatus === 'trialing') {
-        banner = {
-          kind: 'trial',
-          planName: input.planName,
-          trialEndsAt: input.trialEndsAt,
-        };
-      } else if (input.hasActiveSubscription && input.subscriptionStatus === 'past_due') {
-        banner = {
-          kind: 'past_due',
-          planName: input.planName,
-          trialEndsAt: null,
-        };
-      } else if (!input.hasActiveSubscription) {
-        const supabase = await createServerClient();
+      const entitledHrefs = getEntitledClinicHrefs(entitlements);
+      let latestClosedStatus: 'expired' | 'cancelled' | null = null;
+      let latestClosedPlanName: string | null = null;
+      let supabase: Awaited<ReturnType<typeof createServerClient>> | null = null;
+      if (!input.hasActiveSubscription) {
+        supabase = await createServerClient();
         const latest = await supabase
           .from('organization_subscriptions')
           .select('status, plans(name)')
@@ -407,16 +396,32 @@ export const getClinicCommercialShell = cache(
         const latestJoin = latest.data?.plans as { name?: string } | { name?: string }[] | null;
         const latestPlan = Array.isArray(latestJoin) ? latestJoin[0] : latestJoin;
         if (latest.data?.status === 'expired' || latest.data?.status === 'cancelled') {
-          banner = {
-            kind: 'expired',
-            planName: latestPlan?.name ?? input.planName,
-            trialEndsAt: null,
-          };
+          latestClosedStatus = latest.data.status;
+          latestClosedPlanName = latestPlan?.name ?? input.planName;
         }
       }
+      const bannerInput = {
+        hasOpenSubscription: input.hasActiveSubscription,
+        status: input.subscriptionStatus,
+        planKey: input.planKey,
+        planName: input.planName,
+        trialEndsAt: input.trialEndsAt,
+        endsAt: input.endsAt,
+        latestClosedStatus,
+        latestClosedPlanName,
+      };
+      const bannerWithoutAddons = resolveClinicCommercialBanner(bannerInput);
+      if (bannerWithoutAddons) {
+        return { entitledHrefs, banner: bannerWithoutAddons };
+      }
+      supabase ??= await createServerClient();
+      const addonsRes = await supabase.rpc('list_own_addons');
+      const addonsEnding = (addonsRes.data ?? [])
+        .filter((row) => row.status === 'active' && row.ends_at)
+        .map((row) => ({ name: row.addon_name, endsAt: row.ends_at as string }));
       return {
-        entitledHrefs: getEntitledClinicHrefs(entitlements),
-        banner,
+        entitledHrefs,
+        banner: resolveClinicCommercialBanner({ ...bannerInput, addonsEnding }),
       };
     } catch (error) {
       console.error('[entitlements] clinic shell failed open', error);

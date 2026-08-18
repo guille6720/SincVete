@@ -53,6 +53,7 @@ export {
   isQuotaNearLimit,
   isTrialEndingSoon,
   resolveAddonOfferState,
+  resolveClinicCommercialBanner,
 } from './lifecycle';
 
-export type { AddonOfferState } from './lifecycle';
+export type { AddonOfferState, ClinicCommercialBanner, ClinicCommercialBannerKind } from './lifecycle';

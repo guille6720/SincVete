@@ -92,6 +92,101 @@ export function resolveAddonOfferState(params: {
   return 'available';
 }
 
+export type ClinicCommercialBannerKind =
+  | 'trial'
+  | 'past_due'
+  | 'expired'
+  | 'plan_ending'
+  | 'addon_ending';
+
+export type ClinicCommercialBanner = {
+  kind: ClinicCommercialBannerKind;
+  planName: string | null;
+  trialEndsAt: string | null;
+  endsAt: string | null;
+  addonName: string | null;
+};
+
+export type ClinicCommercialBannerInput = {
+  hasOpenSubscription: boolean;
+  status?: SubscriptionStatus | null;
+  planKey?: string | null;
+  planName?: string | null;
+  trialEndsAt?: string | null;
+  endsAt?: string | null;
+  latestClosedStatus?: 'expired' | 'cancelled' | null;
+  latestClosedPlanName?: string | null;
+  addonsEnding?: Array<{ name: string; endsAt: string }>;
+  now?: Date;
+};
+
+/**
+ * One sticky clinic banner. Payment problems beat renewal reminders.
+ * Lead time is COMMERCIAL_TRIAL_REMIND_DAYS, not plan/add-on duration.
+ */
+export function resolveClinicCommercialBanner(
+  input: ClinicCommercialBannerInput
+): ClinicCommercialBanner | null {
+  const planName = input.planName ?? null;
+  if (
+    !input.hasOpenSubscription &&
+    (input.latestClosedStatus === 'expired' || input.latestClosedStatus === 'cancelled')
+  ) {
+    return {
+      kind: 'expired',
+      planName: input.latestClosedPlanName ?? planName,
+      trialEndsAt: null,
+      endsAt: null,
+      addonName: null,
+    };
+  }
+  if (input.hasOpenSubscription && input.status === 'past_due') {
+    return {
+      kind: 'past_due',
+      planName,
+      trialEndsAt: null,
+      endsAt: input.endsAt ?? null,
+      addonName: null,
+    };
+  }
+  if (input.hasOpenSubscription && input.status === 'trialing') {
+    return {
+      kind: 'trial',
+      planName,
+      trialEndsAt: input.trialEndsAt ?? null,
+      endsAt: input.trialEndsAt ?? null,
+      addonName: null,
+    };
+  }
+  if (
+    input.hasOpenSubscription &&
+    isPublicPricingPlanKey(input.planKey ?? '') &&
+    isPeriodEndingSoon({ endsAt: input.endsAt, now: input.now })
+  ) {
+    return {
+      kind: 'plan_ending',
+      planName,
+      trialEndsAt: null,
+      endsAt: input.endsAt ?? null,
+      addonName: null,
+    };
+  }
+  const addon = (input.addonsEnding ?? [])
+    .filter((item) => isPeriodEndingSoon({ endsAt: item.endsAt, now: input.now }))
+    .slice()
+    .sort((a, b) => new Date(a.endsAt).getTime() - new Date(b.endsAt).getTime())[0];
+  if (addon) {
+    return {
+      kind: 'addon_ending',
+      planName,
+      trialEndsAt: null,
+      endsAt: addon.endsAt,
+      addonName: addon.name,
+    };
+  }
+  return null;
+}
+
 export function authorizeCronSecret(params: {
   authorizationHeader?: string | null;
   cronSecretHeader?: string | null;
