@@ -5,9 +5,12 @@ import {
   ONBOARDING_PLAN_KEY,
   ONBOARDING_TRIAL_DAYS,
   METERED_FEATURE_KEYS,
+  PUBLIC_PRICING_PLAN_KEYS,
   assertNotLegacyAutoAssign,
   isAutoAssignableOnboardingPlan,
   isLegacyPlanKey,
+  isMeteredFeatureKey,
+  isPublicPricingPlanKey,
   validateUsageIncrementAmount,
   canUseResolvedFeature,
   getResolvedFeatureLimit,
@@ -323,19 +326,28 @@ describe('onboarding / legacy safeguards', () => {
     expect(ONBOARDING_PLAN_KEY).toBe(COMMERCIAL_PLAN_KEYS.TRIAL);
     expect(ONBOARDING_PLAN_KEY).not.toBe(COMMERCIAL_PLAN_KEYS.LEGACY);
     expect(isAutoAssignableOnboardingPlan(COMMERCIAL_PLAN_KEYS.TRIAL)).toBe(true);
+    expect(isAutoAssignableOnboardingPlan(COMMERCIAL_PLAN_KEYS.BASIC)).toBe(false);
   });
 
   it('trial duration remains unset until product configures it', () => {
     expect(ONBOARDING_TRIAL_DAYS).toBeNull();
   });
 
-  it('legacy plan features stay fully enabled in resolver (existing customers)', () => {
+  it('legacy and trial are excluded from public pricing selectors', () => {
+    expect(PUBLIC_PRICING_PLAN_KEYS).not.toContain(COMMERCIAL_PLAN_KEYS.LEGACY);
+    expect(PUBLIC_PRICING_PLAN_KEYS).not.toContain(COMMERCIAL_PLAN_KEYS.TRIAL);
+    expect(isPublicPricingPlanKey(COMMERCIAL_PLAN_KEYS.LEGACY)).toBe(false);
+    expect(isPublicPricingPlanKey(COMMERCIAL_PLAN_KEYS.TRIAL)).toBe(false);
+    expect(isPublicPricingPlanKey(COMMERCIAL_PLAN_KEYS.BASIC)).toBe(true);
+  });
+
+  it('existing organization on legacy keeps currently available modules', () => {
     const map = resolveOrganizationEntitlements(
       baseInput({
         planFeatures: catalog.map((f) => ({
           featureKey: f.key,
           enabled: true,
-          limitValue: f.featureType === 'limit' ? null : null,
+          limitValue: null,
         })),
       })
     );
@@ -343,14 +355,31 @@ describe('onboarding / legacy safeguards', () => {
     expect(canUseResolvedFeature(map, FEATURES.INVENTORY)).toBe(true);
     expect(getResolvedFeatureLimit(map, FEATURES.USERS_MAX)).toBeNull();
   });
+
+  it('new organization on trial/basic does not inherit unlimited legacy entitlements', () => {
+    const trialLike: EntitlementResolutionInput = baseInput({
+      planFeatures: [
+        { featureKey: FEATURES.INVENTORY, enabled: false, limitValue: null },
+        { featureKey: FEATURES.AI, enabled: false, limitValue: null },
+        { featureKey: FEATURES.USERS_MAX, enabled: true, limitValue: 3 },
+      ],
+    });
+    expect(resolveFeatureEntitlement(FEATURES.AI, trialLike).enabled).toBe(false);
+    expect(resolveFeatureEntitlement(FEATURES.INVENTORY, trialLike).enabled).toBe(false);
+    expect(getResolvedFeatureLimit(
+      { [FEATURES.USERS_MAX]: resolveFeatureEntitlement(FEATURES.USERS_MAX, trialLike) },
+      FEATURES.USERS_MAX
+    )).toBe(3);
+  });
 });
 
 describe('usage increment validation helpers', () => {
-  it('accepts positive amounts only', () => {
+  it('accepts positive integer amounts only', () => {
     expect(validateUsageIncrementAmount(1)).toBe(true);
     expect(validateUsageIncrementAmount(10)).toBe(true);
     expect(validateUsageIncrementAmount(0)).toBe(false);
     expect(validateUsageIncrementAmount(-1)).toBe(false);
+    expect(validateUsageIncrementAmount(1.5)).toBe(false);
     expect(validateUsageIncrementAmount(null)).toBe(false);
     expect(validateUsageIncrementAmount(undefined)).toBe(false);
   });
@@ -359,5 +388,7 @@ describe('usage increment validation helpers', () => {
     expect(METERED_FEATURE_KEYS).toContain(FEATURES.AI_MONTHLY_REQUESTS);
     expect(METERED_FEATURE_KEYS).toContain(FEATURES.WHATSAPP_MONTHLY_MESSAGES);
     expect(METERED_FEATURE_KEYS).not.toContain(FEATURES.AI);
+    expect(isMeteredFeatureKey(FEATURES.STORAGE_MAX_MB)).toBe(true);
+    expect(isMeteredFeatureKey(FEATURES.AI)).toBe(false);
   });
 });

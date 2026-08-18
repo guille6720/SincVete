@@ -125,11 +125,24 @@ export type CommercialPlanKey =
 /**
  * Product must set this before marketing a timed trial.
  * null = open-ended `trialing` (trial_ends_at NULL) until Superadmin configures duration.
+ *
+ * Where to define the real duration (do not hardcode a business number here):
+ * 1. Superadmin / SQL: UPDATE plans SET metadata = jsonb_set(metadata, '{default_trial_days}', '<n>'::jsonb) WHERE key = 'trial';
+ * 2. Keep this constant in sync so the app documents the same policy.
  * Maps to plans.metadata.default_trial_days for the `trial` plan.
  */
 export const ONBOARDING_TRIAL_DAYS: number | null = null;
 
+/** Plan assigned to organizations created AFTER the entitlements migration. Never `legacy`. */
 export const ONBOARDING_PLAN_KEY = COMMERCIAL_PLAN_KEYS.TRIAL;
+
+/** Plans shown in public pricing selectors. Excludes legacy (internal) and trial (onboarding). */
+export const PUBLIC_PRICING_PLAN_KEYS = [
+  COMMERCIAL_PLAN_KEYS.BASIC,
+  COMMERCIAL_PLAN_KEYS.PRO,
+  COMMERCIAL_PLAN_KEYS.PREMIUM,
+  COMMERCIAL_PLAN_KEYS.ENTERPRISE,
+] as const satisfies readonly CommercialPlanKey[];
 
 /** Features allowed for usage counters (must match DB features.usage_metered). */
 export const METERED_FEATURE_KEYS = [
@@ -142,12 +155,16 @@ export function isLegacyPlanKey(key: string): boolean {
   return key === COMMERCIAL_PLAN_KEYS.LEGACY;
 }
 
+export function isPublicPricingPlanKey(key: string): boolean {
+  return (PUBLIC_PRICING_PLAN_KEYS as readonly string[]).includes(key);
+}
+
 /**
  * Public/commercial assignment helpers for Phase 2 Superadmin.
  * Legacy is never auto-assignable.
  */
 export function isAutoAssignableOnboardingPlan(key: string): boolean {
-  return key === ONBOARDING_PLAN_KEY;
+  return key === ONBOARDING_PLAN_KEY && !isLegacyPlanKey(key);
 }
 
 export function assertNotLegacyAutoAssign(planKey: string): void {
@@ -156,6 +173,10 @@ export function assertNotLegacyAutoAssign(planKey: string): void {
   }
 }
 
+export function isMeteredFeatureKey(value: string): boolean {
+  return (METERED_FEATURE_KEYS as readonly string[]).includes(value);
+}
+
 export function validateUsageIncrementAmount(amount: unknown): amount is number {
-  return typeof amount === 'number' && Number.isFinite(amount) && amount > 0;
+  return typeof amount === 'number' && Number.isFinite(amount) && Number.isInteger(amount) && amount > 0;
 }

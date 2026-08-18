@@ -2960,8 +2960,6 @@ export interface Database {
         Args: {
           p_feature_key: string;
           p_amount?: number;
-          p_period_start?: string;
-          p_period_end?: string;
         };
         Returns: number;
       };
@@ -2970,8 +2968,6 @@ export interface Database {
           p_feature_key: string;
           p_amount: number;
           p_limit: number | null;
-          p_period_start?: string;
-          p_period_end?: string;
         };
         Returns: number | null;
       };
@@ -4265,6 +4261,8 @@ export interface Database {
       cash_movement_kind: CashMovementKind;
       clinical_image_kind: ClinicalImageKind;
       notification_kind: NotificationKind;
+      subscription_status: SubscriptionStatus;
+      feature_value_type: FeatureValueType;
     };
     CompositeTypes: Record<string, never>;
   };
