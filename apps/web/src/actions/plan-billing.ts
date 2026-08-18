@@ -53,12 +53,18 @@ export type PlanBillingState = {
   plans: PublicPlanCatalogItem[];
   usage: MeteredUsageMeter[];
   events: PlanBillingEvent[];
+  addons: Array<{
+    key: string;
+    name: string;
+    description: string | null;
+    endsAt: string | null;
+  }>;
 };
 
 export async function getPlanBillingState(): Promise<PlanBillingState> {
   const session = await requirePermission('org:manage');
   const supabase = await createServerClient();
-  const [plans, subRes, customerRes, usage, eventsRes] = await Promise.all([
+  const [plans, subRes, customerRes, usage, eventsRes, addonsRes] = await Promise.all([
     listPublicPlansCatalog(),
     supabase
       .from('organization_subscriptions')
@@ -76,6 +82,7 @@ export async function getPlanBillingState(): Promise<PlanBillingState> {
       .maybeSingle(),
     getMeteredUsageMeters(session.organizationId),
     supabase.rpc('list_own_billing_events', { p_limit: 12 }),
+    supabase.rpc('list_own_addons'),
   ]);
 
   const planJoin = subRes.data?.plans as { key?: string; name?: string } | { key?: string; name?: string }[] | null;
@@ -103,6 +110,12 @@ export async function getPlanBillingState(): Promise<PlanBillingState> {
       provider: row.provider,
       eventType: row.event_type,
       processedAt: row.processed_at,
+    })),
+    addons: (addonsRes.data ?? []).map((row) => ({
+      key: row.addon_key,
+      name: row.addon_name,
+      description: row.description,
+      endsAt: row.ends_at,
     })),
   };
 }

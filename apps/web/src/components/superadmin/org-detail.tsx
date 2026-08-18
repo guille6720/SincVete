@@ -8,6 +8,8 @@ import {
   changeOrganizationPlan,
   clearOrganizationFeatureOverride,
   endOrganizationTrial,
+  grantOrganizationAddon,
+  revokeOrganizationAddon,
   setOrganizationFeatureOverride,
   startOrganizationTrial,
 } from '@/actions/superadmin';
@@ -22,6 +24,7 @@ import { usePendingAction } from '@/lib/hooks/use-pending-action';
 
 function sourceVariant(source: string) {
   if (source === 'override') return 'warning' as const;
+  if (source === 'addon') return 'default' as const;
   if (source === 'plan') return 'success' as const;
   if (source === 'deny') return 'destructive' as const;
   return 'default' as const;
@@ -177,9 +180,90 @@ export function SuperadminOrgDetail({
 
       <Card>
         <CardHeader>
+          <CardTitle>Add-ons</CardTitle>
+          <CardDescription>
+            Extras sobre el plan (IA, WhatsApp, portal, imágenes, reportes). No hay checkout: Superadmin
+            los otorga. Un add-on vencido o cancelado deja de sumar features.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {data.organizationAddons.filter((row) => row.status === 'active').length === 0 ? (
+            <p className="text-sm text-muted-foreground">Sin add-ons activos.</p>
+          ) : (
+            <ul className="space-y-2 text-sm">
+              {data.organizationAddons
+                .filter((row) => row.status === 'active')
+                .map((row) => (
+                  <li key={row.id} className="flex flex-wrap items-center justify-between gap-2">
+                    <span>
+                      <span className="font-medium">{row.addonName}</span>
+                      {row.endsAt ? (
+                        <span className="text-muted-foreground">
+                          {' '}
+                          hasta {new Date(row.endsAt).toLocaleString('es-AR')}
+                        </span>
+                      ) : null}
+                      {row.reason ? (
+                        <span className="text-muted-foreground"> · {row.reason}</span>
+                      ) : null}
+                    </span>
+                    <form
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        const form = new FormData(event.currentTarget);
+                        void handle(() => revokeOrganizationAddon(form));
+                      }}
+                    >
+                      <input type="hidden" name="organizationId" value={orgId} />
+                      <input type="hidden" name="addonKey" value={row.addonKey} />
+                      <Button type="submit" size="sm" variant="ghost" isPending={pending}>
+                        Quitar
+                      </Button>
+                    </form>
+                  </li>
+                ))}
+            </ul>
+          )}
+
+          <form
+            className="grid gap-3 md:grid-cols-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const form = new FormData(event.currentTarget);
+              void handle(() => grantOrganizationAddon(form));
+            }}
+          >
+            <input type="hidden" name="organizationId" value={orgId} />
+            <div className="space-y-1">
+              <Label htmlFor="addonKey">Otorgar add-on</Label>
+              <Select id="addonKey" name="addonKey" required>
+                {data.addonCatalog.map((addon) => (
+                  <option key={addon.key} value={addon.key}>
+                    {addon.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="addonEndsAt">Hasta (opcional)</Label>
+              <Input id="addonEndsAt" name="endsAt" type="datetime-local" />
+            </div>
+            <div className="space-y-1 md:col-span-2">
+              <Label htmlFor="addonReason">Motivo</Label>
+              <Textarea id="addonReason" name="reason" rows={2} />
+            </div>
+            <Button type="submit" isPending={pending} className="w-fit">
+              Otorgar add-on
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Features</CardTitle>
           <CardDescription>
-            Resolución: override → plan → default → deny. Activar/desactivar crea un override.
+            Resolución: override → add-on → plan → default → deny. Activar/desactivar crea un override.
           </CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">

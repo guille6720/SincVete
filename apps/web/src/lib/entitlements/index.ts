@@ -17,6 +17,7 @@ import {
   type FeatureOverrideRow,
   type MeteredUsageMeter,
   type OrganizationEntitlements,
+  type AddonFeatureRow,
   type PlanFeatureRow,
   type ResolvedEntitlement,
   type SubscriptionStatus,
@@ -78,7 +79,7 @@ export const loadOrganizationEntitlementInput = cache(async (organizationId: str
     console.warn('[entitlements] expire_due_subscriptions', expireError.message);
   }
 
-  const [featuresRes, subscriptionRes, overridesRes] = await Promise.all([
+  const [featuresRes, subscriptionRes, overridesRes, addonFeaturesRes] = await Promise.all([
     supabase
       .from('features')
       .select('key, feature_type, default_enabled, default_limit, is_active'),
@@ -95,6 +96,7 @@ export const loadOrganizationEntitlementInput = cache(async (organizationId: str
       .from('organization_feature_overrides')
       .select('enabled, limit_value, starts_at, ends_at, features!inner(key)')
       .eq('organization_id', organizationId),
+    supabase.rpc('list_own_addon_features'),
   ]);
 
   if (featuresRes.error) {
@@ -105,6 +107,9 @@ export const loadOrganizationEntitlementInput = cache(async (organizationId: str
   }
   if (overridesRes.error) {
     throw new Error(`No se pudieron cargar overrides: ${overridesRes.error.message}`);
+  }
+  if (addonFeaturesRes.error) {
+    throw new Error(`No se pudieron cargar add-ons: ${addonFeaturesRes.error.message}`);
   }
 
   const features: FeatureCatalogRow[] = (featuresRes.data ?? []).map((f) => ({
@@ -163,9 +168,16 @@ export const loadOrganizationEntitlementInput = cache(async (organizationId: str
     })
     .filter((row): row is FeatureOverrideRow => row !== null);
 
+  const addonFeatures: AddonFeatureRow[] = (addonFeaturesRes.data ?? []).map((row) => ({
+    featureKey: row.feature_key,
+    enabled: row.enabled,
+    limitValue: row.limit_value === null ? null : Number(row.limit_value),
+  }));
+
   return {
     features,
     planFeatures,
+    addonFeatures,
     overrides,
     hasActiveSubscription: commerciallyActive,
     planId: activeSub?.plan_id ?? null,

@@ -7,6 +7,7 @@ import {
   isFeatureKey,
   resolveOrganizationEntitlements,
   type ActionResult,
+  type AddonFeatureRow,
   type EntitlementResolutionInput,
   type FeatureCatalogRow,
   type FeatureOverrideRow,
@@ -107,6 +108,22 @@ export type SuperadminUsageRow = {
   usageCount: number;
 };
 
+export type SuperadminAddonOption = {
+  key: string;
+  name: string;
+  description: string | null;
+};
+
+export type SuperadminOrgAddonRow = {
+  id: string;
+  addonKey: string;
+  addonName: string;
+  status: SubscriptionStatus;
+  startsAt: string;
+  endsAt: string | null;
+  reason: string | null;
+};
+
 export type SuperadminOrgCommercial = {
   organization: { id: string; name: string; slug: string; createdAt: string };
   subscription: {
@@ -120,6 +137,8 @@ export type SuperadminOrgCommercial = {
   } | null;
   plans: SuperadminPlanOption[];
   catalog: Array<{ key: string; name: string; featureType: 'boolean' | 'limit'; usageMetered: boolean }>;
+  addonCatalog: SuperadminAddonOption[];
+  organizationAddons: SuperadminOrgAddonRow[];
   entitlements: OrganizationEntitlements;
   overrides: SuperadminOverrideRow[];
   usage: SuperadminUsageRow[];
@@ -200,6 +219,7 @@ export async function getSuperadminOrgCommercial(
   const subscriptionRaw = asObject(bundle.subscription);
   const catalogJson = asArray(bundle.catalog);
   const planFeaturesJson = asArray(bundle.plan_features);
+  const addonFeaturesJson = asArray(bundle.addon_features);
   const overridesJson = asArray(bundle.overrides);
 
   const features: FeatureCatalogRow[] = catalogJson.flatMap((row) => {
@@ -246,6 +266,19 @@ export async function getSuperadminOrgCommercial(
     ];
   });
 
+  const addonFeatures: AddonFeatureRow[] = addonFeaturesJson.flatMap((row) => {
+    const item = asObject(row);
+    const featureKey = asString(item?.feature_key);
+    if (!item || !featureKey) return [];
+    return [
+      {
+        featureKey,
+        enabled: asBoolean(item.enabled) ?? false,
+        limitValue: asNumber(item.limit_value),
+      },
+    ];
+  });
+
   const overrides: SuperadminOverrideRow[] = overridesJson.flatMap((row) => {
     const item = asObject(row);
     const featureKey = asString(item?.feature_key);
@@ -268,6 +301,7 @@ export async function getSuperadminOrgCommercial(
   const input: EntitlementResolutionInput = {
     features,
     planFeatures,
+    addonFeatures,
     overrides,
     hasActiveSubscription: Boolean(subscriptionRaw),
   };
@@ -286,6 +320,36 @@ export async function getSuperadminOrgCommercial(
       },
     ];
   });
+
+  const addonCatalog: SuperadminAddonOption[] = asArray(bundle.addon_catalog).flatMap((row) => {
+    const item = asObject(row);
+    const key = asString(item?.key);
+    const name = asString(item?.name);
+    if (!item || !key || !name) return [];
+    return [{ key, name, description: asString(item.description) }];
+  });
+
+  const organizationAddons: SuperadminOrgAddonRow[] = asArray(bundle.organization_addons).flatMap(
+    (row) => {
+      const item = asObject(row);
+      const id = asString(item?.id);
+      const addonKey = asString(item?.addon_key);
+      const addonName = asString(item?.addon_name);
+      const status = asSubscriptionStatus(item?.status);
+      if (!item || !id || !addonKey || !addonName || !status) return [];
+      return [
+        {
+          id,
+          addonKey,
+          addonName,
+          status,
+          startsAt: asString(item.starts_at) ?? '',
+          endsAt: asString(item.ends_at),
+          reason: asString(item.reason),
+        },
+      ];
+    }
+  );
 
   const usage: SuperadminUsageRow[] = asArray(bundle.usage).flatMap((row) => {
     const item = asObject(row);
@@ -323,6 +387,8 @@ export async function getSuperadminOrgCommercial(
       : null,
     plans,
     catalog,
+    addonCatalog,
+    organizationAddons,
     entitlements: resolveOrganizationEntitlements(input),
     overrides,
     usage,
@@ -455,6 +521,56 @@ export async function clearOrganizationFeatureOverride(formData: FormData): Prom
     const { error } = await supabase.rpc('superadmin_clear_feature_override', {
       p_organization_id: organizationId,
       p_feature_key: featureKey,
+      p_reason: reason,
+    });
+    if (error) return { success: false, error: error.message };
+    revalidateOrg(organizationId);
+    return { success: true };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function grantOrganizationAddon(formData: FormData): Promise<ActionResult> {
+  try {
+    await requireSuperadmin();
+    const organizationId = String(formData.get('organizationId') ?? '');
+    const addonKey = String(formData.get('addonKey') ?? '').trim();
+    const reason = String(formData.get('reason') ?? '').trim() || null;
+    const startsAt = formDateToTimestamptz(String(formData.get('startsAt') ?? ''));
+    const endsAt = formDateToTimestamptz(String(formData.get('endsAt') ?? ''));
+    if (!organizationId || !addonKey) {
+      return { success: false, error: 'Add-on y organización son obligatorios' };
+    }
+    const supabase = await createServerClient();
+    const { error } = await supabase.rpc('superadmin_grant_addon', {
+      p_organization_id: organizationId,
+      p_addon_key: addonKey,
+      p_reason: reason,
+      p_starts_at: startsAt,
+      p_ends_at: endsAt,
+    });
+    if (error) return { success: false, error: error.message };
+    revalidateOrg(organizationId);
+    return { success: true };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function revokeOrganizationAddon(formData: FormData): Promise<ActionResult> {
+  try {
+    await requireSuperadmin();
+    const organizationId = String(formData.get('organizationId') ?? '');
+    const addonKey = String(formData.get('addonKey') ?? '').trim();
+    const reason = String(formData.get('reason') ?? '').trim() || null;
+    if (!organizationId || !addonKey) {
+      return { success: false, error: 'Add-on y organización son obligatorios' };
+    }
+    const supabase = await createServerClient();
+    const { error } = await supabase.rpc('superadmin_revoke_addon', {
+      p_organization_id: organizationId,
+      p_addon_key: addonKey,
       p_reason: reason,
     });
     if (error) return { success: false, error: error.message };

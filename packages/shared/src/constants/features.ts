@@ -179,6 +179,17 @@ export const SUPERADMIN_ASSIGNABLE_PLAN_KEYS = [
   COMMERCIAL_PLAN_KEYS.ENTERPRISE,
 ] as const satisfies readonly CommercialPlanKey[];
 
+/** Catalog keys Superadmin may grant. Extra add-ons can be added in SQL later. */
+export const ADDON_KEYS = {
+  AI: 'addon.ai',
+  WHATSAPP: 'addon.whatsapp',
+  PORTAL: 'addon.portal',
+  IMAGES: 'addon.images',
+  REPORTS: 'addon.reports',
+} as const;
+
+export type AddonKey = (typeof ADDON_KEYS)[keyof typeof ADDON_KEYS];
+
 export function canSuperadminAssignPlan(planKey: string, allowLegacy = false): boolean {
   if (isLegacyPlanKey(planKey)) return allowLegacy === true;
   return (SUPERADMIN_ASSIGNABLE_PLAN_KEYS as readonly string[]).includes(planKey);

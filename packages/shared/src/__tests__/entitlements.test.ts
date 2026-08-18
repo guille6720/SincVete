@@ -202,6 +202,102 @@ describe('resolveFeatureEntitlement — limits', () => {
   });
 });
 
+describe('resolveFeatureEntitlement — add-ons', () => {
+  it('plan false + add-on true → add-on', () => {
+    const resolved = resolveFeatureEntitlement(
+      FEATURES.AI,
+      baseInput({
+        planFeatures: [{ featureKey: FEATURES.AI, enabled: false, limitValue: null }],
+        addonFeatures: [{ featureKey: FEATURES.AI, enabled: true, limitValue: null }],
+      })
+    );
+    expect(resolved.enabled).toBe(true);
+    expect(resolved.source).toBe('addon');
+  });
+
+  it('override false beats add-on', () => {
+    const resolved = resolveFeatureEntitlement(
+      FEATURES.AI,
+      baseInput({
+        planFeatures: [{ featureKey: FEATURES.AI, enabled: false, limitValue: null }],
+        addonFeatures: [{ featureKey: FEATURES.AI, enabled: true, limitValue: null }],
+        overrides: [
+          {
+            featureKey: FEATURES.AI,
+            enabled: false,
+            limitValue: null,
+            startsAt: null,
+            endsAt: null,
+          },
+        ],
+      })
+    );
+    expect(resolved.enabled).toBe(false);
+    expect(resolved.source).toBe('override');
+  });
+
+  it('add-on raises a plan limit', () => {
+    const resolved = resolveFeatureEntitlement(
+      FEATURES.AI_MONTHLY_REQUESTS,
+      baseInput({
+        planFeatures: [
+          { featureKey: FEATURES.AI_MONTHLY_REQUESTS, enabled: true, limitValue: 100 },
+        ],
+        addonFeatures: [
+          { featureKey: FEATURES.AI_MONTHLY_REQUESTS, enabled: true, limitValue: 500 },
+        ],
+      })
+    );
+    expect(resolved.enabled).toBe(true);
+    expect(resolved.limit).toBe(500);
+    expect(resolved.source).toBe('addon');
+  });
+
+  it('plan unlimited beats a smaller add-on limit', () => {
+    const resolved = resolveFeatureEntitlement(
+      FEATURES.AI_MONTHLY_REQUESTS,
+      baseInput({
+        planFeatures: [
+          { featureKey: FEATURES.AI_MONTHLY_REQUESTS, enabled: true, limitValue: null },
+        ],
+        addonFeatures: [
+          { featureKey: FEATURES.AI_MONTHLY_REQUESTS, enabled: true, limitValue: 100 },
+        ],
+      })
+    );
+    expect(resolved.limit).toBeNull();
+    expect(resolved.source).toBe('plan');
+  });
+
+  it('add-on unlimited raises a plan cap', () => {
+    const resolved = resolveFeatureEntitlement(
+      FEATURES.AI_MONTHLY_REQUESTS,
+      baseInput({
+        planFeatures: [
+          { featureKey: FEATURES.AI_MONTHLY_REQUESTS, enabled: true, limitValue: 100 },
+        ],
+        addonFeatures: [
+          { featureKey: FEATURES.AI_MONTHLY_REQUESTS, enabled: true, limitValue: null },
+        ],
+      })
+    );
+    expect(resolved.limit).toBeNull();
+    expect(resolved.source).toBe('addon');
+  });
+
+  it('expired subscription ignores add-ons', () => {
+    const resolved = resolveFeatureEntitlement(
+      FEATURES.AI,
+      baseInput({
+        hasActiveSubscription: false,
+        addonFeatures: [{ featureKey: FEATURES.AI, enabled: true, limitValue: null }],
+      })
+    );
+    expect(resolved.enabled).toBe(false);
+    expect(resolved.source).toBe('deny');
+  });
+});
+
 describe('resolveFeatureEntitlement — temporary overrides', () => {
   const now = new Date('2026-08-17T12:00:00.000Z');
 

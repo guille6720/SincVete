@@ -2895,6 +2895,150 @@ export interface Database {
           },
         ];
       };
+      addons: {
+        Row: {
+          id: string;
+          key: string;
+          name: string;
+          description: string | null;
+          is_active: boolean;
+          is_public: boolean;
+          display_order: number;
+          metadata: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          key: string;
+          name: string;
+          description?: string | null;
+          is_active?: boolean;
+          is_public?: boolean;
+          display_order?: number;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          key?: string;
+          name?: string;
+          description?: string | null;
+          is_active?: boolean;
+          is_public?: boolean;
+          display_order?: number;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      addon_features: {
+        Row: {
+          id: string;
+          addon_id: string;
+          feature_id: string;
+          enabled: boolean;
+          limit_value: number | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          addon_id: string;
+          feature_id: string;
+          enabled?: boolean;
+          limit_value?: number | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          addon_id?: string;
+          feature_id?: string;
+          enabled?: boolean;
+          limit_value?: number | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'addon_features_addon_id_fkey';
+            columns: ['addon_id'];
+            isOneToOne: false;
+            referencedRelation: 'addons';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'addon_features_feature_id_fkey';
+            columns: ['feature_id'];
+            isOneToOne: false;
+            referencedRelation: 'features';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      organization_addons: {
+        Row: {
+          id: string;
+          organization_id: string;
+          addon_id: string;
+          status: SubscriptionStatus;
+          starts_at: string;
+          ends_at: string | null;
+          cancelled_at: string | null;
+          reason: string | null;
+          granted_by: string | null;
+          metadata: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          addon_id: string;
+          status?: SubscriptionStatus;
+          starts_at?: string;
+          ends_at?: string | null;
+          cancelled_at?: string | null;
+          reason?: string | null;
+          granted_by?: string | null;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          addon_id?: string;
+          status?: SubscriptionStatus;
+          starts_at?: string;
+          ends_at?: string | null;
+          cancelled_at?: string | null;
+          reason?: string | null;
+          granted_by?: string | null;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'organization_addons_organization_id_fkey';
+            columns: ['organization_id'];
+            isOneToOne: false;
+            referencedRelation: 'organizations';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'organization_addons_addon_id_fkey';
+            columns: ['addon_id'];
+            isOneToOne: false;
+            referencedRelation: 'addons';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       feature_usage: {
         Row: {
           id: string;
@@ -3140,6 +3284,43 @@ export interface Database {
           p_reason?: string | null;
         };
         Returns: Json;
+      };
+      superadmin_grant_addon: {
+        Args: {
+          p_organization_id: string;
+          p_addon_key: string;
+          p_reason?: string | null;
+          p_starts_at?: string | null;
+          p_ends_at?: string | null;
+        };
+        Returns: Json;
+      };
+      superadmin_revoke_addon: {
+        Args: {
+          p_organization_id: string;
+          p_addon_key: string;
+          p_reason?: string | null;
+        };
+        Returns: Json;
+      };
+      list_own_addons: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          addon_key: string;
+          addon_name: string;
+          description: string | null;
+          status: SubscriptionStatus;
+          starts_at: string;
+          ends_at: string | null;
+        }[];
+      };
+      list_own_addon_features: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          feature_key: string;
+          enabled: boolean;
+          limit_value: number | null;
+        }[];
       };
       list_public_plans: {
         Args: Record<PropertyKey, never>;

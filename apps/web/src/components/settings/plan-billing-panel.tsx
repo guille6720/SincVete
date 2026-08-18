@@ -115,6 +115,36 @@ export function PlanBillingPanel({
         </CardContent>
       </Card>
 
+      {state.addons.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Add-ons</CardTitle>
+            <CardDescription>
+              Extras que Superadmin otorgó sobre el plan. No hay compra self-serve de add-ons.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {state.addons.map((addon) => (
+              <div key={addon.key} className="flex items-center justify-between gap-3">
+                <span>
+                  {addon.name}
+                  {addon.description ? (
+                    <span className="text-muted-foreground"> · {addon.description}</span>
+                  ) : null}
+                </span>
+                {addon.endsAt ? (
+                  <span className="text-muted-foreground">
+                    hasta {new Date(addon.endsAt).toLocaleDateString('es-AR')}
+                  </span>
+                ) : (
+                  <Badge>Activo</Badge>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
+
       {state.usage.length > 0 ? (
         <Card>
           <CardHeader>

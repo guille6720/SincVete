@@ -3,6 +3,7 @@ export type {
   SubscriptionStatus,
   FeatureCatalogRow,
   PlanFeatureRow,
+  AddonFeatureRow,
   FeatureOverrideRow,
   ResolvedEntitlement,
   OrganizationEntitlements,

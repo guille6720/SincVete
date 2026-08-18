@@ -1,7 +1,7 @@
 import type { FeatureKey } from '../constants/features';
 import { isFeatureKey, isLimitFeatureKey } from '../constants/features';
 
-export type EntitlementSource = 'override' | 'plan' | 'default' | 'deny';
+export type EntitlementSource = 'override' | 'addon' | 'plan' | 'default' | 'deny';
 
 export type SubscriptionStatus = 'trialing' | 'active' | 'past_due' | 'cancelled' | 'expired';
 
@@ -19,6 +19,9 @@ export interface PlanFeatureRow {
   /** null = unlimited for limit features */
   limitValue: number | null;
 }
+
+/** Same shape as plan features; add-ons only grant or raise limits. */
+export type AddonFeatureRow = PlanFeatureRow;
 
 export interface FeatureOverrideRow {
   featureKey: string;
@@ -46,8 +49,9 @@ export interface EntitlementResolutionInput {
   now?: Date;
   features: FeatureCatalogRow[];
   planFeatures: PlanFeatureRow[];
+  addonFeatures?: AddonFeatureRow[];
   overrides: FeatureOverrideRow[];
-  /** When false/missing active subscription, only defaults apply then deny */
+  /** When false/missing active subscription, add-ons are ignored; only defaults then deny */
   hasActiveSubscription: boolean;
 }
 
@@ -71,9 +75,36 @@ function deny(): ResolvedEntitlement {
   return { enabled: false, limit: 0, source: 'deny' };
 }
 
+function moreGenerousLimit(left: number | null, right: number | null): number | null {
+  if (left === null || right === null) return null;
+  return Math.max(left, right);
+}
+
+function isLimitMoreGenerous(candidate: number | null, baseline: number | null): boolean {
+  if (baseline === null) return false;
+  if (candidate === null) return true;
+  return candidate > baseline;
+}
+
+function asLimitValue(value: number | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  return Number(value);
+}
+
+function mergeAddonGrant(rows: AddonFeatureRow[]): { limitValue: number | null } | null {
+  const granted = rows.filter((row) => row.enabled);
+  if (granted.length === 0) return null;
+  let limit = asLimitValue(granted[0]?.limitValue);
+  for (const row of granted.slice(1)) {
+    limit = moreGenerousLimit(limit, asLimitValue(row.limitValue));
+  }
+  return { limitValue: limit };
+}
+
 /**
  * Resolve a single feature.
- * Order: active override → plan → feature default → deny.
+ * Order: active override → add-on ∪ plan → feature default → deny.
+ * Add-ons require an active subscription and never revoke a plan feature.
  * Unknown feature keys always deny.
  */
 export function resolveFeatureEntitlement(
@@ -123,21 +154,39 @@ export function resolveFeatureEntitlement(
 
   if (input.hasActiveSubscription) {
     const planRow = input.planFeatures.find((p) => p.featureKey === featureKey);
-    if (planRow) {
-      if (!planRow.enabled) {
-        return { enabled: false, limit: 0, source: 'plan' };
+    const addonGrant = mergeAddonGrant(
+      (input.addonFeatures ?? []).filter((row) => row.featureKey === featureKey)
+    );
+    const planEnabled = Boolean(planRow?.enabled);
+    const addonEnabled = Boolean(addonGrant);
+    const isLimit = catalog.featureType === 'limit' || isLimitFeatureKey(featureKey);
+
+    if (planEnabled || addonEnabled) {
+      if (!isLimit) {
+        if (addonEnabled && !planEnabled) {
+          return { enabled: true, limit: null, source: 'addon' };
+        }
+        return { enabled: true, limit: null, source: 'plan' };
       }
-      if (catalog.featureType === 'limit' || isLimitFeatureKey(featureKey)) {
-        return {
-          enabled: true,
-          limit:
-            planRow.limitValue === null || planRow.limitValue === undefined
-              ? null
-              : Number(planRow.limitValue),
-          source: 'plan',
-        };
+
+      const planLimit = planEnabled ? asLimitValue(planRow?.limitValue) : 0;
+      const addonLimit = addonEnabled ? asLimitValue(addonGrant?.limitValue) : 0;
+      if (addonEnabled && !planEnabled) {
+        return { enabled: true, limit: addonLimit, source: 'addon' };
       }
-      return { enabled: true, limit: null, source: 'plan' };
+      if (planEnabled && !addonEnabled) {
+        return { enabled: true, limit: planLimit, source: 'plan' };
+      }
+      const limit = moreGenerousLimit(planLimit, addonLimit);
+      return {
+        enabled: true,
+        limit,
+        source: isLimitMoreGenerous(addonLimit, planLimit) ? 'addon' : 'plan',
+      };
+    }
+
+    if (planRow && !planRow.enabled) {
+      return { enabled: false, limit: 0, source: 'plan' };
     }
   }
 
