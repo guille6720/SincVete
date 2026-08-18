@@ -12,6 +12,7 @@ import {
   parsePlanPricing,
   formatBillingEventLabel,
   isBillingEventAlreadyApplied,
+  shouldReleaseCheckoutIntent,
 } from '../index';
 
 describe('plan pricing catalog', () => {
@@ -85,5 +86,17 @@ describe('plan pricing catalog', () => {
     expect(isBillingEventAlreadyApplied(null)).toBe(false);
     expect(isBillingEventAlreadyApplied(undefined)).toBe(false);
     expect(isBillingEventAlreadyApplied('2026-08-18T12:00:00.000Z')).toBe(true);
+  });
+
+  it('releases checkout lock on rejected or expired payments, not pending', () => {
+    expect(shouldReleaseCheckoutIntent('rejected')).toBe(true);
+    expect(shouldReleaseCheckoutIntent('cancelled')).toBe(true);
+    expect(shouldReleaseCheckoutIntent('refunded')).toBe(true);
+    expect(shouldReleaseCheckoutIntent('charged_back')).toBe(true);
+    expect(shouldReleaseCheckoutIntent('checkout.session.expired')).toBe(true);
+    expect(shouldReleaseCheckoutIntent('checkout.session.async_payment_failed')).toBe(true);
+    expect(shouldReleaseCheckoutIntent('pending')).toBe(false);
+    expect(shouldReleaseCheckoutIntent('in_process')).toBe(false);
+    expect(shouldReleaseCheckoutIntent('approved')).toBe(false);
   });
 });

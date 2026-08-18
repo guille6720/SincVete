@@ -34,6 +34,23 @@ async function consumeCheckoutIntents(params: {
   }
 }
 
+export async function releaseCheckoutIntents(params: {
+  organizationId: string;
+  kind?: 'plan' | 'addon' | null;
+  targetKey?: string | null;
+}): Promise<void> {
+  assertOrgId(params.organizationId);
+  const service = await createServiceClient();
+  const { error } = await service.rpc('billing_release_checkout_intents', {
+    p_organization_id: params.organizationId,
+    p_kind: params.kind ?? null,
+    p_target_key: params.targetKey ?? null,
+  });
+  if (error) {
+    console.error('[billing] release checkout intents', error.message);
+  }
+}
+
 export async function claimBillingEvent(params: {
   provider: BillingProvider;
   eventId: string;

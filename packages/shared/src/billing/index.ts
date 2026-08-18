@@ -29,6 +29,23 @@ export function isBillingEventAlreadyApplied(appliedAt: string | null | undefine
   return Boolean(appliedAt);
 }
 
+/** Provider statuses that mean the checkout will not complete. Pending/in_process stay locked. */
+export function shouldReleaseCheckoutIntent(status: string | null | undefined): boolean {
+  const value = (status ?? '').toLowerCase();
+  if (!value) return false;
+  return (
+    value === 'rejected' ||
+    value === 'cancelled' ||
+    value === 'canceled' ||
+    value === 'refunded' ||
+    value === 'charged_back' ||
+    value === 'expired' ||
+    value === 'failed' ||
+    value.includes('async_payment_failed') ||
+    value.includes('checkout.session.expired')
+  );
+}
+
 export function formatBillingEventLabel(eventType: string | null | undefined): string {
   const type = (eventType ?? '').toLowerCase();
   if (!type) return 'Evento de pago';

@@ -3587,6 +3587,38 @@ export interface Database {
         };
         Returns: Json;
       };
+      billing_release_checkout_intents: {
+        Args: {
+          p_organization_id: string;
+          p_kind?: string | null;
+          p_target_key?: string | null;
+        };
+        Returns: Json;
+      };
+      superadmin_open_checkout_intents: {
+        Args: Record<PropertyKey, never>;
+        Returns: number;
+      };
+      superadmin_list_checkout_intents: {
+        Args: {
+          p_organization_id: string;
+        };
+        Returns: {
+          id: string;
+          kind: string;
+          target_key: string;
+          billing_interval: string;
+          provider: string;
+          expires_at: string;
+          created_at: string;
+        }[];
+      };
+      superadmin_cancel_checkout_intents: {
+        Args: {
+          p_organization_id: string;
+        };
+        Returns: Json;
+      };
       handle_new_user_signup: {
         Args: {
           p_full_name: string;

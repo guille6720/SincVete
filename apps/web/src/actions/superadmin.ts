@@ -45,6 +45,18 @@ function actionError<T = void>(error: unknown): ActionResult<T> {
 function revalidateOrg(organizationId: string) {
   revalidatePath('/superadmin');
   revalidatePath(`/superadmin/organizaciones/${organizationId}`);
+  revalidatePath('/configuracion');
+  revalidatePath('/', 'layout');
+}
+
+async function clearOrgCheckoutIntents(organizationId: string) {
+  const supabase = await createServerClient();
+  const { error } = await supabase.rpc('superadmin_cancel_checkout_intents', {
+    p_organization_id: organizationId,
+  });
+  if (error) {
+    console.error('[superadmin] clear checkout intents', error.message);
+  }
 }
 
 export type SuperadminOrgListRow = {
@@ -500,6 +512,7 @@ export async function changeOrganizationPlan(formData: FormData): Promise<Action
       p_trial_days: null,
     });
     if (error) return { success: false, error: error.message };
+    await clearOrgCheckoutIntents(organizationId);
     revalidateOrg(organizationId);
     return { success: true };
   } catch (error) {
@@ -562,6 +575,7 @@ export async function endOrganizationTrial(formData: FormData): Promise<ActionRe
       p_reason: reason,
     });
     if (error) return { success: false, error: error.message };
+    await clearOrgCheckoutIntents(organizationId);
     revalidateOrg(organizationId);
     return { success: true };
   } catch (error) {
@@ -689,19 +703,22 @@ export type SuperadminCommercialSummary = {
   addonsEndingSoon: number;
   orgsOverSeats: number;
   billingEventsPending: number;
+  checkoutIntentsOpen: number;
 };
 
 export async function getSuperadminCommercialSummary(): Promise<SuperadminCommercialSummary> {
   await requireSuperadmin();
   const supabase = await createServerClient();
-  const [summaryRes, pendingRes] = await Promise.all([
+  const [summaryRes, pendingRes, intentsRes] = await Promise.all([
     supabase.rpc('superadmin_commercial_summary', {
       p_remind_days: COMMERCIAL_TRIAL_REMIND_DAYS,
     }),
     supabase.rpc('superadmin_pending_billing_events'),
+    supabase.rpc('superadmin_open_checkout_intents'),
   ]);
   if (summaryRes.error) throw new Error(summaryRes.error.message);
   if (pendingRes.error) throw new Error(pendingRes.error.message);
+  if (intentsRes.error) throw new Error(intentsRes.error.message);
   const row = asObject(summaryRes.data);
   return {
     organizations: asNumber(row?.organizations) ?? 0,
@@ -715,6 +732,7 @@ export async function getSuperadminCommercialSummary(): Promise<SuperadminCommer
     addonsEndingSoon: asNumber(row?.addons_ending_soon) ?? 0,
     orgsOverSeats: asNumber(row?.orgs_over_seats) ?? 0,
     billingEventsPending: asNumber(pendingRes.data) ?? 0,
+    checkoutIntentsOpen: asNumber(intentsRes.data) ?? 0,
   };
 }
 
@@ -770,4 +788,51 @@ export async function listSuperadminBillingEvents(
     processedAt: row.processed_at,
     appliedAt: row.applied_at,
   }));
+}
+
+export type SuperadminCheckoutIntent = {
+  id: string;
+  kind: string;
+  targetKey: string;
+  interval: string;
+  provider: string;
+  expiresAt: string;
+  createdAt: string;
+};
+
+export async function listSuperadminCheckoutIntents(
+  organizationId: string
+): Promise<SuperadminCheckoutIntent[]> {
+  await requireSuperadmin();
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc('superadmin_list_checkout_intents', {
+    p_organization_id: organizationId,
+  });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    targetKey: row.target_key,
+    interval: row.billing_interval,
+    provider: row.provider,
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
+  }));
+}
+
+export async function cancelSuperadminCheckoutIntents(formData: FormData): Promise<ActionResult> {
+  try {
+    await requireSuperadmin();
+    const organizationId = String(formData.get('organizationId') ?? '');
+    if (!organizationId) return { success: false, error: 'Organización inválida' };
+    const supabase = await createServerClient();
+    const { error } = await supabase.rpc('superadmin_cancel_checkout_intents', {
+      p_organization_id: organizationId,
+    });
+    if (error) return { success: false, error: error.message };
+    revalidateOrg(organizationId);
+    return { success: true };
+  } catch (error) {
+    return actionError(error);
+  }
 }

@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { parseAddonCheckoutReference, parseCheckoutReference } from '@sincvete/shared';
+import { parseAddonCheckoutReference, parseCheckoutReference, shouldReleaseCheckoutIntent } from '@sincvete/shared';
 import {
   applyPaidAddon,
   applyPaidPlan,
   claimBillingEvent,
   finishBillingEvent,
+  releaseCheckoutIntents,
   upsertBillingCustomer,
 } from '@/lib/billing/apply';
 import { verifyMercadoPagoSignature } from '@/lib/billing/crypto';
@@ -76,14 +77,15 @@ async function handleMercadoPagoWebhook(request: Request) {
     return NextResponse.json({ error: 'pago no encontrado' }, { status: 404 });
   }
 
+  const addonRef = parseAddonCheckoutReference(payment.externalReference);
+  const planRef = addonRef ? null : parseCheckoutReference(payment.externalReference);
+  const organizationId = addonRef?.organizationId ?? planRef?.organizationId ?? null;
+
   const recorded = await claimBillingEvent({
     provider: 'mercadopago',
     eventId: `payment:${payment.id}:${payment.status}`,
     eventType: type || 'payment',
-    organizationId:
-      parseAddonCheckoutReference(payment.externalReference)?.organizationId ??
-      parseCheckoutReference(payment.externalReference)?.organizationId ??
-      null,
+    organizationId,
     payload: { paymentId, status: payment.status, type },
   });
   if (recorded.alreadyApplied) {
@@ -91,12 +93,17 @@ async function handleMercadoPagoWebhook(request: Request) {
   }
 
   if (payment.status !== 'approved') {
+    if (shouldReleaseCheckoutIntent(payment.status) && organizationId) {
+      await releaseCheckoutIntents({
+        organizationId,
+        kind: addonRef ? 'addon' : planRef ? 'plan' : null,
+        targetKey: addonRef?.addonKey ?? planRef?.planKey ?? null,
+      });
+    }
     await finishBillingEvent(recorded.id);
     return NextResponse.json({ ok: true, skipped: true });
   }
 
-  const addonRef = parseAddonCheckoutReference(payment.externalReference);
-  const planRef = addonRef ? null : parseCheckoutReference(payment.externalReference);
   if (!addonRef && !planRef) {
     return NextResponse.json({ error: 'referencia inválida' }, { status: 500 });
   }

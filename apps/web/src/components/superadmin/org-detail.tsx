@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { COMMERCIAL_PLAN_KEYS, SUPERADMIN_ASSIGNABLE_PLAN_KEYS, formatBillingEventLabel, formatMeteredUsage, isQuotaNearLimit } from '@sincvete/shared';
-import type { SuperadminBillingEvent, SuperadminOrgCommercial } from '@/actions/superadmin';
+import type { SuperadminBillingEvent, SuperadminCheckoutIntent, SuperadminOrgCommercial } from '@/actions/superadmin';
 import {
+  cancelSuperadminCheckoutIntents,
   changeOrganizationPlan,
   clearOrganizationFeatureOverride,
   endOrganizationTrial,
@@ -33,9 +34,11 @@ function sourceVariant(source: string) {
 export function SuperadminOrgDetail({
   data,
   events = [],
+  checkoutIntents = [],
 }: {
   data: SuperadminOrgCommercial;
   events?: SuperadminBillingEvent[];
+  checkoutIntents?: SuperadminCheckoutIntent[];
 }) {
   const [message, setMessage] = useState<string | null>(null);
   const [pending, run] = usePendingAction();
@@ -476,6 +479,59 @@ export function SuperadminOrgDetail({
                 ))}
               </tbody>
             </table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Pagos en curso</CardTitle>
+          <CardDescription>
+            Checkouts iniciados que todavía no aplicó el webhook. Liberá el aviso de la clínica si el
+            pago no va a completar.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {checkoutIntents.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No hay un pago en curso.</p>
+          ) : (
+            <>
+              <table className="w-full text-sm">
+                <thead className="text-left text-muted-foreground">
+                  <tr>
+                    <th className="py-2">Tipo</th>
+                    <th className="py-2">Clave</th>
+                    <th className="py-2">Proveedor</th>
+                    <th className="py-2">Vence</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {checkoutIntents.map((intent) => (
+                    <tr key={intent.id} className="border-t">
+                      <td className="py-2">{intent.kind === 'addon' ? 'Extra' : 'Plan'}</td>
+                      <td className="py-2">{intent.targetKey}</td>
+                      <td className="py-2">{intent.provider}</td>
+                      <td className="py-2 text-muted-foreground">
+                        {new Date(intent.expiresAt).toLocaleString('es-AR')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending}
+                onClick={() => {
+                  const form = new FormData();
+                  form.set('organizationId', orgId);
+                  void handle(() => cancelSuperadminCheckoutIntents(form));
+                }}
+              >
+                Liberar pagos en curso
+              </Button>
+            </>
           )}
         </CardContent>
       </Card>

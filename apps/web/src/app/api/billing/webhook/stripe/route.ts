@@ -7,6 +7,7 @@ import {
   extendPaidPlanPeriod,
   findOrganizationIdByStripeCustomer,
   finishBillingEvent,
+  releaseCheckoutIntents,
   setPaidSubscriptionStatus,
   upsertBillingCustomer,
 } from '@/lib/billing/apply';
@@ -130,6 +131,25 @@ export async function POST(request: Request) {
             email: object.customer_email ?? null,
           });
         }
+      }
+    } else if (
+      event.type === 'checkout.session.expired' ||
+      event.type === 'checkout.session.async_payment_failed'
+    ) {
+      if (addonRef) {
+        await releaseCheckoutIntents({
+          organizationId: addonRef.organizationId,
+          kind: 'addon',
+          targetKey: addonRef.addonKey,
+        });
+      } else if (planRef) {
+        await releaseCheckoutIntents({
+          organizationId: planRef.organizationId,
+          kind: 'plan',
+          targetKey: planRef.planKey,
+        });
+      } else if (organizationId) {
+        await releaseCheckoutIntents({ organizationId });
       }
     } else if (event.type === 'invoice.paid' || event.type === 'invoice.payment_succeeded') {
       const reason = object.billing_reason ?? '';

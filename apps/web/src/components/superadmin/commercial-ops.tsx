@@ -41,6 +41,7 @@ export function SuperadminCommercialOps({ summary }: { summary: SuperadminCommer
     { label: 'Extras por vencer', value: summary.addonsEndingSoon },
     { label: 'Sobre cupos', value: summary.orgsOverSeats },
     { label: 'Webhooks pendientes', value: summary.billingEventsPending },
+    { label: 'Pagos en curso', value: summary.checkoutIntentsOpen },
   ];
 
   return (
