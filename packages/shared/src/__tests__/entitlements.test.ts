@@ -6,11 +6,14 @@ import {
   ONBOARDING_TRIAL_DAYS,
   METERED_FEATURE_KEYS,
   PUBLIC_PRICING_PLAN_KEYS,
+  SUPERADMIN_ASSIGNABLE_PLAN_KEYS,
   assertNotLegacyAutoAssign,
+  canSuperadminAssignPlan,
   isAutoAssignableOnboardingPlan,
   isLegacyPlanKey,
   isMeteredFeatureKey,
   isPublicPricingPlanKey,
+  parseSuperadminEmails,
   validateUsageIncrementAmount,
   canUseResolvedFeature,
   getResolvedFeatureLimit,
@@ -339,6 +342,24 @@ describe('onboarding / legacy safeguards', () => {
     expect(isPublicPricingPlanKey(COMMERCIAL_PLAN_KEYS.LEGACY)).toBe(false);
     expect(isPublicPricingPlanKey(COMMERCIAL_PLAN_KEYS.TRIAL)).toBe(false);
     expect(isPublicPricingPlanKey(COMMERCIAL_PLAN_KEYS.BASIC)).toBe(true);
+  });
+
+  it('superadmin cannot assign legacy unless explicitly allowed', () => {
+    expect(canSuperadminAssignPlan(COMMERCIAL_PLAN_KEYS.BASIC)).toBe(true);
+    expect(canSuperadminAssignPlan(COMMERCIAL_PLAN_KEYS.TRIAL)).toBe(true);
+    expect(canSuperadminAssignPlan(COMMERCIAL_PLAN_KEYS.LEGACY)).toBe(false);
+    expect(canSuperadminAssignPlan(COMMERCIAL_PLAN_KEYS.LEGACY, true)).toBe(true);
+    expect(SUPERADMIN_ASSIGNABLE_PLAN_KEYS).not.toContain(COMMERCIAL_PLAN_KEYS.LEGACY);
+  });
+
+  it('parses SUPERADMIN_EMAILS allowlist', () => {
+    expect(parseSuperadminEmails('a@x.com, B@X.com; c@x.com')).toEqual([
+      'a@x.com',
+      'b@x.com',
+      'c@x.com',
+    ]);
+    expect(parseSuperadminEmails('')).toEqual([]);
+    expect(parseSuperadminEmails(undefined)).toEqual([]);
   });
 
   it('existing organization on legacy keeps currently available modules', () => {

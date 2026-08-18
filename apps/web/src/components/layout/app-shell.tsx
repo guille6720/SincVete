@@ -28,6 +28,7 @@ import {
   Images,
   Inbox,
   ScrollText,
+  Shield,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { signOut } from '@/actions/auth';
@@ -85,6 +86,7 @@ interface AppShellProps {
   branches?: Array<{ id: string; name: string; is_active: boolean }>;
   activeBranchId?: string | null;
   unreadNotifications?: number;
+  isPlatformAdmin?: boolean;
 }
 
 export function AppShell({
@@ -95,6 +97,7 @@ export function AppShell({
   branches = [],
   activeBranchId,
   unreadNotifications = 0,
+  isPlatformAdmin = false,
 }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -235,6 +238,24 @@ export function AppShell({
               </Link>
             );
           })}
+          {isPlatformAdmin ? (
+            <Link
+              href="/superadmin"
+              prefetch
+              onClick={() => setSidebarOpen(false)}
+              className={cn(
+                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+                pathname.startsWith('/superadmin')
+                  ? 'bg-[var(--clinic)] text-white shadow-sm'
+                  : 'text-[var(--shell-text)] hover:bg-[var(--clinic-soft)] hover:text-[var(--clinic)]'
+              )}
+            >
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[var(--clinic-soft)] text-[var(--clinic)]">
+                <Shield className="h-4 w-4" />
+              </span>
+              Superadmin
+            </Link>
+          ) : null}
         </nav>
 
         <div className="border-t p-3" style={{ borderColor: 'var(--shell-border)' }}>

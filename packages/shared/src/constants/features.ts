@@ -173,6 +173,28 @@ export function assertNotLegacyAutoAssign(planKey: string): void {
   }
 }
 
+/** Plans Superadmin may assign without the explicit-legacy flag. */
+export const SUPERADMIN_ASSIGNABLE_PLAN_KEYS = [
+  COMMERCIAL_PLAN_KEYS.TRIAL,
+  COMMERCIAL_PLAN_KEYS.BASIC,
+  COMMERCIAL_PLAN_KEYS.PRO,
+  COMMERCIAL_PLAN_KEYS.PREMIUM,
+  COMMERCIAL_PLAN_KEYS.ENTERPRISE,
+] as const satisfies readonly CommercialPlanKey[];
+
+export function canSuperadminAssignPlan(planKey: string, allowLegacy = false): boolean {
+  if (isLegacyPlanKey(planKey)) return allowLegacy === true;
+  return (SUPERADMIN_ASSIGNABLE_PLAN_KEYS as readonly string[]).includes(planKey);
+}
+
+export function parseSuperadminEmails(raw: string | undefined | null): string[] {
+  if (!raw) return [];
+  return raw
+    .split(/[,;\s]+/)
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 export function isMeteredFeatureKey(value: string): boolean {
   return (METERED_FEATURE_KEYS as readonly string[]).includes(value);
 }

@@ -2945,6 +2945,36 @@ export interface Database {
           },
         ];
       };
+      platform_admins: {
+        Row: {
+          user_id: string;
+          email: string;
+          is_active: boolean;
+          notes: string | null;
+          created_at: string;
+          created_by: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          email: string;
+          is_active?: boolean;
+          notes?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          email?: string;
+          is_active?: boolean;
+          notes?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -2970,6 +3000,83 @@ export interface Database {
           p_limit: number | null;
         };
         Returns: number | null;
+      };
+      is_platform_admin: {
+        Args: Record<PropertyKey, never>;
+        Returns: boolean;
+      };
+      require_platform_admin: {
+        Args: Record<PropertyKey, never>;
+        Returns: string;
+      };
+      superadmin_list_organizations: {
+        Args: {
+          p_search?: string | null;
+          p_page?: number;
+          p_page_size?: number;
+        };
+        Returns: {
+          id: string;
+          name: string;
+          slug: string;
+          plan_key: string | null;
+          plan_name: string | null;
+          status: SubscriptionStatus | null;
+          trial_ends_at: string | null;
+          starts_at: string | null;
+          created_at: string;
+          total_count: number;
+        }[];
+      };
+      superadmin_get_org_commercial: {
+        Args: { p_organization_id: string };
+        Returns: Json;
+      };
+      superadmin_change_plan: {
+        Args: {
+          p_organization_id: string;
+          p_plan_key: string;
+          p_reason?: string | null;
+          p_allow_legacy?: boolean;
+          p_trial_days?: number | null;
+        };
+        Returns: Json;
+      };
+      superadmin_start_trial: {
+        Args: {
+          p_organization_id: string;
+          p_trial_days?: number | null;
+          p_reason?: string | null;
+        };
+        Returns: Json;
+      };
+      superadmin_end_trial: {
+        Args: {
+          p_organization_id: string;
+          p_plan_key?: string | null;
+          p_reason?: string | null;
+        };
+        Returns: Json;
+      };
+      superadmin_set_feature_override: {
+        Args: {
+          p_organization_id: string;
+          p_feature_key: string;
+          p_enabled?: boolean;
+          p_limit_value?: number | null;
+          p_reason?: string | null;
+          p_starts_at?: string | null;
+          p_ends_at?: string | null;
+        };
+        Returns: Json;
+      };
+      superadmin_clear_feature_override: {
+        Args: {
+          p_organization_id: string;
+          p_feature_key: string;
+          p_reason?: string | null;
+        };
+        Returns: Json;
       };
       handle_new_user_signup: {
         Args: {

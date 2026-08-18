@@ -1,11 +1,22 @@
 import { cache } from 'react';
 import {
   getPermissionsForRole,
+  parseSuperadminEmails,
   type Permission,
   type Role,
   type SessionContext,
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
+
+async function resolveIsPlatformAdmin(params: {
+  email: string | undefined;
+  rpc: () => Promise<boolean>;
+}): Promise<boolean> {
+  const allow = parseSuperadminEmails(process.env.SUPERADMIN_EMAILS);
+  const email = params.email?.trim().toLowerCase() ?? '';
+  if (email && allow.includes(email)) return true;
+  return params.rpc();
+}
 
 /**
  * Request-scoped session loader. Deduplicates auth.getUser + profile + memberships
@@ -19,6 +30,15 @@ export const getSessionContext = cache(async (): Promise<SessionContext | null> 
   } = await supabase.auth.getUser();
 
   if (!user) return null;
+
+  const isPlatformAdmin = await resolveIsPlatformAdmin({
+    email: user.email,
+    rpc: async () => {
+      const { data, error } = await supabase.rpc('is_platform_admin');
+      if (error) return false;
+      return data === true;
+    },
+  });
 
   const { data: profile } = await supabase
     .from('profiles')
@@ -68,6 +88,7 @@ export const getSessionContext = cache(async (): Promise<SessionContext | null> 
         deleted_at: profile.deleted_at,
       },
       ownerId: null,
+      isPlatformAdmin,
     };
   }
 
@@ -94,5 +115,6 @@ export const getSessionContext = cache(async (): Promise<SessionContext | null> 
       deleted_at: profile.deleted_at,
     },
     ownerId: portalOwnerId,
+    isPlatformAdmin,
   };
 });

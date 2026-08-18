@@ -6,6 +6,9 @@ import {
   type SessionContext,
 } from '@sincvete/shared';
 import { getSessionContext } from '@/lib/session';
+import { createServerClient } from '@/lib/supabase/server';
+import { ensurePlatformAdminRegistration } from '@/lib/superadmin';
+
 export class PermissionError extends Error {
   constructor(message = 'No tenés permisos para esta acción') {
     super(message);
@@ -36,6 +39,19 @@ export async function requirePermission(
   if (!hasPermission(session.permissions, permission)) {
     throw new PermissionError();
   }
+  return session;
+}
+
+export async function requireSuperadmin(): Promise<SessionContext> {
+  const session = await requireSession();
+  if (!session.isPlatformAdmin) {
+    throw new PermissionError('No tenés acceso de Superadmin');
+  }
+  const supabase = await createServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  await ensurePlatformAdminRegistration(session.userId, user?.email ?? null);
   return session;
 }
 

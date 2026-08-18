@@ -35,6 +35,7 @@ export default async function ClinicLayout({ children }: { children: React.React
       branches={branches}
       activeBranchId={session.branchId}
       unreadNotifications={unreadNotifications}
+      isPlatformAdmin={session.isPlatformAdmin}
     >
       {children}
     </AppShell>

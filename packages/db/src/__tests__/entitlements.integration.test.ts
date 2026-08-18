@@ -266,4 +266,20 @@ describe.skipIf(!canRun)('@entitlements Phase 1 commercial model', () => {
 
     await clientB.auth.signOut();
   });
+
+  it('regular clinic user cannot list organizations as superadmin', async () => {
+    if (!catalogReady) return;
+
+    const clientA = createClient<Database>(SUPABASE_URL!, ANON_KEY!);
+    await clientA.auth.signInWithPassword({ email: emailA, password });
+
+    const { error } = await clientA.rpc('superadmin_list_organizations', {
+      p_search: null,
+      p_page: 1,
+      p_page_size: 10,
+    });
+    expect(error).toBeTruthy();
+
+    await clientA.auth.signOut();
+  });
 });
