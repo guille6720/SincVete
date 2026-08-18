@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { formatBillingEventLabel, formatMeteredUsage, quotaUsageLabel } from '@sincvete/shared';
 import {
   cancelSuperadminCheckoutIntents,
+  replaySuperadminBillingEvent,
+  skipSuperadminBillingEvent,
   type SuperadminAddonEndingSoonRow,
   type SuperadminOpenCheckoutIntentRow,
   type SuperadminOrgOverSeatsRow,
@@ -57,6 +59,26 @@ export function SuperadminCommercialQueues({
     const result = await run(() => cancelSuperadminCheckoutIntents(form));
     if (!result) return;
     setMessage(result.success ? 'Pago en curso liberado' : result.error ?? 'No se pudo liberar');
+    if (result.success) router.refresh();
+  }
+
+  async function replayEvent(eventId: string) {
+    setMessage(null);
+    const form = new FormData();
+    form.set('eventId', eventId);
+    const result = await run(() => replaySuperadminBillingEvent(form));
+    if (!result) return;
+    setMessage(result.success ? 'Webhook reaplicado' : result.error ?? 'No se pudo reaplicar');
+    if (result.success) router.refresh();
+  }
+
+  async function skipEvent(eventId: string) {
+    setMessage(null);
+    const form = new FormData();
+    form.set('eventId', eventId);
+    const result = await run(() => skipSuperadminBillingEvent(form));
+    if (!result) return;
+    setMessage(result.success ? 'Webhook omitido' : result.error ?? 'No se pudo omitir');
     if (result.success) router.refresh();
   }
 
@@ -127,8 +149,8 @@ export function SuperadminCommercialQueues({
           <CardHeader>
             <CardTitle className="text-lg">Webhooks pendientes</CardTitle>
             <CardDescription>
-              Eventos de Mercado Pago / Stripe reclamados que todavía no se aplicaron. Un reembolso
-              o cobro puede estar acá si el apply falló.
+              Eventos reclamados que todavía no se aplicaron. Reaplicá el mismo apply o omite si el
+              cobro no va a completar. Omitir no cambia el plan.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -139,6 +161,7 @@ export function SuperadminCommercialQueues({
                   <th className="py-2">Evento</th>
                   <th className="py-2">Proveedor</th>
                   <th className="py-2">Cuando</th>
+                  <th className="py-2" />
                 </tr>
               </thead>
               <tbody>
@@ -170,6 +193,28 @@ export function SuperadminCommercialQueues({
                     </td>
                     <td className="py-2 text-muted-foreground">
                       {new Date(event.processedAt).toLocaleString('es-AR')}
+                    </td>
+                    <td className="py-2 text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={pending}
+                          onClick={() => void replayEvent(event.id)}
+                        >
+                          Reaplicar
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={pending}
+                          onClick={() => void skipEvent(event.id)}
+                        >
+                          Omitir
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -3733,6 +3733,26 @@ export interface Database {
         };
         Returns: Json;
       };
+      superadmin_get_unapplied_billing_event: {
+        Args: {
+          p_event_id: string;
+        };
+        Returns: {
+          id: string;
+          organization_id: string | null;
+          provider: string;
+          event_id: string;
+          event_type: string | null;
+          payload: Json;
+          processed_at: string;
+        }[];
+      };
+      superadmin_skip_billing_event: {
+        Args: {
+          p_event_id: string;
+        };
+        Returns: Json;
+      };
       handle_new_user_signup: {
         Args: {
           p_full_name: string;

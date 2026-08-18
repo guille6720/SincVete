@@ -12,6 +12,9 @@ import {
   parsePlanPricing,
   formatBillingEventLabel,
   isBillingEventAlreadyApplied,
+  stripeEventFromBillingPayload,
+  mercadoPagoPaymentIdFromBillingPayload,
+  mercadoPagoTopicFromBillingPayload,
   shouldReleaseCheckoutIntent,
   shouldReversePaidGrant,
   isFullProviderRefund,
@@ -92,6 +95,27 @@ describe('plan pricing catalog', () => {
     expect(isBillingEventAlreadyApplied(null)).toBe(false);
     expect(isBillingEventAlreadyApplied(undefined)).toBe(false);
     expect(isBillingEventAlreadyApplied('2026-08-18T12:00:00.000Z')).toBe(true);
+  });
+
+  it('reads stored webhook payloads for Superadmin replay', () => {
+    expect(stripeEventFromBillingPayload(null)).toBeNull();
+    expect(stripeEventFromBillingPayload({ id: 'evt_1' })).toBeNull();
+    expect(
+      stripeEventFromBillingPayload({
+        id: 'evt_1',
+        type: 'checkout.session.completed',
+        data: { object: { id: 'cs_1', payment_status: 'paid' } },
+      })
+    ).toEqual({
+      id: 'evt_1',
+      type: 'checkout.session.completed',
+      data: { object: { id: 'cs_1', payment_status: 'paid' } },
+    });
+    expect(mercadoPagoPaymentIdFromBillingPayload({ status: 'approved' })).toBeNull();
+    expect(mercadoPagoPaymentIdFromBillingPayload({ paymentId: '12345', type: 'payment' })).toBe(
+      '12345'
+    );
+    expect(mercadoPagoTopicFromBillingPayload({ paymentId: '12345' })).toBe('payment');
   });
 
   it('releases checkout lock on rejected or expired payments, not pending', () => {

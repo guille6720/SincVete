@@ -170,6 +170,49 @@ export function shouldReleaseCheckoutIntent(status: string | null | undefined): 
   );
 }
 
+export type StoredStripeBillingEvent = {
+  id?: string;
+  type: string;
+  data?: { object?: Record<string, unknown> };
+};
+
+/** Stored Stripe webhook body. Missing `type` cannot be replayed. */
+export function stripeEventFromBillingPayload(payload: unknown): StoredStripeBillingEvent | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  const row = payload as Record<string, unknown>;
+  const type = typeof row.type === 'string' && row.type.trim() ? row.type.trim() : '';
+  if (!type) return null;
+  const nested =
+    row.data && typeof row.data === 'object' && !Array.isArray(row.data)
+      ? (row.data as Record<string, unknown>)
+      : null;
+  const object =
+    nested?.object && typeof nested.object === 'object' && !Array.isArray(nested.object)
+      ? (nested.object as Record<string, unknown>)
+      : {};
+  return {
+    id: typeof row.id === 'string' ? row.id : undefined,
+    type,
+    data: { object },
+  };
+}
+
+/** Mercado Pago stores `{ paymentId, status, type }`, not the payment body. */
+export function mercadoPagoPaymentIdFromBillingPayload(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  const row = payload as Record<string, unknown>;
+  const paymentId = row.paymentId ?? row.payment_id;
+  if (typeof paymentId === 'string' && paymentId.trim()) return paymentId.trim();
+  if (typeof paymentId === 'number' && Number.isFinite(paymentId)) return String(paymentId);
+  return null;
+}
+
+export function mercadoPagoTopicFromBillingPayload(payload: unknown): string {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return 'payment';
+  const row = payload as Record<string, unknown>;
+  return typeof row.type === 'string' && row.type.trim() ? row.type.trim() : 'payment';
+}
+
 export function formatBillingEventLabel(eventType: string | null | undefined): string {
   const type = (eventType ?? '').toLowerCase();
   if (!type) return 'Evento de pago';

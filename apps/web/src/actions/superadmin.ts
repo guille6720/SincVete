@@ -33,6 +33,7 @@ import {
 import type { Json } from '@sincvete/db';
 import { PermissionError, requireSuperadmin } from '@/lib/permissions';
 import { createServerClient } from '@/lib/supabase/server';
+import { replayClaimedBillingEvent } from '@/lib/billing/dispatch';
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (error instanceof PermissionError) {
@@ -850,6 +851,59 @@ export async function cancelSuperadminCheckoutIntents(formData: FormData): Promi
     });
     if (error) return { success: false, error: error.message };
     revalidateOrg(organizationId);
+    return { success: true };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+function revalidateBillingEvent(organizationId: string | null | undefined) {
+  if (organizationId) {
+    revalidateOrg(organizationId);
+    return;
+  }
+  revalidatePath('/superadmin');
+}
+
+export async function replaySuperadminBillingEvent(formData: FormData): Promise<ActionResult> {
+  try {
+    await requireSuperadmin();
+    const eventId = String(formData.get('eventId') ?? '').trim();
+    if (!eventId) return { success: false, error: 'Evento inválido' };
+    const supabase = await createServerClient();
+    const { data, error } = await supabase.rpc('superadmin_get_unapplied_billing_event', {
+      p_event_id: eventId,
+    });
+    if (error) return { success: false, error: error.message };
+    const row = data?.[0];
+    if (!row) return { success: false, error: 'El evento ya se aplicó o no existe' };
+    await replayClaimedBillingEvent({
+      eventRowId: row.id,
+      provider: row.provider,
+      payload: row.payload,
+    });
+    revalidateBillingEvent(row.organization_id);
+    return { success: true };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function skipSuperadminBillingEvent(formData: FormData): Promise<ActionResult> {
+  try {
+    await requireSuperadmin();
+    const eventId = String(formData.get('eventId') ?? '').trim();
+    if (!eventId) return { success: false, error: 'Evento inválido' };
+    const supabase = await createServerClient();
+    const { data, error } = await supabase.rpc('superadmin_skip_billing_event', {
+      p_event_id: eventId,
+    });
+    if (error) return { success: false, error: error.message };
+    const row = asObject(data);
+    if ((asNumber(row?.skipped) ?? 0) < 1) {
+      return { success: false, error: 'El evento ya se aplicó o no existe' };
+    }
+    revalidateBillingEvent(asString(row?.organization_id));
     return { success: true };
   } catch (error) {
     return actionError(error);

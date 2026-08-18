@@ -10,9 +10,11 @@ import {
   clearOrganizationFeatureOverride,
   endOrganizationTrial,
   grantOrganizationAddon,
+  replaySuperadminBillingEvent,
   revokeOrganizationAddon,
   reverseSuperadminPaidGrant,
   setOrganizationFeatureOverride,
+  skipSuperadminBillingEvent,
   startOrganizationTrial,
 } from '@/actions/superadmin';
 import { Badge } from '@/components/ui/badge';
@@ -611,6 +613,7 @@ export function SuperadminOrgDetail({
                   <th className="py-2">Proveedor</th>
                   <th className="py-2">Estado</th>
                   <th className="py-2">Cuando</th>
+                  <th className="py-2" />
                 </tr>
               </thead>
               <tbody>
@@ -627,6 +630,38 @@ export function SuperadminOrgDetail({
                     </td>
                     <td className="py-2 text-muted-foreground">
                       {new Date(event.processedAt).toLocaleString('es-AR')}
+                    </td>
+                    <td className="py-2 text-right">
+                      {event.appliedAt ? null : (
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={pending}
+                            onClick={() => {
+                              const form = new FormData();
+                              form.set('eventId', event.id);
+                              void handle(() => replaySuperadminBillingEvent(form));
+                            }}
+                          >
+                            Reaplicar
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={pending}
+                            onClick={() => {
+                              const form = new FormData();
+                              form.set('eventId', event.id);
+                              void handle(() => skipSuperadminBillingEvent(form));
+                            }}
+                          >
+                            Omitir
+                          </Button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
