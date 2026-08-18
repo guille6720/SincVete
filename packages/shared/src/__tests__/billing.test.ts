@@ -17,6 +17,7 @@ import {
   mercadoPagoTopicFromBillingPayload,
   shouldReleaseCheckoutIntent,
   shouldReversePaidGrant,
+  resolveClinicCheckoutReturn,
   isFullProviderRefund,
   collectProviderPaymentIds,
   refundCheckoutTargetFromMetadata,
@@ -129,6 +130,19 @@ describe('plan pricing catalog', () => {
     expect(shouldReleaseCheckoutIntent('in_process')).toBe(false);
     expect(shouldReleaseCheckoutIntent('approved')).toBe(false);
     expect(shouldReversePaidGrant('rejected')).toBe(false);
+  });
+
+  it('clinic return URL follows open checkout, not the query string alone', () => {
+    expect(resolveClinicCheckoutReturn({ query: 'success', openIntentCount: 1 })).toBe(
+      'waiting_success'
+    );
+    expect(resolveClinicCheckoutReturn({ query: 'pending', openIntentCount: 1 })).toBe(
+      'waiting_pending'
+    );
+    expect(resolveClinicCheckoutReturn({ query: 'success', openIntentCount: 0 })).toBe('cleared');
+    expect(resolveClinicCheckoutReturn({ query: 'pending', openIntentCount: 0 })).toBe('cleared');
+    expect(resolveClinicCheckoutReturn({ query: 'cancel', openIntentCount: 1 })).toBe('cancelled');
+    expect(resolveClinicCheckoutReturn({ query: null, openIntentCount: 1 })).toBe('none');
   });
 
   it('reverses an applied grant only on refund or chargeback', () => {

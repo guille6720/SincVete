@@ -14,7 +14,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { canCheckoutPlan, formatArsAmount, formatBillingEventLabel, formatMeteredUsage, isQuotaNearLimit, canCheckoutAddonOffer } from '@sincvete/shared';
+import { canCheckoutPlan, formatArsAmount, formatBillingEventLabel, formatMeteredUsage, isQuotaNearLimit, canCheckoutAddonOffer, resolveClinicCheckoutReturn } from '@sincvete/shared';
 import { usePendingAction } from '@/lib/hooks/use-pending-action';
 
 function statusLabel(status: PlanBillingState['current']['status']) {
@@ -120,21 +120,32 @@ export function PlanBillingPanel({
   const addonIntentKeys = new Set(
     state.checkoutIntents.filter((item) => item.kind === 'addon').map((item) => item.targetKey)
   );
-  const hideCancelIntent = checkoutBanner === 'success' || checkoutBanner === 'pending';
+  const checkoutReturn = resolveClinicCheckoutReturn({
+    query: checkoutBanner,
+    openIntentCount: state.checkoutIntents.length,
+  });
+  const hideCancelIntent =
+    checkoutReturn === 'waiting_success' || checkoutReturn === 'waiting_pending';
 
   return (
     <div className="space-y-6">
-      {checkoutBanner === 'success' ? (
+      {checkoutReturn === 'waiting_success' ? (
         <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
           Pago recibido. El plan o extra se actualiza cuando el proveedor confirma el webhook.
         </p>
       ) : null}
-      {checkoutBanner === 'cancel' ? (
+      {checkoutReturn === 'cancelled' ? (
         <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm">Checkout cancelado.</p>
       ) : null}
-      {checkoutBanner === 'pending' ? (
+      {checkoutReturn === 'waiting_pending' ? (
         <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
           Pago pendiente. Te avisamos cuando Mercado Pago lo acredite.
+        </p>
+      ) : null}
+      {checkoutReturn === 'cleared' ? (
+        <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+          El pago en curso ya no está activo. Si el cobro se acreditó, el plan ya figura abajo; si no,
+          podés volver a pagar.
         </p>
       ) : null}
       {state.checkoutIntents.length > 0 ? (

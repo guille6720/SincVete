@@ -170,6 +170,30 @@ export function shouldReleaseCheckoutIntent(status: string | null | undefined): 
   );
 }
 
+export type ClinicCheckoutReturnState =
+  | 'none'
+  | 'cancelled'
+  | 'waiting_success'
+  | 'waiting_pending'
+  | 'cleared';
+
+/**
+ * Return-URL banners must follow the open checkout, not the query string alone.
+ * Superadmin skip / apply / expire clear intents while ?checkout=success can still be in the URL.
+ */
+export function resolveClinicCheckoutReturn(params: {
+  query?: string | null;
+  openIntentCount: number;
+}): ClinicCheckoutReturnState {
+  const query = (params.query ?? '').trim();
+  if (query === 'cancel') return 'cancelled';
+  if (query !== 'success' && query !== 'pending') return 'none';
+  if (params.openIntentCount > 0) {
+    return query === 'success' ? 'waiting_success' : 'waiting_pending';
+  }
+  return 'cleared';
+}
+
 export type StoredStripeBillingEvent = {
   id?: string;
   type: string;
