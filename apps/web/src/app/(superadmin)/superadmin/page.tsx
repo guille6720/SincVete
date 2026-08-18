@@ -1,8 +1,11 @@
 import { redirect } from 'next/navigation';
 import {
   getSuperadminCommercialSummary,
+  listSuperadminAddonsEndingSoon,
   listSuperadminOpenCheckoutIntents,
   listSuperadminOrganizations,
+  listSuperadminOrgsOverSeats,
+  listSuperadminPlansEndingSoon,
   listSuperadminUnappliedBillingEvents,
 } from '@/actions/superadmin';
 import { SuperadminOrgList } from '@/components/superadmin/org-list';
@@ -22,18 +25,22 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
   const search = params.search?.trim() ?? '';
   const planKey = params.plan?.trim() ?? '';
   const status = params.status?.trim() ?? '';
-  const [data, summary, checkoutIntents, pendingEvents] = await Promise.all([
-    listSuperadminOrganizations({
-      page,
-      pageSize: 25,
-      search: search || undefined,
-      planKey: planKey || undefined,
-      status: status || undefined,
-    }),
-    getSuperadminCommercialSummary(),
-    listSuperadminOpenCheckoutIntents(),
-    listSuperadminUnappliedBillingEvents(),
-  ]);
+  const [data, summary, checkoutIntents, pendingEvents, plansEndingSoon, addonsEndingSoon, orgsOverSeats] =
+    await Promise.all([
+      listSuperadminOrganizations({
+        page,
+        pageSize: 25,
+        search: search || undefined,
+        planKey: planKey || undefined,
+        status: status || undefined,
+      }),
+      getSuperadminCommercialSummary(),
+      listSuperadminOpenCheckoutIntents(),
+      listSuperadminUnappliedBillingEvents(),
+      listSuperadminPlansEndingSoon(),
+      listSuperadminAddonsEndingSoon(),
+      listSuperadminOrgsOverSeats(),
+    ]);
 
   return (
     <div className="space-y-6">
@@ -45,7 +52,13 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
         </p>
       </div>
       <SuperadminCommercialOps summary={summary} />
-      <SuperadminCommercialQueues checkoutIntents={checkoutIntents} pendingEvents={pendingEvents} />
+      <SuperadminCommercialQueues
+        checkoutIntents={checkoutIntents}
+        pendingEvents={pendingEvents}
+        plansEndingSoon={plansEndingSoon}
+        addonsEndingSoon={addonsEndingSoon}
+        orgsOverSeats={orgsOverSeats}
+      />
       <SuperadminOrgList
         data={data}
         initialSearch={search}

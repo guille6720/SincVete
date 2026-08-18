@@ -892,6 +892,92 @@ export async function listSuperadminUnappliedBillingEvents(): Promise<
   }));
 }
 
+export type SuperadminPlanEndingSoonRow = {
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+  planKey: string;
+  planName: string;
+  status: string;
+  endsAt: string;
+};
+
+export async function listSuperadminPlansEndingSoon(): Promise<SuperadminPlanEndingSoonRow[]> {
+  await requireSuperadmin();
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc('superadmin_list_plans_ending_soon', {
+    p_remind_days: COMMERCIAL_TRIAL_REMIND_DAYS,
+    p_limit: 50,
+  });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({
+    organizationId: row.organization_id,
+    organizationName: row.organization_name,
+    organizationSlug: row.organization_slug,
+    planKey: row.plan_key,
+    planName: row.plan_name,
+    status: row.status,
+    endsAt: row.ends_at,
+  }));
+}
+
+export type SuperadminAddonEndingSoonRow = {
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+  addonKey: string;
+  addonName: string;
+  endsAt: string;
+};
+
+export async function listSuperadminAddonsEndingSoon(): Promise<SuperadminAddonEndingSoonRow[]> {
+  await requireSuperadmin();
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc('superadmin_list_addons_ending_soon', {
+    p_remind_days: COMMERCIAL_TRIAL_REMIND_DAYS,
+    p_limit: 50,
+  });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({
+    organizationId: row.organization_id,
+    organizationName: row.organization_name,
+    organizationSlug: row.organization_slug,
+    addonKey: row.addon_key,
+    addonName: row.addon_name,
+    endsAt: row.ends_at,
+  }));
+}
+
+export type SuperadminOrgOverSeatsRow = {
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+  planKey: string;
+  planName: string;
+  featureKey: string;
+  used: number;
+  limitValue: number;
+};
+
+export async function listSuperadminOrgsOverSeats(): Promise<SuperadminOrgOverSeatsRow[]> {
+  await requireSuperadmin();
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc('superadmin_list_orgs_over_seats', {
+    p_limit: 50,
+  });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({
+    organizationId: row.organization_id,
+    organizationName: row.organization_name,
+    organizationSlug: row.organization_slug,
+    planKey: row.plan_key,
+    planName: row.plan_name,
+    featureKey: row.feature_key,
+    used: Number(row.used),
+    limitValue: Number(row.limit_value),
+  }));
+}
+
 export async function reverseSuperadminPaidGrant(formData: FormData): Promise<ActionResult> {
   try {
     await requireSuperadmin();

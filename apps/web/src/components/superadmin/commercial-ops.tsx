@@ -36,10 +36,10 @@ export function SuperadminCommercialOps({ summary }: { summary: SuperadminCommer
     { label: 'Pago pendiente', value: summary.pastDue },
     { label: 'Vencidas', value: summary.expired },
     { label: 'Canceladas', value: summary.cancelled },
-    { label: 'Planes por vencer', value: summary.plansEndingSoon },
+    { label: 'Planes por vencer', value: summary.plansEndingSoon, href: '#planes-por-vencer' },
     { label: 'Extras activos', value: summary.addonsActive },
-    { label: 'Extras por vencer', value: summary.addonsEndingSoon },
-    { label: 'Sobre cupos', value: summary.orgsOverSeats },
+    { label: 'Extras por vencer', value: summary.addonsEndingSoon, href: '#extras-por-vencer' },
+    { label: 'Sobre cupos', value: summary.orgsOverSeats, href: '#sobre-cupos' },
     { label: 'Webhooks pendientes', value: summary.billingEventsPending, href: '#webhooks-pendientes' },
     { label: 'Pagos en curso', value: summary.checkoutIntentsOpen, href: '#pagos-en-curso' },
   ];

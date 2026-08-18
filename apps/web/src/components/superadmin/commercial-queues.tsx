@@ -1,10 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { formatBillingEventLabel } from '@sincvete/shared';
+import { formatBillingEventLabel, formatMeteredUsage, SEAT_USAGE_LABELS } from '@sincvete/shared';
 import {
   cancelSuperadminCheckoutIntents,
+  type SuperadminAddonEndingSoonRow,
   type SuperadminOpenCheckoutIntentRow,
+  type SuperadminOrgOverSeatsRow,
+  type SuperadminPlanEndingSoonRow,
   type SuperadminUnappliedBillingEvent,
 } from '@/actions/superadmin';
 import { Badge } from '@/components/ui/badge';
@@ -23,15 +26,27 @@ function orgLabel(name: string | null, slug: string | null) {
 export function SuperadminCommercialQueues({
   checkoutIntents,
   pendingEvents,
+  plansEndingSoon,
+  addonsEndingSoon,
+  orgsOverSeats,
 }: {
   checkoutIntents: SuperadminOpenCheckoutIntentRow[];
   pendingEvents: SuperadminUnappliedBillingEvent[];
+  plansEndingSoon: SuperadminPlanEndingSoonRow[];
+  addonsEndingSoon: SuperadminAddonEndingSoonRow[];
+  orgsOverSeats: SuperadminOrgOverSeatsRow[];
 }) {
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
   const [pending, run] = usePendingAction();
 
-  if (checkoutIntents.length === 0 && pendingEvents.length === 0) {
+  if (
+    checkoutIntents.length === 0 &&
+    pendingEvents.length === 0 &&
+    plansEndingSoon.length === 0 &&
+    addonsEndingSoon.length === 0 &&
+    orgsOverSeats.length === 0
+  ) {
     return null;
   }
 
@@ -155,6 +170,145 @@ export function SuperadminCommercialQueues({
                     </td>
                     <td className="py-2 text-muted-foreground">
                       {new Date(event.processedAt).toLocaleString('es-AR')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {plansEndingSoon.length > 0 ? (
+        <Card id="planes-por-vencer">
+          <CardHeader>
+            <CardTitle className="text-lg">Planes por vencer</CardTitle>
+            <CardDescription>
+              Planes públicos en la ventana de aviso. Los días son anticipación, no la duración del
+              plan.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <table className="w-full text-sm">
+              <thead className="text-left text-muted-foreground">
+                <tr>
+                  <th className="py-2">Clínica</th>
+                  <th className="py-2">Plan</th>
+                  <th className="py-2">Estado</th>
+                  <th className="py-2">Vence</th>
+                </tr>
+              </thead>
+              <tbody>
+                {plansEndingSoon.map((row) => (
+                  <tr key={row.organizationId} className="border-t">
+                    <td className="py-2">
+                      <Link
+                        href={`/superadmin/organizaciones/${row.organizationId}`}
+                        className="font-medium hover:underline"
+                      >
+                        {row.organizationName}
+                      </Link>
+                      <div className="text-xs text-muted-foreground">{row.organizationSlug}</div>
+                    </td>
+                    <td className="py-2">{row.planName}</td>
+                    <td className="py-2">
+                      <Badge variant={row.status === 'past_due' ? 'destructive' : 'warning'}>
+                        {row.status}
+                      </Badge>
+                    </td>
+                    <td className="py-2 text-muted-foreground">
+                      {new Date(row.endsAt).toLocaleString('es-AR')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {addonsEndingSoon.length > 0 ? (
+        <Card id="extras-por-vencer">
+          <CardHeader>
+            <CardTitle className="text-lg">Extras por vencer</CardTitle>
+            <CardDescription>
+              Add-ons activos en la misma ventana de aviso. El extra deja de sumar features al
+              vencer.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <table className="w-full text-sm">
+              <thead className="text-left text-muted-foreground">
+                <tr>
+                  <th className="py-2">Clínica</th>
+                  <th className="py-2">Extra</th>
+                  <th className="py-2">Vence</th>
+                </tr>
+              </thead>
+              <tbody>
+                {addonsEndingSoon.map((row) => (
+                  <tr key={`${row.organizationId}:${row.addonKey}`} className="border-t">
+                    <td className="py-2">
+                      <Link
+                        href={`/superadmin/organizaciones/${row.organizationId}`}
+                        className="font-medium hover:underline"
+                      >
+                        {row.organizationName}
+                      </Link>
+                      <div className="text-xs text-muted-foreground">{row.organizationSlug}</div>
+                    </td>
+                    <td className="py-2">{row.addonName}</td>
+                    <td className="py-2 text-muted-foreground">
+                      {new Date(row.endsAt).toLocaleString('es-AR')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {orgsOverSeats.length > 0 ? (
+        <Card id="sobre-cupos">
+          <CardHeader>
+            <CardTitle className="text-lg">Sobre cupos</CardTitle>
+            <CardDescription>
+              Clínicas cuya ocupación actual supera un cupo finito del plan. Legacy no entra.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <table className="w-full text-sm">
+              <thead className="text-left text-muted-foreground">
+                <tr>
+                  <th className="py-2">Clínica</th>
+                  <th className="py-2">Plan</th>
+                  <th className="py-2">Cupo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orgsOverSeats.map((row) => (
+                  <tr key={`${row.organizationId}:${row.featureKey}`} className="border-t">
+                    <td className="py-2">
+                      <Link
+                        href={`/superadmin/organizaciones/${row.organizationId}`}
+                        className="font-medium hover:underline"
+                      >
+                        {row.organizationName}
+                      </Link>
+                      <div className="text-xs text-muted-foreground">{row.organizationSlug}</div>
+                    </td>
+                    <td className="py-2">{row.planName}</td>
+                    <td className="py-2">
+                      {formatMeteredUsage({
+                        featureKey: row.featureKey,
+                        label: SEAT_USAGE_LABELS[row.featureKey] ?? row.featureKey,
+                        used: row.used,
+                        limit: row.limitValue,
+                      })}
+                      <div className="text-xs text-muted-foreground">
+                        {SEAT_USAGE_LABELS[row.featureKey] ?? row.featureKey}
+                      </div>
                     </td>
                   </tr>
                 ))}

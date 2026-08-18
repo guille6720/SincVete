@@ -3673,6 +3673,50 @@ export interface Database {
           processed_at: string;
         }[];
       };
+      superadmin_list_plans_ending_soon: {
+        Args: {
+          p_remind_days?: number;
+          p_limit?: number;
+        };
+        Returns: {
+          organization_id: string;
+          organization_name: string;
+          organization_slug: string;
+          plan_key: string;
+          plan_name: string;
+          status: string;
+          ends_at: string;
+        }[];
+      };
+      superadmin_list_addons_ending_soon: {
+        Args: {
+          p_remind_days?: number;
+          p_limit?: number;
+        };
+        Returns: {
+          organization_id: string;
+          organization_name: string;
+          organization_slug: string;
+          addon_key: string;
+          addon_name: string;
+          ends_at: string;
+        }[];
+      };
+      superadmin_list_orgs_over_seats: {
+        Args: {
+          p_limit?: number;
+        };
+        Returns: {
+          organization_id: string;
+          organization_name: string;
+          organization_slug: string;
+          plan_key: string;
+          plan_name: string;
+          feature_key: string;
+          used: number;
+          limit_value: number;
+        }[];
+      };
       superadmin_cancel_checkout_intents: {
         Args: {
           p_organization_id: string;
