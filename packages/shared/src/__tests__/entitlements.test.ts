@@ -908,6 +908,25 @@ describe('commercial lifecycle helpers', () => {
         now,
       })?.kind
     ).toBe('plan_ending');
+    expect(
+      resolveClinicCommercialBanner({
+        hasOpenSubscription: true,
+        status: 'active',
+        planKey: 'pro',
+        endsAt: '2026-09-18T12:00:00.000Z',
+        seats: [
+          { featureKey: 'users.max', label: 'Usuarios', used: 8, limit: 10 },
+          { featureKey: 'ai.monthly_requests', label: 'IA clínica', used: 120, limit: 100 },
+        ],
+        now,
+      })
+    ).toMatchObject({
+      kind: 'quota_over',
+      quotaLabel: 'IA clínica',
+      quotaUsed: 120,
+      quotaLimit: 100,
+      quotaFeatureKey: 'ai.monthly_requests',
+    });
   });
 
   it('reuses the same checkout and blocks a second plan payment', () => {

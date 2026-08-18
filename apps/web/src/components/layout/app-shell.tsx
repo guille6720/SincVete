@@ -35,7 +35,7 @@ import { signOut } from '@/actions/auth';
 import { BranchSelector } from '@/components/layout/branch-selector';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { APP_NAME, ROLE_LABELS, isClinicPathEntitled, type Role } from '@sincvete/shared';
+import { APP_NAME, ROLE_LABELS, formatMeteredUsage, isClinicPathEntitled, type Role } from '@sincvete/shared';
 import { BrandLogo } from '@/components/brand/syncvete-logo';
 import { ThemeControls } from '@/components/theme/theme-controls';
 import { AppUpdateBanner } from '@/components/layout/app-update-banner';
@@ -77,6 +77,16 @@ const PREFETCH_HREFS = [
   '/consultas',
   '/farmacia',
 ] as const;
+
+function quotaUsageText(banner: ClinicCommercialBanner): string {
+  if (banner.quotaUsed == null || banner.quotaLimit == null) return '';
+  return ` (${formatMeteredUsage({
+    featureKey: banner.quotaFeatureKey ?? '',
+    label: banner.quotaLabel ?? '',
+    used: banner.quotaUsed,
+    limit: banner.quotaLimit,
+  })})`;
+}
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -361,10 +371,7 @@ export function AppShell({
                 <p>
                   Superaste el cupo
                   {billingBanner.quotaLabel ? ` de ${billingBanner.quotaLabel}` : ''}
-                  {billingBanner.quotaUsed != null && billingBanner.quotaLimit != null
-                    ? ` (${billingBanner.quotaUsed}/${billingBanner.quotaLimit})`
-                    : ''}
-                  . Subí de plan o reducí el uso.{' '}
+                  {quotaUsageText(billingBanner)}. Subí de plan o reducí el uso.{' '}
                   <Link href="/configuracion?tab=plan" className="font-medium underline underline-offset-4">
                     Ver plan
                   </Link>
@@ -374,10 +381,7 @@ export function AppShell({
                   El cupo
                   {billingBanner.quotaLabel ? ` de ${billingBanner.quotaLabel}` : ''} está cerca del
                   límite
-                  {billingBanner.quotaUsed != null && billingBanner.quotaLimit != null
-                    ? ` (${billingBanner.quotaUsed}/${billingBanner.quotaLimit})`
-                    : ''}
-                  .{' '}
+                  {quotaUsageText(billingBanner)}.{' '}
                   <Link href="/configuracion?tab=plan" className="font-medium underline underline-offset-4">
                     Ver plan
                   </Link>

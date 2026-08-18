@@ -430,13 +430,26 @@ export const getClinicCommercialShell = cache(
         return { entitledHrefs, banner: bannerWithAddons };
       }
       try {
-        const seats = await getSeatUsageMeters(organizationId);
+        const [seats, meters] = await Promise.all([
+          getSeatUsageMeters(organizationId).catch((error) => {
+            console.error('[entitlements] seat meters failed open', error);
+            return [];
+          }),
+          getMeteredUsageMeters(organizationId).catch((error) => {
+            console.error('[entitlements] metered meters failed open', error);
+            return [];
+          }),
+        ]);
         return {
           entitledHrefs,
-          banner: resolveClinicCommercialBanner({ ...bannerInput, addonsEnding, seats }),
+          banner: resolveClinicCommercialBanner({
+            ...bannerInput,
+            addonsEnding,
+            seats: [...seats, ...meters],
+          }),
         };
       } catch (error) {
-        console.error('[entitlements] seat banner failed open', error);
+        console.error('[entitlements] quota banner failed open', error);
         return { entitledHrefs, banner: null };
       }
     } catch (error) {

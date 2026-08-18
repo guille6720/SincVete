@@ -139,9 +139,11 @@ export type ClinicCommercialBanner = {
   quotaLabel?: string | null;
   quotaUsed?: number | null;
   quotaLimit?: number | null;
+  quotaFeatureKey?: string | null;
 };
 
 export type ClinicSeatMeter = {
+  featureKey?: string;
   label: string;
   used: number;
   limit: number | null;
@@ -164,7 +166,7 @@ export type ClinicCommercialBannerInput = {
 
 function pickQuotaBannerSeat(
   seats: ClinicSeatMeter[] | undefined
-): { over: boolean; label: string; used: number; limit: number } | null {
+): { over: boolean; label: string; used: number; limit: number; featureKey: string | null } | null {
   const finite = (seats ?? []).filter(
     (seat): seat is ClinicSeatMeter & { limit: number } =>
       seat.limit !== null && Number.isFinite(seat.limit) && seat.limit > 0
@@ -175,7 +177,13 @@ function pickQuotaBannerSeat(
       .sort((a, b) => b.used / b.limit - a.used / a.limit)[0];
   const over = ranked(finite.filter((seat) => seat.used > seat.limit));
   if (over) {
-    return { over: true, label: over.label, used: over.used, limit: over.limit };
+    return {
+      over: true,
+      label: over.label,
+      used: over.used,
+      limit: over.limit,
+      featureKey: over.featureKey ?? null,
+    };
   }
   const near = ranked(
     finite.filter(
@@ -184,7 +192,13 @@ function pickQuotaBannerSeat(
     )
   );
   if (near) {
-    return { over: false, label: near.label, used: near.used, limit: near.limit };
+    return {
+      over: false,
+      label: near.label,
+      used: near.used,
+      limit: near.limit,
+      featureKey: near.featureKey ?? null,
+    };
   }
   return null;
 }
@@ -192,8 +206,8 @@ function pickQuotaBannerSeat(
 /**
  * One sticky clinic banner. A checkout in flight beats renewal nags
  * so Mercado Pago one-time payers are not asked to charge twice.
- * Seat quota is last: Superadmin already lists over-seat clinics; the clinic
- * should see the same occupancy without opening the notification bell.
+ * Seat and metered quota are last. The cron already emits plan_quota; the clinic
+ * should see occupancy and monthly meters without opening the notification bell.
  * Lead time is COMMERCIAL_TRIAL_REMIND_DAYS, not plan/add-on duration.
  */
 export function resolveClinicCommercialBanner(
@@ -277,6 +291,7 @@ export function resolveClinicCommercialBanner(
         quotaLabel: seat.label,
         quotaUsed: seat.used,
         quotaLimit: seat.limit,
+        quotaFeatureKey: seat.featureKey,
       };
     }
   }
