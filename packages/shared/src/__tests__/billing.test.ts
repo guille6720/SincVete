@@ -18,6 +18,7 @@ import {
   shouldReleaseCheckoutIntent,
   shouldReversePaidGrant,
   resolveClinicCheckoutReturn,
+  shouldStripClinicCheckoutQuery,
   isFullProviderRefund,
   collectProviderPaymentIds,
   refundCheckoutTargetFromMetadata,
@@ -143,6 +144,11 @@ describe('plan pricing catalog', () => {
     expect(resolveClinicCheckoutReturn({ query: 'pending', openIntentCount: 0 })).toBe('cleared');
     expect(resolveClinicCheckoutReturn({ query: 'cancel', openIntentCount: 1 })).toBe('cancelled');
     expect(resolveClinicCheckoutReturn({ query: null, openIntentCount: 1 })).toBe('none');
+    expect(shouldStripClinicCheckoutQuery('cleared')).toBe(true);
+    expect(shouldStripClinicCheckoutQuery('cancelled')).toBe(true);
+    expect(shouldStripClinicCheckoutQuery('waiting_success')).toBe(false);
+    expect(shouldStripClinicCheckoutQuery('waiting_pending')).toBe(false);
+    expect(shouldStripClinicCheckoutQuery('none')).toBe(false);
   });
 
   it('reverses an applied grant only on refund or chargeback', () => {

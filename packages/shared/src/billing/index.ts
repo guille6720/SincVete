@@ -194,6 +194,11 @@ export function resolveClinicCheckoutReturn(params: {
   return 'cleared';
 }
 
+/** One-shot return banners. Waiting must keep the query so refresh still shows “confirming”. */
+export function shouldStripClinicCheckoutQuery(state: ClinicCheckoutReturnState): boolean {
+  return state === 'cleared' || state === 'cancelled';
+}
+
 export type StoredStripeBillingEvent = {
   id?: string;
   type: string;

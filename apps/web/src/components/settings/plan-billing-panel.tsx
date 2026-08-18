@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   cancelClinicAddon,
@@ -14,7 +14,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { canCheckoutPlan, formatArsAmount, formatBillingEventLabel, formatMeteredUsage, isQuotaNearLimit, canCheckoutAddonOffer, resolveClinicCheckoutReturn } from '@sincvete/shared';
+import { PLAN_BILLING_HREF, canCheckoutPlan, formatArsAmount, formatBillingEventLabel, formatMeteredUsage, isQuotaNearLimit, canCheckoutAddonOffer, resolveClinicCheckoutReturn, shouldStripClinicCheckoutQuery, type ClinicCheckoutReturnState } from '@sincvete/shared';
 import { usePendingAction } from '@/lib/hooks/use-pending-action';
 
 function statusLabel(status: PlanBillingState['current']['status']) {
@@ -36,6 +36,9 @@ export function PlanBillingPanel({
   const [message, setMessage] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [pending, run] = usePendingAction();
+  const [stickyCheckoutReturn, setStickyCheckoutReturn] = useState<ClinicCheckoutReturnState | null>(
+    null
+  );
   const router = useRouter();
 
   async function checkout(planKey: string, interval: 'monthly' | 'annual') {
@@ -120,12 +123,21 @@ export function PlanBillingPanel({
   const addonIntentKeys = new Set(
     state.checkoutIntents.filter((item) => item.kind === 'addon').map((item) => item.targetKey)
   );
-  const checkoutReturn = resolveClinicCheckoutReturn({
+  const resolvedCheckoutReturn = resolveClinicCheckoutReturn({
     query: checkoutBanner,
     openIntentCount: state.checkoutIntents.length,
   });
+  const checkoutReturn = stickyCheckoutReturn ?? resolvedCheckoutReturn;
   const hideCancelIntent =
     checkoutReturn === 'waiting_success' || checkoutReturn === 'waiting_pending';
+
+  useEffect(() => {
+    if (!shouldStripClinicCheckoutQuery(resolvedCheckoutReturn)) return;
+    setStickyCheckoutReturn((current) => current ?? resolvedCheckoutReturn);
+    if (checkoutBanner) {
+      router.replace(PLAN_BILLING_HREF, { scroll: false });
+    }
+  }, [checkoutBanner, resolvedCheckoutReturn, router]);
 
   return (
     <div className="space-y-6">
