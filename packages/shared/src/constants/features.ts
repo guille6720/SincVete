@@ -80,10 +80,7 @@ export function isLimitFeatureKey(value: string): value is LimitFeatureKey {
   return (LIMIT_FEATURE_KEYS as readonly string[]).includes(value);
 }
 
-/**
- * Optional nav mapping for Phase 2+ (hide/upgrade states).
- * Phase 1 must NOT aggressively hide modules — keep for forward compatibility.
- */
+/** Clinic sidebar href → commercial feature. Unmapped routes stay visible. */
 export const NAV_FEATURE_BY_HREF: Record<string, FeatureKey> = {
   '/dashboard': FEATURES.DASHBOARD,
   '/propietarios': FEATURES.OWNERS,

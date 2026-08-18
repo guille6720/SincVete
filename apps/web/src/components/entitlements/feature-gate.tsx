@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 import type { FeatureKey, OrganizationEntitlements } from '@sincvete/shared';
 import { canUseResolvedFeature } from '@sincvete/shared';
 
@@ -35,6 +36,12 @@ export function FeatureUnavailableNotice({
     <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-50">
       <p className="font-medium">{title}</p>
       <p className="mt-1 opacity-90">{description}</p>
+      <Link
+        href="/configuracion?tab=plan"
+        className="mt-3 inline-flex font-medium underline underline-offset-4"
+      >
+        Ver planes
+      </Link>
     </div>
   );
 }

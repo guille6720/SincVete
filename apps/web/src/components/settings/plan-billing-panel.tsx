@@ -94,6 +94,29 @@ export function PlanBillingPanel({
         </CardContent>
       </Card>
 
+      {state.usage.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Uso del mes</CardTitle>
+            <CardDescription>Cupos del plan actual. El contador se reinicia cada mes (UTC).</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {state.usage.map((meter) => {
+              const unit = meter.featureKey === 'storage.max_mb' ? ' MB' : '';
+              let value = 'No incluido';
+              if (meter.limit === null) value = `${meter.used}${unit} / ilimitado`;
+              else if (meter.limit > 0) value = `${meter.used} / ${meter.limit}${unit}`;
+              return (
+                <div key={meter.featureKey} className="flex items-center justify-between gap-3">
+                  <span>{meter.label}</span>
+                  <span className="text-muted-foreground">{value}</span>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      ) : null}
+
       {!state.configured ? (
         <p className="text-sm text-muted-foreground">
           Los pagos todavía no están configurados en este ambiente. Superadmin puede asignar el plan

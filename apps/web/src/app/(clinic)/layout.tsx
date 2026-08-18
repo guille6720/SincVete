@@ -3,6 +3,8 @@ import { getSessionContext } from '@/lib/session';
 import { countUnreadNotifications } from '@/actions/notifications';
 import { getUserBranches } from '@/actions/settings';
 import { AppShell } from '@/components/layout/app-shell';
+import { EntitlementRouteGate } from '@/components/entitlements/entitlement-route-gate';
+import { getClinicCommercialShell } from '@/lib/entitlements';
 
 export default async function ClinicLayout({ children }: { children: React.ReactNode }) {
   const session = await getSessionContext();
@@ -16,10 +18,11 @@ export default async function ClinicLayout({ children }: { children: React.React
     redirect(session.kind === 'portal' ? '/portal' : '/login');
   }
 
-  // Both loaders are React.cache'd — reuse across nested pages in this request.
-  const [branches, unreadNotifications] = await Promise.all([
+  // Session, branches, notifications and entitlements are React.cache'd per request.
+  const [branches, unreadNotifications, commercial] = await Promise.all([
     getUserBranches(),
     countUnreadNotifications(),
+    getClinicCommercialShell(session.organizationId),
   ]);
 
   const branchName =
@@ -36,8 +39,10 @@ export default async function ClinicLayout({ children }: { children: React.React
       activeBranchId={session.branchId}
       unreadNotifications={unreadNotifications}
       isPlatformAdmin={session.isPlatformAdmin}
+      entitledHrefs={commercial.entitledHrefs}
+      billingBanner={commercial.banner}
     >
-      {children}
+      <EntitlementRouteGate entitledHrefs={commercial.entitledHrefs}>{children}</EntitlementRouteGate>
     </AppShell>
   );
 }

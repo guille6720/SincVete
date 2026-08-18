@@ -5,6 +5,10 @@ import {
   amountForInterval,
   canCheckoutPlan,
   isPurchasablePlanKey,
+  METERED_FEATURE_KEYS,
+  METERED_USAGE_LABELS,
+  utcMonthPeriod,
+  getResolvedFeatureLimit,
   type ActionResult,
   type BillingInterval,
   type PublicPlanCatalogItem,
@@ -16,6 +20,7 @@ import { billingConfigured, resolveBillingProvider } from '@/lib/billing/crypto'
 import { listPublicPlansCatalog } from '@/lib/billing/catalog';
 import { createMercadoPagoCheckoutUrl } from '@/lib/billing/mercadopago';
 import { createStripeBillingPortalUrl, createStripeCheckoutUrl } from '@/lib/billing/stripe';
+import { getOrganizationEntitlements } from '@/lib/entitlements';
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (error instanceof PermissionError) {
@@ -27,6 +32,13 @@ function actionError<T = void>(error: unknown): ActionResult<T> {
   console.error(error);
   return { success: false, error: 'Ocurrió un error inesperado' };
 }
+
+export type PlanUsageMeter = {
+  featureKey: string;
+  label: string;
+  used: number;
+  limit: number | null;
+};
 
 export type PlanBillingState = {
   configured: boolean;
@@ -40,12 +52,14 @@ export type PlanBillingState = {
   };
   hasStripeCustomer: boolean;
   plans: PublicPlanCatalogItem[];
+  usage: PlanUsageMeter[];
 };
 
 export async function getPlanBillingState(): Promise<PlanBillingState> {
   const session = await requirePermission('org:manage');
   const supabase = await createServerClient();
-  const [plans, subRes, customerRes] = await Promise.all([
+  const period = utcMonthPeriod();
+  const [plans, subRes, customerRes, entitlements, usageRes] = await Promise.all([
     listPublicPlansCatalog(),
     supabase
       .from('organization_subscriptions')
@@ -61,10 +75,22 @@ export async function getPlanBillingState(): Promise<PlanBillingState> {
       .select('provider')
       .eq('organization_id', session.organizationId)
       .maybeSingle(),
+    getOrganizationEntitlements(session.organizationId),
+    supabase
+      .from('feature_usage')
+      .select('usage_count, features!inner(key)')
+      .eq('organization_id', session.organizationId)
+      .eq('period_start', period.start),
   ]);
 
   const planJoin = subRes.data?.plans as { key?: string; name?: string } | { key?: string; name?: string }[] | null;
   const planRow = Array.isArray(planJoin) ? planJoin[0] : planJoin;
+  const usedByKey = new Map<string, number>();
+  for (const row of usageRes.data ?? []) {
+    const featureJoin = row.features as { key?: string } | { key?: string }[] | null;
+    const key = Array.isArray(featureJoin) ? featureJoin[0]?.key : featureJoin?.key;
+    if (key) usedByKey.set(key, Number(row.usage_count) || 0);
+  }
 
   return {
     configured: billingConfigured(),
@@ -78,6 +104,12 @@ export async function getPlanBillingState(): Promise<PlanBillingState> {
     },
     hasStripeCustomer: customerRes.data?.provider === 'stripe',
     plans,
+    usage: METERED_FEATURE_KEYS.map((featureKey) => ({
+      featureKey,
+      label: METERED_USAGE_LABELS[featureKey] ?? featureKey,
+      used: usedByKey.get(featureKey) ?? 0,
+      limit: getResolvedFeatureLimit(entitlements, featureKey),
+    })),
   };
 }
 

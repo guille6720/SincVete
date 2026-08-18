@@ -2,6 +2,7 @@ import { cache } from 'react';
 import {
   FEATURES,
   canUseResolvedFeature,
+  getEntitledClinicHrefs,
   getResolvedFeatureLimit,
   resolveOrganizationEntitlements,
   validateUsageIncrementAmount,
@@ -13,6 +14,7 @@ import {
   type OrganizationEntitlements,
   type PlanFeatureRow,
   type ResolvedEntitlement,
+  type SubscriptionStatus,
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
 
@@ -71,10 +73,11 @@ export const loadOrganizationEntitlementInput = cache(async (organizationId: str
       .select('key, feature_type, default_enabled, default_limit, is_active'),
     supabase
       .from('organization_subscriptions')
-      .select('id, plan_id, status, cancelled_at')
+      .select('id, plan_id, status, cancelled_at, trial_ends_at, ends_at, plans(key, name)')
       .eq('organization_id', organizationId)
-      .in('status', ['trialing', 'active'])
+      .in('status', ['trialing', 'active', 'past_due'])
       .is('cancelled_at', null)
+      .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
     supabase
@@ -102,6 +105,8 @@ export const loadOrganizationEntitlementInput = cache(async (organizationId: str
   }));
 
   const activeSub = subscriptionRes.data;
+  const planJoin = activeSub?.plans as { key?: string; name?: string } | { key?: string; name?: string }[] | null;
+  const planRow = Array.isArray(planJoin) ? planJoin[0] : planJoin;
   let planFeatures: PlanFeatureRow[] = [];
 
   if (activeSub?.plan_id) {
@@ -147,6 +152,11 @@ export const loadOrganizationEntitlementInput = cache(async (organizationId: str
     overrides,
     hasActiveSubscription: Boolean(activeSub),
     planId: activeSub?.plan_id ?? null,
+    subscriptionStatus: (activeSub?.status as SubscriptionStatus | undefined) ?? null,
+    planKey: planRow?.key ?? null,
+    planName: planRow?.name ?? null,
+    trialEndsAt: activeSub?.trial_ends_at ?? null,
+    endsAt: activeSub?.ends_at ?? null,
   };
 });
 
@@ -276,3 +286,44 @@ export async function assertWithinLimit(params: {
 }
 
 export { FEATURES };
+
+export type ClinicCommercialBanner = {
+  kind: 'trial' | 'past_due';
+  planName: string | null;
+  trialEndsAt: string | null;
+};
+
+export type ClinicCommercialShell = {
+  entitledHrefs: string[] | null;
+  banner: ClinicCommercialBanner | null;
+};
+
+export const getClinicCommercialShell = cache(
+  async (organizationId: string): Promise<ClinicCommercialShell> => {
+    try {
+      const input = await loadOrganizationEntitlementInput(organizationId);
+      const entitlements = resolveOrganizationEntitlements(input);
+      let banner: ClinicCommercialBanner | null = null;
+      if (input.subscriptionStatus === 'trialing') {
+        banner = {
+          kind: 'trial',
+          planName: input.planName,
+          trialEndsAt: input.trialEndsAt,
+        };
+      } else if (input.subscriptionStatus === 'past_due') {
+        banner = {
+          kind: 'past_due',
+          planName: input.planName,
+          trialEndsAt: null,
+        };
+      }
+      return {
+        entitledHrefs: getEntitledClinicHrefs(entitlements),
+        banner,
+      };
+    } catch (error) {
+      console.error('[entitlements] clinic shell failed open', error);
+      return { entitledHrefs: null, banner: null };
+    }
+  }
+);

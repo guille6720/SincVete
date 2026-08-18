@@ -29,6 +29,7 @@ import {
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState, useTransition } from 'react';
 import { cn } from '@/lib/utils';
+import { isClinicPathEntitled } from '@sincvete/shared';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, keywords: 'inicio home' },
@@ -92,7 +93,7 @@ const PREFETCH_ON_OPEN = [
   '/historia-clinica/nuevo',
 ] as const;
 
-export function CommandPalette() {
+export function CommandPalette({ entitledHrefs = null }: { entitledHrefs?: string[] | null }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -156,7 +157,7 @@ export function CommandPalette() {
             </Command.Empty>
 
             <Command.Group heading="Navegación" className="px-1 py-1.5 text-xs font-medium text-muted-foreground">
-              {NAV_ITEMS.map((item) => (
+              {NAV_ITEMS.filter((item) => isClinicPathEntitled(item.href, entitledHrefs)).map((item) => (
                 <Command.Item
                   key={item.href}
                   value={`${item.label} ${item.keywords}`}
@@ -173,7 +174,7 @@ export function CommandPalette() {
             </Command.Group>
 
             <Command.Group heading="Acciones rápidas" className="px-1 py-1.5 text-xs font-medium text-muted-foreground">
-              {QUICK_ACTIONS.map((item) => (
+              {QUICK_ACTIONS.filter((item) => isClinicPathEntitled(item.href, entitledHrefs)).map((item) => (
                 <Command.Item
                   key={item.href}
                   value={`${item.label} ${item.keywords}`}

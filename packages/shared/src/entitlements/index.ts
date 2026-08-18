@@ -16,4 +16,17 @@ export {
   getResolvedFeatureLimit,
 } from './resolve';
 
-export { bytesToStorageMb, clinicalAiKindFeature, wouldExceedLimit } from './limits';
+export {
+  bytesToStorageMb,
+  clinicalAiKindFeature,
+  utcMonthPeriod,
+  METERED_USAGE_LABELS,
+  wouldExceedLimit,
+} from './limits';
+
+export {
+  getNavFeatureKey,
+  getNavHrefForPath,
+  getEntitledClinicHrefs,
+  isClinicPathEntitled,
+} from './nav';

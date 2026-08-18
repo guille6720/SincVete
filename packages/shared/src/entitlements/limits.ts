@@ -15,6 +15,24 @@ export function clinicalAiKindFeature(kind: ClinicalAiKind): FeatureKey {
   return FEATURES.AI_PATIENT_SUMMARY;
 }
 
+/** Matches Postgres date_trunc('month', timezone('utc', now())). */
+export function utcMonthPeriod(now = new Date()): { start: string; end: string } {
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth();
+  const start = new Date(Date.UTC(year, month, 1));
+  const end = new Date(Date.UTC(year, month + 1, 0));
+  return {
+    start: start.toISOString().slice(0, 10),
+    end: end.toISOString().slice(0, 10),
+  };
+}
+
+export const METERED_USAGE_LABELS: Record<string, string> = {
+  'ai.monthly_requests': 'IA clínica',
+  'whatsapp.monthly_messages': 'WhatsApp',
+  'storage.max_mb': 'Almacenamiento',
+};
+
 /**
  * Limit convention: null = unlimited, 0 = unavailable, positive = max.
  * Returns true when the next increment would not be allowed.

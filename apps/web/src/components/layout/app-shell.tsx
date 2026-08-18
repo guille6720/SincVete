@@ -35,13 +35,13 @@ import { signOut } from '@/actions/auth';
 import { BranchSelector } from '@/components/layout/branch-selector';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { APP_NAME, ROLE_LABELS, type Role } from '@sincvete/shared';
+import { APP_NAME, ROLE_LABELS, isClinicPathEntitled, type Role } from '@sincvete/shared';
 import { BrandLogo } from '@/components/brand/syncvete-logo';
 import { ThemeControls } from '@/components/theme/theme-controls';
 import { AppUpdateBanner } from '@/components/layout/app-update-banner';
 import { CommandPalette, CommandPaletteTrigger } from './command-palette';
 import { NotificationBell } from '@/components/notifications/notification-bell';
-/** Entitlements Phase 1: see `@/lib/entitlements/nav` + NAV_FEATURE_BY_HREF (do not hide modules yet). */
+import type { ClinicCommercialBanner } from '@/lib/entitlements';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -87,6 +87,8 @@ interface AppShellProps {
   activeBranchId?: string | null;
   unreadNotifications?: number;
   isPlatformAdmin?: boolean;
+  entitledHrefs?: string[] | null;
+  billingBanner?: ClinicCommercialBanner | null;
 }
 
 export function AppShell({
@@ -98,6 +100,8 @@ export function AppShell({
   activeBranchId,
   unreadNotifications = 0,
   isPlatformAdmin = false,
+  entitledHrefs = null,
+  billingBanner = null,
 }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -110,14 +114,16 @@ export function AppShell({
 
   useEffect(() => {
     for (const href of PREFETCH_HREFS) {
-      router.prefetch(href);
+      if (isClinicPathEntitled(href, entitledHrefs)) {
+        router.prefetch(href);
+      }
     }
-  }, [router]);
+  }, [router, entitledHrefs]);
 
   return (
     <div className="flex min-h-screen" style={{ background: 'var(--shell-bg)' }}>
       <AppUpdateBanner />
-      <CommandPalette />
+      <CommandPalette entitledHrefs={entitledHrefs} />
 
       {pendingHref ? (
         <div
@@ -202,7 +208,7 @@ export function AppShell({
         )}
 
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.filter((item) => isClinicPathEntitled(item.href, entitledHrefs)).map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
             const isPending = pendingHref === item.href;
             return (
@@ -301,7 +307,32 @@ export function AppShell({
           </div>
         </header>
 
-        <main className="flex-1 p-4 md:p-6">{children}</main>
+        <main className="flex-1 p-4 md:p-6">
+          {billingBanner ? (
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-50">
+              {billingBanner.kind === 'trial' ? (
+                <p>
+                  Estás en trial{billingBanner.planName ? ` (${billingBanner.planName})` : ''}.
+                  {billingBanner.trialEndsAt
+                    ? ` Vence el ${new Date(billingBanner.trialEndsAt).toLocaleDateString('es-AR')}.`
+                    : ''}{' '}
+                  <Link href="/configuracion?tab=plan" className="font-medium underline underline-offset-4">
+                    Elegí un plan
+                  </Link>
+                </p>
+              ) : (
+                <p>
+                  Hay un pago pendiente{billingBanner.planName ? ` de ${billingBanner.planName}` : ''}. La
+                  clínica sigue operativa.{' '}
+                  <Link href="/configuracion?tab=plan" className="font-medium underline underline-offset-4">
+                    Actualizar plan
+                  </Link>
+                </p>
+              )}
+            </div>
+          ) : null}
+          {children}
+        </main>
       </div>
     </div>
   );

@@ -22,6 +22,9 @@ import {
   getResolvedFeatureLimit,
   resolveFeatureEntitlement,
   resolveOrganizationEntitlements,
+  getEntitledClinicHrefs,
+  isClinicPathEntitled,
+  utcMonthPeriod,
   type EntitlementResolutionInput,
   type FeatureCatalogRow,
 } from '../index';
@@ -435,5 +438,52 @@ describe('usage increment validation helpers', () => {
     expect(wouldExceedLimit(0, 1, 0)).toBe(true);
     expect(wouldExceedLimit(2, 1, 3)).toBe(false);
     expect(wouldExceedLimit(3, 1, 3)).toBe(true);
+  });
+});
+
+describe('clinic nav entitlements', () => {
+  it('hides unpurchased modules and keeps settings visible', () => {
+    const entitlements = resolveOrganizationEntitlements(
+      baseInput({
+        features: [
+          ...catalog,
+          {
+            key: FEATURES.WHATSAPP,
+            featureType: 'boolean',
+            defaultEnabled: false,
+            defaultLimit: null,
+            isActive: true,
+          },
+          {
+            key: FEATURES.DASHBOARD,
+            featureType: 'boolean',
+            defaultEnabled: true,
+            defaultLimit: null,
+            isActive: true,
+          },
+        ],
+        planFeatures: [
+          { featureKey: FEATURES.DASHBOARD, enabled: true, limitValue: null },
+          { featureKey: FEATURES.WHATSAPP, enabled: false, limitValue: 0 },
+        ],
+      })
+    );
+
+    const hrefs = getEntitledClinicHrefs(entitlements);
+    expect(hrefs).toContain('/dashboard');
+    expect(hrefs).toContain('/configuracion');
+    expect(hrefs).not.toContain('/whatsapp');
+    expect(isClinicPathEntitled('/whatsapp', hrefs)).toBe(false);
+    expect(isClinicPathEntitled('/whatsapp/nuevo', hrefs)).toBe(false);
+    expect(isClinicPathEntitled('/configuracion', hrefs)).toBe(true);
+    expect(isClinicPathEntitled('/pacientes/nuevo', hrefs)).toBe(false);
+    expect(isClinicPathEntitled('/ruta-desconocida', hrefs)).toBe(true);
+    expect(isClinicPathEntitled('/whatsapp', null)).toBe(true);
+  });
+
+  it('utcMonthPeriod uses UTC month bounds', () => {
+    const period = utcMonthPeriod(new Date('2026-08-18T10:00:00.000Z'));
+    expect(period.start).toBe('2026-08-01');
+    expect(period.end).toBe('2026-08-31');
   });
 });
