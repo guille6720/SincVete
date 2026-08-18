@@ -1,5 +1,6 @@
 import {
   isBillingProvider,
+  isPurchasableAddonKey,
   isPurchasablePlanKey,
   type BillingInterval,
   type BillingProvider,
@@ -73,6 +74,28 @@ export async function applyPaidPlan(params: {
     p_external_id: params.externalId,
     p_interval: params.interval,
     p_status: params.status ?? 'active',
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function applyPaidAddon(params: {
+  organizationId: string;
+  addonKey: string;
+  provider: BillingProvider;
+  externalId: string;
+  interval: BillingInterval;
+}): Promise<void> {
+  if (!isPurchasableAddonKey(params.addonKey) || !isBillingProvider(params.provider)) {
+    throw new Error('Checkout de extra inválido');
+  }
+  assertOrgId(params.organizationId);
+  const service = await createServiceClient();
+  const { error } = await service.rpc('billing_apply_paid_addon', {
+    p_organization_id: params.organizationId,
+    p_addon_key: params.addonKey,
+    p_provider: params.provider,
+    p_external_id: params.externalId,
+    p_interval: params.interval,
   });
   if (error) throw new Error(error.message);
 }

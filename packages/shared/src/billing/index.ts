@@ -4,19 +4,24 @@ export type {
   PublicPlanCta,
   PlanPricing,
   PublicPlanCatalogItem,
+  PublicAddonCatalogItem,
 } from './pricing';
 
 export {
   BILLING_PROVIDERS,
   BILLING_INTERVALS,
   FALLBACK_PUBLIC_PLANS,
+  FALLBACK_PUBLIC_ADDONS,
   parsePlanPricing,
   formatArsAmount,
   amountForInterval,
   isPurchasablePlanKey,
+  isPurchasableAddonKey,
   canCheckoutPlan,
   encodeCheckoutReference,
   parseCheckoutReference,
+  encodeAddonCheckoutReference,
+  parseAddonCheckoutReference,
   isBillingProvider,
 } from './pricing';
 

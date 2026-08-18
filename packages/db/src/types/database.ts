@@ -3326,6 +3326,10 @@ export interface Database {
         Args: Record<PropertyKey, never>;
         Returns: Json;
       };
+      list_public_addons: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
       billing_apply_paid_plan: {
         Args: {
           p_organization_id: string;
@@ -3334,6 +3338,16 @@ export interface Database {
           p_external_id: string;
           p_interval?: string;
           p_status?: SubscriptionStatus;
+        };
+        Returns: Json;
+      };
+      billing_apply_paid_addon: {
+        Args: {
+          p_organization_id: string;
+          p_addon_key: string;
+          p_provider: string;
+          p_external_id: string;
+          p_interval?: string;
         };
         Returns: Json;
       };
@@ -3373,6 +3387,12 @@ export interface Database {
       };
       billing_cancel_own_subscription: {
         Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      billing_cancel_own_addon: {
+        Args: {
+          p_addon_key: string;
+        };
         Returns: Json;
       };
       superadmin_commercial_summary: {

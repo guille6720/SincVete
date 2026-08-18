@@ -1,6 +1,7 @@
 import {
   COMMERCIAL_PLAN_KEYS,
   PUBLIC_PRICING_PLAN_KEYS,
+  isAddonKey,
   type CommercialPlanKey,
 } from '../constants/features';
 
@@ -31,6 +32,8 @@ export interface PublicPlanCatalogItem {
   displayOrder: number;
   pricing: PlanPricing;
 }
+
+export type PublicAddonCatalogItem = PublicPlanCatalogItem;
 
 const EMPTY_PRICING: PlanPricing = {
   currency: 'ARS',
@@ -112,6 +115,10 @@ export function canCheckoutPlan(pricing: PlanPricing): boolean {
   return pricing.cta !== 'contact' && pricing.monthlyAmount !== null;
 }
 
+export function isPurchasableAddonKey(addonKey: string): boolean {
+  return isAddonKey(addonKey);
+}
+
 export function encodeCheckoutReference(params: {
   organizationId: string;
   planKey: string;
@@ -126,11 +133,35 @@ export function parseCheckoutReference(raw: string | null | undefined): {
   interval: BillingInterval;
 } | null {
   if (!raw) return null;
-  const [organizationId, planKey, interval] = raw.split(':');
+  const parts = raw.split(':');
+  if (parts.length !== 3) return null;
+  const [organizationId, planKey, interval] = parts;
   if (!organizationId || !planKey) return null;
   if (!isPurchasablePlanKey(planKey)) return null;
   const resolvedInterval: BillingInterval = interval === 'annual' ? 'annual' : 'monthly';
   return { organizationId, planKey, interval: resolvedInterval };
+}
+
+export function encodeAddonCheckoutReference(params: {
+  organizationId: string;
+  addonKey: string;
+  interval: BillingInterval;
+}): string {
+  return `${params.organizationId}:addon:${params.addonKey}:${params.interval}`;
+}
+
+export function parseAddonCheckoutReference(raw: string | null | undefined): {
+  organizationId: string;
+  addonKey: string;
+  interval: BillingInterval;
+} | null {
+  if (!raw) return null;
+  const parts = raw.split(':');
+  if (parts.length !== 4 || parts[1] !== 'addon') return null;
+  const [organizationId, , addonKey, interval] = parts;
+  if (!organizationId || !isPurchasableAddonKey(addonKey ?? '')) return null;
+  const resolvedInterval: BillingInterval = interval === 'annual' ? 'annual' : 'monthly';
+  return { organizationId, addonKey, interval: resolvedInterval };
 }
 
 export function isBillingProvider(value: string | null | undefined): value is BillingProvider {
@@ -211,6 +242,75 @@ export const FALLBACK_PUBLIC_PLANS: PublicPlanCatalogItem[] = [
         'Acompañamiento de onboarding',
         'Facturación y contrato a medida',
       ],
+    },
+  },
+];
+
+export const FALLBACK_PUBLIC_ADDONS: PublicAddonCatalogItem[] = [
+  {
+    key: 'addon.ai',
+    name: 'IA clínica',
+    description: 'SOAP, resumen e indicaciones para el tutor, con cupo mensual.',
+    displayOrder: 10,
+    pricing: {
+      ...EMPTY_PRICING,
+      monthlyAmount: 12900,
+      annualAmount: 129000,
+      recommended: true,
+      cta: 'checkout',
+      highlights: ['SOAP, resumen e indicaciones', '100 requests de IA por mes'],
+    },
+  },
+  {
+    key: 'addon.whatsapp',
+    name: 'WhatsApp',
+    description: 'Mensajes y recordatorios por WhatsApp, con cupo mensual.',
+    displayOrder: 20,
+    pricing: {
+      ...EMPTY_PRICING,
+      monthlyAmount: 9900,
+      annualAmount: 99000,
+      cta: 'checkout',
+      highlights: ['Mensajes y recordatorios', '500 mensajes por mes'],
+    },
+  },
+  {
+    key: 'addon.portal',
+    name: 'Portal del tutor',
+    description: 'Acceso del propietario a turnos e historia desde el portal.',
+    displayOrder: 30,
+    pricing: {
+      ...EMPTY_PRICING,
+      monthlyAmount: 5900,
+      annualAmount: 59000,
+      cta: 'checkout',
+      highlights: ['Portal del propietario'],
+    },
+  },
+  {
+    key: 'addon.images',
+    name: 'Imágenes clínicas',
+    description: 'Galería de estudios e imágenes, con más almacenamiento.',
+    displayOrder: 40,
+    pricing: {
+      ...EMPTY_PRICING,
+      monthlyAmount: 4900,
+      annualAmount: 49000,
+      cta: 'checkout',
+      highlights: ['Galería de estudios', 'Hasta 5 GB extra de almacenamiento'],
+    },
+  },
+  {
+    key: 'addon.reports',
+    name: 'Reportes avanzados',
+    description: 'Reportes de caja e inventario.',
+    displayOrder: 50,
+    pricing: {
+      ...EMPTY_PRICING,
+      monthlyAmount: 3900,
+      annualAmount: 39000,
+      cta: 'checkout',
+      highlights: ['Reportes de caja e inventario'],
     },
   },
 ];

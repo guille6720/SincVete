@@ -7,6 +7,8 @@ import {
   encodeCheckoutReference,
   isPurchasablePlanKey,
   parseCheckoutReference,
+  encodeAddonCheckoutReference,
+  parseAddonCheckoutReference,
   parsePlanPricing,
   formatBillingEventLabel,
 } from '../index';
@@ -50,6 +52,25 @@ describe('plan pricing catalog', () => {
     });
     expect(
       parseCheckoutReference(`org:${COMMERCIAL_PLAN_KEYS.LEGACY}:monthly`)
+    ).toBeNull();
+  });
+
+  it('encodes add-on checkout refs without colliding with plan refs', () => {
+    const encoded = encodeAddonCheckoutReference({
+      organizationId: '11111111-1111-1111-1111-111111111111',
+      addonKey: 'addon.ai',
+      interval: 'monthly',
+    });
+    expect(parseCheckoutReference(encoded)).toBeNull();
+    expect(parseAddonCheckoutReference(encoded)).toEqual({
+      organizationId: '11111111-1111-1111-1111-111111111111',
+      addonKey: 'addon.ai',
+      interval: 'monthly',
+    });
+    expect(
+      parseAddonCheckoutReference(
+        '11111111-1111-1111-1111-111111111111:pro:monthly'
+      )
     ).toBeNull();
   });
 

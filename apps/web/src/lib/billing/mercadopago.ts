@@ -1,4 +1,5 @@
 import {
+  encodeAddonCheckoutReference,
   encodeCheckoutReference,
   amountForInterval,
   type BillingInterval,
@@ -14,19 +15,29 @@ export async function createMercadoPagoCheckoutUrl(params: {
   planName: string;
   interval: BillingInterval;
   pricing: PlanPricing;
+  kind?: 'plan' | 'addon';
 }): Promise<string> {
   const token = process.env.MERCADOPAGO_ACCESS_TOKEN;
   if (!token) throw new Error('Mercado Pago no está configurado');
 
   const amount = amountForInterval(params.pricing, params.interval);
-  if (!amount) throw new Error('Este plan no tiene precio configurado');
+  if (!amount) throw new Error('Este ítem no tiene precio configurado');
 
-  const reference = encodeCheckoutReference({
-    organizationId: params.organizationId,
-    planKey: params.planKey,
-    interval: params.interval,
-  });
+  const kind = params.kind ?? 'plan';
+  const reference =
+    kind === 'addon'
+      ? encodeAddonCheckoutReference({
+          organizationId: params.organizationId,
+          addonKey: params.planKey,
+          interval: params.interval,
+        })
+      : encodeCheckoutReference({
+          organizationId: params.organizationId,
+          planKey: params.planKey,
+          interval: params.interval,
+        });
   const back = `${appUrl()}/configuracion?tab=plan`;
+  const titlePrefix = kind === 'addon' ? 'SyncVete extra' : 'SyncVete';
 
   const response = await fetch('https://api.mercadopago.com/checkout/preferences', {
     method: 'POST',
@@ -37,7 +48,7 @@ export async function createMercadoPagoCheckoutUrl(params: {
     body: JSON.stringify({
       items: [
         {
-          title: `SyncVete ${params.planName} (${params.interval === 'annual' ? 'anual' : 'mensual'})`,
+          title: `${titlePrefix} ${params.planName} (${params.interval === 'annual' ? 'anual' : 'mensual'})`,
           quantity: 1,
           currency_id: params.pricing.currency,
           unit_price: amount,
@@ -46,7 +57,9 @@ export async function createMercadoPagoCheckoutUrl(params: {
       payer: params.customerEmail ? { email: params.customerEmail } : undefined,
       metadata: {
         organization_id: params.organizationId,
-        plan_key: params.planKey,
+        kind,
+        plan_key: kind === 'plan' ? params.planKey : undefined,
+        addon_key: kind === 'addon' ? params.planKey : undefined,
         interval: params.interval,
       },
       external_reference: reference,

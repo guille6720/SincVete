@@ -46,6 +46,24 @@ export function canCancelOwnSubscription(params: {
   return params.status === 'trialing' || params.status === 'active' || params.status === 'past_due';
 }
 
+export function canCancelOwnAddon(params: { status?: SubscriptionStatus | null }): boolean {
+  return params.status === 'active';
+}
+
+export type AddonOfferState = 'available' | 'active' | 'included' | 'blocked';
+
+export function resolveAddonOfferState(params: {
+  planKey?: string | null;
+  subscriptionOpen: boolean;
+  addonActive: boolean;
+  primaryFeatureEnabled: boolean;
+}): AddonOfferState {
+  if (params.addonActive) return 'active';
+  if (isLegacyPlanKey(params.planKey ?? '') || params.primaryFeatureEnabled) return 'included';
+  if (!params.subscriptionOpen) return 'blocked';
+  return 'available';
+}
+
 export function authorizeCronSecret(params: {
   authorizationHeader?: string | null;
   cronSecretHeader?: string | null;

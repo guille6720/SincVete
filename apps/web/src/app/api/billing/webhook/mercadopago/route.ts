@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { parseCheckoutReference } from '@sincvete/shared';
+import { parseAddonCheckoutReference, parseCheckoutReference } from '@sincvete/shared';
 import {
+  applyPaidAddon,
   applyPaidPlan,
   recordBillingEvent,
   upsertBillingCustomer,
@@ -78,7 +79,10 @@ async function handleMercadoPagoWebhook(request: Request) {
     provider: 'mercadopago',
     eventId: `payment:${payment.id}:${payment.status}`,
     eventType: type || 'payment',
-    organizationId: parseCheckoutReference(payment.externalReference)?.organizationId ?? null,
+    organizationId:
+      parseAddonCheckoutReference(payment.externalReference)?.organizationId ??
+      parseCheckoutReference(payment.externalReference)?.organizationId ??
+      null,
     payload: { paymentId, status: payment.status, type },
   });
   if (recorded.duplicate) {
@@ -89,26 +93,45 @@ async function handleMercadoPagoWebhook(request: Request) {
     return NextResponse.json({ ok: true, skipped: true });
   }
 
-  const reference = parseCheckoutReference(payment.externalReference);
-  if (!reference) {
+  const addonRef = parseAddonCheckoutReference(payment.externalReference);
+  const planRef = addonRef ? null : parseCheckoutReference(payment.externalReference);
+  if (!addonRef && !planRef) {
     return NextResponse.json({ error: 'referencia inválida' }, { status: 400 });
   }
 
   try {
-    await applyPaidPlan({
-      organizationId: reference.organizationId,
-      planKey: reference.planKey,
-      provider: 'mercadopago',
-      externalId: payment.id,
-      interval: reference.interval,
-    });
-    if (payment.payerId) {
-      await upsertBillingCustomer({
-        organizationId: reference.organizationId,
+    if (addonRef) {
+      await applyPaidAddon({
+        organizationId: addonRef.organizationId,
+        addonKey: addonRef.addonKey,
         provider: 'mercadopago',
-        customerId: payment.payerId,
-        email: payment.payerEmail,
+        externalId: payment.id,
+        interval: addonRef.interval,
       });
+      if (payment.payerId) {
+        await upsertBillingCustomer({
+          organizationId: addonRef.organizationId,
+          provider: 'mercadopago',
+          customerId: payment.payerId,
+          email: payment.payerEmail,
+        });
+      }
+    } else if (planRef) {
+      await applyPaidPlan({
+        organizationId: planRef.organizationId,
+        planKey: planRef.planKey,
+        provider: 'mercadopago',
+        externalId: payment.id,
+        interval: planRef.interval,
+      });
+      if (payment.payerId) {
+        await upsertBillingCustomer({
+          organizationId: planRef.organizationId,
+          provider: 'mercadopago',
+          customerId: payment.payerId,
+          email: payment.payerEmail,
+        });
+      }
     }
   } catch (error) {
     console.error('[mercadopago webhook]', error);

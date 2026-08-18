@@ -42,6 +42,10 @@ export {
   PLAN_BILLING_HREF,
   authorizeCronSecret,
   canCancelOwnSubscription,
+  canCancelOwnAddon,
+  resolveAddonOfferState,
   isQuotaNearLimit,
   isTrialEndingSoon,
 } from './lifecycle';
+
+export type { AddonOfferState } from './lifecycle';

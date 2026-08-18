@@ -30,6 +30,8 @@ import {
   isTrialEndingSoon,
   isQuotaNearLimit,
   canCancelOwnSubscription,
+  canCancelOwnAddon,
+  resolveAddonOfferState,
   authorizeCronSecret,
   type EntitlementResolutionInput,
   type FeatureCatalogRow,
@@ -661,6 +663,51 @@ describe('commercial lifecycle helpers', () => {
     expect(canCancelOwnSubscription({ planKey: 'trial', status: 'trialing' })).toBe(true);
     expect(canCancelOwnSubscription({ planKey: 'legacy', status: 'active' })).toBe(false);
     expect(canCancelOwnSubscription({ planKey: 'basic', status: 'expired' })).toBe(false);
+  });
+
+  it('offers add-on checkout only on a commercial plan that does not already include the feature', () => {
+    expect(
+      resolveAddonOfferState({
+        planKey: 'basic',
+        subscriptionOpen: true,
+        addonActive: false,
+        primaryFeatureEnabled: false,
+      })
+    ).toBe('available');
+    expect(
+      resolveAddonOfferState({
+        planKey: 'premium',
+        subscriptionOpen: true,
+        addonActive: false,
+        primaryFeatureEnabled: true,
+      })
+    ).toBe('included');
+    expect(
+      resolveAddonOfferState({
+        planKey: 'basic',
+        subscriptionOpen: true,
+        addonActive: true,
+        primaryFeatureEnabled: true,
+      })
+    ).toBe('active');
+    expect(
+      resolveAddonOfferState({
+        planKey: 'legacy',
+        subscriptionOpen: true,
+        addonActive: false,
+        primaryFeatureEnabled: false,
+      })
+    ).toBe('included');
+    expect(
+      resolveAddonOfferState({
+        planKey: 'basic',
+        subscriptionOpen: false,
+        addonActive: false,
+        primaryFeatureEnabled: false,
+      })
+    ).toBe('blocked');
+    expect(canCancelOwnAddon({ status: 'active' })).toBe(true);
+    expect(canCancelOwnAddon({ status: 'cancelled' })).toBe(false);
   });
 
   it('authorizes cron bearer without leaking unset secrets', () => {

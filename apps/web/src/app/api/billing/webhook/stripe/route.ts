@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { parseCheckoutReference } from '@sincvete/shared';
+import { parseAddonCheckoutReference, parseCheckoutReference } from '@sincvete/shared';
 import {
+  applyPaidAddon,
   applyPaidPlan,
   recordBillingEvent,
   setPaidSubscriptionStatus,
@@ -54,15 +55,23 @@ export async function POST(request: Request) {
   }
 
   const metadata = object.metadata ?? {};
-  const reference = parseCheckoutReference(
+  const rawReference =
     metadata.reference ??
-      (metadata.organization_id && metadata.plan_key
+    (metadata.kind === 'addon' && metadata.organization_id && metadata.addon_key
+      ? `${metadata.organization_id}:addon:${metadata.addon_key}:${metadata.interval ?? 'monthly'}`
+      : metadata.organization_id && metadata.plan_key
         ? `${metadata.organization_id}:${metadata.plan_key}:${metadata.interval ?? 'monthly'}`
         : object.client_reference_id && metadata.plan_key
           ? `${object.client_reference_id}:${metadata.plan_key}:${metadata.interval ?? 'monthly'}`
-          : null)
-  );
-  const organizationId = reference?.organizationId ?? metadata.organization_id ?? object.client_reference_id ?? null;
+          : null);
+  const addonRef = parseAddonCheckoutReference(rawReference);
+  const planRef = addonRef ? null : parseCheckoutReference(rawReference);
+  const organizationId =
+    addonRef?.organizationId ??
+    planRef?.organizationId ??
+    metadata.organization_id ??
+    object.client_reference_id ??
+    null;
 
   const recorded = await recordBillingEvent({
     provider: 'stripe',
@@ -80,23 +89,33 @@ export async function POST(request: Request) {
       event.type === 'checkout.session.completed' ||
       event.type === 'checkout.session.async_payment_succeeded'
     ) {
-      if (!reference) {
+      if (!addonRef && !planRef) {
         return NextResponse.json({ error: 'referencia inválida' }, { status: 400 });
       }
       const paid = object.status === 'complete' || object.payment_status === 'paid';
       if (event.type === 'checkout.session.completed' && !paid) {
         return NextResponse.json({ ok: true, skipped: true });
       }
-      await applyPaidPlan({
-        organizationId: reference.organizationId,
-        planKey: reference.planKey,
-        provider: 'stripe',
-        externalId: object.id ?? eventId,
-        interval: reference.interval,
-      });
+      if (addonRef) {
+        await applyPaidAddon({
+          organizationId: addonRef.organizationId,
+          addonKey: addonRef.addonKey,
+          provider: 'stripe',
+          externalId: object.id ?? eventId,
+          interval: addonRef.interval,
+        });
+      } else if (planRef) {
+        await applyPaidPlan({
+          organizationId: planRef.organizationId,
+          planKey: planRef.planKey,
+          provider: 'stripe',
+          externalId: object.id ?? eventId,
+          interval: planRef.interval,
+        });
+      }
       if (object.customer) {
         await upsertBillingCustomer({
-          organizationId: reference.organizationId,
+          organizationId: (addonRef ?? planRef)!.organizationId,
           provider: 'stripe',
           customerId: object.customer,
           email: object.customer_email ?? null,

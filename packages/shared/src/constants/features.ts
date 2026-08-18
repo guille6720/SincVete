@@ -190,6 +190,18 @@ export const ADDON_KEYS = {
 
 export type AddonKey = (typeof ADDON_KEYS)[keyof typeof ADDON_KEYS];
 
+export const ADDON_PRIMARY_FEATURE: Record<AddonKey, FeatureKey> = {
+  [ADDON_KEYS.AI]: FEATURES.AI,
+  [ADDON_KEYS.WHATSAPP]: FEATURES.WHATSAPP,
+  [ADDON_KEYS.PORTAL]: FEATURES.OWNER_PORTAL,
+  [ADDON_KEYS.IMAGES]: FEATURES.CLINICAL_IMAGES,
+  [ADDON_KEYS.REPORTS]: FEATURES.ADVANCED_REPORTS,
+};
+
+export function isAddonKey(value: string): value is AddonKey {
+  return (Object.values(ADDON_KEYS) as string[]).includes(value);
+}
+
 export function canSuperadminAssignPlan(planKey: string, allowLegacy = false): boolean {
   if (isLegacyPlanKey(planKey)) return allowLegacy === true;
   return (SUPERADMIN_ASSIGNABLE_PLAN_KEYS as readonly string[]).includes(planKey);

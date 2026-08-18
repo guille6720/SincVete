@@ -3,7 +3,9 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
+  cancelClinicAddon,
   cancelClinicSubscription,
+  startAddonCheckout,
   startBillingPortal,
   startPlanCheckout,
   type PlanBillingState,
@@ -49,6 +51,20 @@ export function PlanBillingPanel({
     setMessage(result.error ?? 'No se pudo iniciar el checkout');
   }
 
+  async function checkoutAddon(addonKey: string, interval: 'monthly' | 'annual') {
+    setMessage(null);
+    const form = new FormData();
+    form.set('addonKey', addonKey);
+    form.set('interval', interval);
+    const result = await run(() => startAddonCheckout(form));
+    if (!result) return;
+    if (result.success && result.data?.url) {
+      window.location.href = result.data.url;
+      return;
+    }
+    setMessage(result.error ?? 'No se pudo iniciar el checkout del extra');
+  }
+
   async function openPortal() {
     setMessage(null);
     const result = await run(() => startBillingPortal());
@@ -71,6 +87,20 @@ export function PlanBillingPanel({
       return;
     }
     setMessage(result.error ?? 'No se pudo cancelar el plan');
+  }
+
+  async function cancelAddon(addonKey: string) {
+    setMessage(null);
+    const form = new FormData();
+    form.set('addonKey', addonKey);
+    const result = await run(() => cancelClinicAddon(form));
+    if (!result) return;
+    if (result.success) {
+      setMessage('Extra cancelado.');
+      router.refresh();
+      return;
+    }
+    setMessage(result.error ?? 'No se pudo cancelar el extra');
   }
 
   return (
@@ -115,32 +145,77 @@ export function PlanBillingPanel({
         </CardContent>
       </Card>
 
-      {state.addons.length > 0 ? (
+      {state.addonOffers.length > 0 ? (
         <Card>
           <CardHeader>
-            <CardTitle>Add-ons</CardTitle>
+            <CardTitle>Extras</CardTitle>
             <CardDescription>
-              Extras que Superadmin otorgó sobre el plan. No hay compra self-serve de add-ons.
+              Módulos sueltos sobre el plan. Si tu plan ya los incluye, no hace falta comprarlos. Superadmin
+              también puede otorgarlos.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            {state.addons.map((addon) => (
-              <div key={addon.key} className="flex items-center justify-between gap-3">
-                <span>
-                  {addon.name}
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            {state.addonOffers.map((addon) => {
+              const monthly = formatArsAmount(addon.pricing.monthlyAmount);
+              return (
+                <div key={addon.key} className="space-y-2 rounded-md border p-3 text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">{addon.name}</span>
+                    {addon.offerState === 'active' ? <Badge>Activo</Badge> : null}
+                    {addon.offerState === 'included' ? <Badge variant="success">En tu plan</Badge> : null}
+                  </div>
                   {addon.description ? (
-                    <span className="text-muted-foreground"> · {addon.description}</span>
+                    <p className="text-muted-foreground">{addon.description}</p>
                   ) : null}
-                </span>
-                {addon.endsAt ? (
-                  <span className="text-muted-foreground">
-                    hasta {new Date(addon.endsAt).toLocaleDateString('es-AR')}
-                  </span>
-                ) : (
-                  <Badge>Activo</Badge>
-                )}
-              </div>
-            ))}
+                  <p className="text-lg font-semibold">
+                    {monthly ? `$ ${monthly}` : 'A medida'}
+                    {monthly ? <span className="text-sm font-normal text-muted-foreground"> / mes</span> : null}
+                  </p>
+                  {addon.endsAt ? (
+                    <p className="text-muted-foreground">
+                      Hasta {new Date(addon.endsAt).toLocaleDateString('es-AR')}
+                    </p>
+                  ) : null}
+                  {addon.offerState === 'available' && canCheckoutPlan(addon.pricing) ? (
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={pending || !state.configured}
+                        onClick={() => void checkoutAddon(addon.key, 'monthly')}
+                      >
+                        Mensual
+                      </Button>
+                      {addon.pricing.annualAmount ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={pending || !state.configured}
+                          onClick={() => void checkoutAddon(addon.key, 'annual')}
+                        >
+                          Anual
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {addon.offerState === 'blocked' ? (
+                    <p className="text-muted-foreground">Elegí un plan comercial para comprar extras.</p>
+                  ) : null}
+                  {addon.canCancel ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={pending}
+                      onClick={() => void cancelAddon(addon.key)}
+                    >
+                      Cancelar extra
+                    </Button>
+                  ) : null}
+                </div>
+              );
+            })}
           </CardContent>
         </Card>
       ) : null}
