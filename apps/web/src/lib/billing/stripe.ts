@@ -63,6 +63,15 @@ export async function createStripeCheckoutUrl(params: {
     body['line_items[0][price]'] = priceId;
     body['line_items[0][quantity]'] = '1';
   } else {
+    body['payment_intent_data[metadata][organization_id]'] = params.organizationId;
+    body['payment_intent_data[metadata][kind]'] = kind;
+    body['payment_intent_data[metadata][interval]'] = params.interval;
+    body['payment_intent_data[metadata][reference]'] = reference;
+    if (addonCheckout) {
+      body['payment_intent_data[metadata][addon_key]'] = params.planKey;
+    } else {
+      body['payment_intent_data[metadata][plan_key]'] = params.planKey;
+    }
     const amount =
       params.interval === 'annual' ? params.pricing.annualAmount : params.pricing.monthlyAmount;
     if (!amount) throw new Error('Este ítem no tiene precio configurado para Stripe');

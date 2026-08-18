@@ -1,12 +1,21 @@
 import { NextResponse } from 'next/server';
-import { parseAddonCheckoutReference, parseCheckoutReference, shouldReversePaidGrant } from '@sincvete/shared';
+import {
+  collectProviderPaymentIds,
+  isFullProviderRefund,
+  parseAddonCheckoutReference,
+  parseCheckoutReference,
+  refundCheckoutTargetFromMetadata,
+  shouldReversePaidGrant,
+} from '@sincvete/shared';
 import {
   applyPaidAddon,
   applyPaidPlan,
+  attachPaidGrantProviderIds,
   claimBillingEvent,
   extendPaidPlanPeriod,
   findOrganizationIdByStripeCustomer,
   finishBillingEvent,
+  lookupPaidGrantFromProviderIds,
   releaseCheckoutIntents,
   reversePaidGrant,
   setPaidSubscriptionStatus,
@@ -26,6 +35,12 @@ type StripeObject = {
   status?: string;
   payment_status?: string;
   billing_reason?: string;
+  refunded?: boolean;
+  amount?: number;
+  amount_refunded?: number;
+  payment_intent?: string | { id?: string };
+  invoice?: string | { id?: string };
+  charge?: string | { id?: string };
   subscription?: string | { id?: string };
 };
 
@@ -114,6 +129,17 @@ export async function POST(request: Request) {
             externalId: object.id ?? eventId,
             interval: addonRef.interval,
           });
+          await attachPaidGrantProviderIds({
+            organizationId: addonRef.organizationId,
+            kind: 'addon',
+            targetKey: addonRef.addonKey,
+            ids: {
+              checkoutSessionId: object.id,
+              paymentIntentId: stripeId(object.payment_intent),
+              invoiceId: stripeId(object.invoice),
+              stripeSubscriptionId: stripeId(object.subscription),
+            },
+          });
         } else if (planRef) {
           await applyPaidPlan({
             organizationId: planRef.organizationId,
@@ -121,6 +147,17 @@ export async function POST(request: Request) {
             provider: 'stripe',
             externalId: object.id ?? eventId,
             interval: planRef.interval,
+          });
+          await attachPaidGrantProviderIds({
+            organizationId: planRef.organizationId,
+            kind: 'plan',
+            targetKey: planRef.planKey,
+            ids: {
+              checkoutSessionId: object.id,
+              paymentIntentId: stripeId(object.payment_intent),
+              invoiceId: stripeId(object.invoice),
+              stripeSubscriptionId: stripeId(object.subscription),
+            },
           });
         }
         const customerId = stripeId(object.customer);
@@ -157,46 +194,80 @@ export async function POST(request: Request) {
       (event.type === 'charge.dispute.closed' && object.status === 'lost') ||
       shouldReversePaidGrant(event.type)
     ) {
-      const orgId =
-        organizationId ?? (await findOrganizationIdByStripeCustomer(stripeId(object.customer)));
-      if (orgId && (addonRef || planRef)) {
+      const fullRefund = isFullProviderRefund({
+        eventType: event.type,
+        status: object.status,
+        refunded: object.refunded,
+        amount: object.amount,
+        amountRefunded: object.amount_refunded,
+      });
+      if (!fullRefund) {
+        await finishBillingEvent(recorded.id);
+        return NextResponse.json({ ok: true, skipped: true, reason: 'partial_refund' });
+      }
+
+      const ids = collectProviderPaymentIds(object as Record<string, unknown>);
+      const metadataTarget = refundCheckoutTargetFromMetadata(
+        metadata,
+        object.client_reference_id ?? null
+      );
+      let orgId =
+        organizationId ??
+        metadataTarget?.organizationId ??
+        (await findOrganizationIdByStripeCustomer(stripeId(object.customer)));
+      let kind: 'plan' | 'addon' | null =
+        addonRef ? 'addon' : planRef ? 'plan' : metadataTarget?.kind ?? null;
+      let targetKey =
+        addonRef?.addonKey ??
+        planRef?.planKey ??
+        metadataTarget?.targetKey ??
+        metadata.plan_key ??
+        metadata.addon_key ??
+        null;
+
+      if (!orgId || !kind) {
+        const looked = await lookupPaidGrantFromProviderIds({ provider: 'stripe', ids });
+        if (looked) {
+          orgId = orgId ?? looked.organizationId;
+          kind = kind ?? looked.kind;
+          targetKey = targetKey ?? looked.targetKey;
+        }
+      }
+
+      if (orgId && kind) {
         await reversePaidGrant({
           organizationId: orgId,
-          kind: addonRef ? 'addon' : 'plan',
-          targetKey: addonRef?.addonKey ?? planRef?.planKey ?? null,
+          kind,
+          targetKey,
           provider: 'stripe',
           externalId: object.id ?? eventId,
-          reason: event.type,
-        });
-      } else if (orgId && metadata.plan_key) {
-        await reversePaidGrant({
-          organizationId: orgId,
-          kind: 'plan',
-          targetKey: metadata.plan_key,
-          provider: 'stripe',
-          externalId: object.id ?? eventId,
-          reason: event.type,
-        });
-      } else if (orgId && metadata.addon_key) {
-        await reversePaidGrant({
-          organizationId: orgId,
-          kind: 'addon',
-          targetKey: metadata.addon_key,
-          provider: 'stripe',
-          externalId: object.id ?? eventId,
+          providerIds: ids,
           reason: event.type,
         });
       }
     } else if (event.type === 'invoice.paid' || event.type === 'invoice.payment_succeeded') {
       const reason = object.billing_reason ?? '';
       if (reason === 'subscription_cycle' || reason === 'subscription_update') {
-        await extendPaidPlanPeriod({
+        const extended = await extendPaidPlanPeriod({
           organizationId,
           stripeCustomerId: stripeId(object.customer),
           interval: metadata.interval === 'annual' ? 'annual' : 'monthly',
           provider: 'stripe',
           externalId: object.id ?? eventId,
         });
+        if (extended && organizationId) {
+          await attachPaidGrantProviderIds({
+            organizationId,
+            kind: 'plan',
+            targetKey: metadata.plan_key ?? '',
+            ids: {
+              invoiceId: object.id,
+              paymentIntentId: stripeId(object.payment_intent),
+              chargeId: stripeId(object.charge),
+              stripeSubscriptionId: stripeId(object.subscription),
+            },
+          });
+        }
       }
     } else if (event.type === 'invoice.payment_failed') {
       const orgId =

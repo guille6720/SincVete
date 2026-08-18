@@ -1,3 +1,9 @@
+import {
+  isPurchasablePlanKey,
+  parseAddonCheckoutReference,
+  parseCheckoutReference,
+} from './pricing';
+
 export type {
   BillingProvider,
   BillingInterval,
@@ -38,6 +44,113 @@ export function shouldReversePaidGrant(status: string | null | undefined): boole
     value === 'charged_back' ||
     value.includes('charge.refunded')
   );
+}
+
+function providerObjectId(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  if (value && typeof value === 'object' && !Array.isArray(value) && 'id' in value) {
+    const id = (value as { id?: unknown }).id;
+    if (typeof id === 'string' && id.trim()) return id.trim();
+  }
+  return null;
+}
+
+/** Stripe charge/session/invoice ids that can point at the same paid grant. */
+export function collectProviderPaymentIds(
+  source: Record<string, unknown> | null | undefined
+): string[] {
+  if (!source) return [];
+  const keys = ['id', 'payment_intent', 'invoice', 'subscription', 'charge', 'checkout_session'];
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const key of keys) {
+    const id = providerObjectId(source[key]);
+    if (id && !seen.has(id)) {
+      seen.add(id);
+      ids.push(id);
+    }
+  }
+  return ids;
+}
+
+/**
+ * Stripe `charge.refunded` also fires for partial refunds. Only a full take-back
+ * should expire the grant. Mercado Pago `refunded` / `charged_back` are already full.
+ */
+export function isFullProviderRefund(params: {
+  eventType?: string | null;
+  status?: string | null;
+  refunded?: boolean | null;
+  amount?: number | null;
+  amountRefunded?: number | null;
+}): boolean {
+  const eventType = (params.eventType ?? '').toLowerCase();
+  const status = (params.status ?? '').toLowerCase();
+  const token = `${eventType} ${status}`;
+
+  if (status === 'refunded' || status === 'charged_back') return true;
+  if (eventType === 'refunded' || eventType === 'charged_back') return true;
+  if (token.includes('charged_back') || token.includes('chargeback')) return true;
+  if (token.includes('dispute.closed')) return status === 'lost';
+
+  const stripeChargeRefund =
+    eventType === 'charge.refunded' ||
+    eventType.includes('charge.refunded') ||
+    status === 'charge.refunded';
+  if (!stripeChargeRefund) return false;
+  if (params.refunded === true) return true;
+  const amount = params.amount;
+  const refunded = params.amountRefunded;
+  return (
+    typeof amount === 'number' &&
+    typeof refunded === 'number' &&
+    Number.isFinite(amount) &&
+    Number.isFinite(refunded) &&
+    amount > 0 &&
+    refunded >= amount
+  );
+}
+
+export type RefundCheckoutTarget = {
+  organizationId: string;
+  kind: 'plan' | 'addon';
+  targetKey: string;
+};
+
+export function refundCheckoutTargetFromMetadata(
+  metadata: Record<string, unknown> | null | undefined,
+  fallbackReference?: string | null
+): RefundCheckoutTarget | null {
+  const asText = (value: unknown): string | null =>
+    typeof value === 'string' && value.trim() ? value.trim() : null;
+  const reference = asText(metadata?.reference) ?? fallbackReference ?? null;
+  const addonRef = parseAddonCheckoutReference(reference);
+  if (addonRef) {
+    return {
+      organizationId: addonRef.organizationId,
+      kind: 'addon',
+      targetKey: addonRef.addonKey,
+    };
+  }
+  const planRef = parseCheckoutReference(reference);
+  if (planRef) {
+    return {
+      organizationId: planRef.organizationId,
+      kind: 'plan',
+      targetKey: planRef.planKey,
+    };
+  }
+  const organizationId = asText(metadata?.organization_id);
+  const addonKey = asText(metadata?.addon_key);
+  const planKey = asText(metadata?.plan_key);
+  const kind = asText(metadata?.kind);
+  if (organizationId && addonKey && (kind === 'addon' || !planKey)) {
+    return { organizationId, kind: 'addon', targetKey: addonKey };
+  }
+  if (organizationId && planKey && isPurchasablePlanKey(planKey)) {
+    return { organizationId, kind: 'plan', targetKey: planKey };
+  }
+  return null;
 }
 
 /** Provider statuses that mean the checkout will not complete. Pending/in_process stay locked. */

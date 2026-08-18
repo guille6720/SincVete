@@ -3603,6 +3603,23 @@ export interface Database {
           p_provider?: string | null;
           p_external_id?: string | null;
           p_reason?: string | null;
+          p_provider_ids?: string[] | null;
+        };
+        Returns: Json;
+      };
+      billing_lookup_paid_grant_from_provider_ids: {
+        Args: {
+          p_provider: string;
+          p_ids: string[];
+        };
+        Returns: Json;
+      };
+      billing_attach_paid_grant_ids: {
+        Args: {
+          p_organization_id: string;
+          p_kind: string;
+          p_target_key: string;
+          p_ids: Json;
         };
         Returns: Json;
       };

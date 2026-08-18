@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { COMMERCIAL_PLAN_KEYS, SUPERADMIN_ASSIGNABLE_PLAN_KEYS, formatBillingEventLabel, formatMeteredUsage, isQuotaNearLimit } from '@sincvete/shared';
+import { COMMERCIAL_PLAN_KEYS, SUPERADMIN_ASSIGNABLE_PLAN_KEYS, formatBillingEventLabel, formatMeteredUsage, isPublicPricingPlanKey, isQuotaNearLimit } from '@sincvete/shared';
 import type { SuperadminBillingEvent, SuperadminCheckoutIntent, SuperadminOrgCommercial } from '@/actions/superadmin';
 import {
   cancelSuperadminCheckoutIntents,
@@ -11,6 +11,7 @@ import {
   endOrganizationTrial,
   grantOrganizationAddon,
   revokeOrganizationAddon,
+  reverseSuperadminPaidGrant,
   setOrganizationFeatureOverride,
   startOrganizationTrial,
 } from '@/actions/superadmin';
@@ -139,6 +140,28 @@ export function SuperadminOrgDetail({
             </Button>
           </form>
 
+          {data.subscription &&
+          (data.subscription.status === 'active' || data.subscription.status === 'past_due') &&
+          isPublicPricingPlanKey(data.subscription.planKey) ? (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                const form = new FormData(event.currentTarget);
+                void handle(() => reverseSuperadminPaidGrant(form));
+              }}
+            >
+              <input type="hidden" name="organizationId" value={orgId} />
+              <input type="hidden" name="kind" value="plan" />
+              <input type="hidden" name="targetKey" value={data.subscription.planKey} />
+              <Button type="submit" variant="outline" size="sm" isPending={pending}>
+                Revertir cobro del plan
+              </Button>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Si Mercado Pago o Stripe reembolsaron y el webhook no llegó. No toca legacy ni trial.
+              </p>
+            </form>
+          ) : null}
+
           <div className="grid gap-4 md:grid-cols-2">
             <form
               className="space-y-2 rounded-md border p-3"
@@ -218,6 +241,7 @@ export function SuperadminOrgDetail({
                         <span className="text-muted-foreground"> · {row.reason}</span>
                       ) : null}
                     </span>
+                    <span className="flex flex-wrap gap-1">
                     <form
                       onSubmit={(event) => {
                         event.preventDefault();
@@ -231,6 +255,23 @@ export function SuperadminOrgDetail({
                         Quitar
                       </Button>
                     </form>
+                    {row.reason === 'checkout' ? (
+                      <form
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          const form = new FormData(event.currentTarget);
+                          void handle(() => reverseSuperadminPaidGrant(form));
+                        }}
+                      >
+                        <input type="hidden" name="organizationId" value={orgId} />
+                        <input type="hidden" name="kind" value="addon" />
+                        <input type="hidden" name="targetKey" value={row.addonKey} />
+                        <Button type="submit" size="sm" variant="ghost" isPending={pending}>
+                          Revertir cobro
+                        </Button>
+                      </form>
+                    ) : null}
+                    </span>
                   </li>
                 ))}
             </ul>

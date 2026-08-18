@@ -836,3 +836,35 @@ export async function cancelSuperadminCheckoutIntents(formData: FormData): Promi
     return actionError(error);
   }
 }
+
+export async function reverseSuperadminPaidGrant(formData: FormData): Promise<ActionResult> {
+  try {
+    await requireSuperadmin();
+    const organizationId = String(formData.get('organizationId') ?? '');
+    const kind = String(formData.get('kind') ?? '').trim();
+    const targetKey = String(formData.get('targetKey') ?? '').trim() || null;
+    if (!organizationId || (kind !== 'plan' && kind !== 'addon')) {
+      return { success: false, error: 'Organización y tipo son obligatorios' };
+    }
+    if (kind === 'addon' && !targetKey) {
+      return { success: false, error: 'El extra es obligatorio' };
+    }
+    const supabase = await createServerClient();
+    const { data, error } = await supabase.rpc('billing_reverse_paid_grant', {
+      p_organization_id: organizationId,
+      p_kind: kind,
+      p_target_key: targetKey,
+      p_reason: 'superadmin_refund',
+    });
+    if (error) return { success: false, error: error.message };
+    const row = data && typeof data === 'object' && !Array.isArray(data) ? data : null;
+    const reversed = typeof row?.reversed === 'number' ? row.reversed : 0;
+    if (reversed < 1) {
+      return { success: false, error: 'No había un cobro de checkout para revertir' };
+    }
+    revalidateOrg(organizationId);
+    return { success: true };
+  } catch (error) {
+    return actionError(error);
+  }
+}

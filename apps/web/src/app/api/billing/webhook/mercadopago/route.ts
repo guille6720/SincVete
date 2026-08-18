@@ -101,6 +101,7 @@ async function handleMercadoPagoWebhook(request: Request) {
         targetKey: addonRef?.addonKey ?? planRef?.planKey ?? null,
         provider: 'mercadopago',
         externalId: payment.id,
+        providerIds: [payment.id],
         reason: payment.status,
       });
     }

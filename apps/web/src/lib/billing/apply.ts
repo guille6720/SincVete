@@ -193,25 +193,92 @@ export async function extendPaidPlanPeriod(params: {
   return true;
 }
 
+export async function attachPaidGrantProviderIds(params: {
+  organizationId: string;
+  kind: 'plan' | 'addon';
+  targetKey: string;
+  ids: {
+    checkoutSessionId?: string | null;
+    paymentIntentId?: string | null;
+    chargeId?: string | null;
+    invoiceId?: string | null;
+    stripeSubscriptionId?: string | null;
+  };
+}): Promise<void> {
+  assertOrgId(params.organizationId);
+  const patch: Record<string, string> = {};
+  if (params.ids.checkoutSessionId) patch.checkout_session_id = params.ids.checkoutSessionId;
+  if (params.ids.paymentIntentId) patch.payment_intent_id = params.ids.paymentIntentId;
+  if (params.ids.chargeId) patch.charge_id = params.ids.chargeId;
+  if (params.ids.invoiceId) patch.invoice_id = params.ids.invoiceId;
+  if (params.ids.stripeSubscriptionId) {
+    patch.stripe_subscription_id = params.ids.stripeSubscriptionId;
+  }
+  if (Object.keys(patch).length === 0) return;
+  const service = await createServiceClient();
+  const { error } = await service.rpc('billing_attach_paid_grant_ids', {
+    p_organization_id: params.organizationId,
+    p_kind: params.kind,
+    p_target_key: params.targetKey,
+    p_ids: patch as Json,
+  });
+  if (error) {
+    console.error('[billing] attach grant ids', error.message);
+  }
+}
+
+export async function lookupPaidGrantFromProviderIds(params: {
+  provider: BillingProvider;
+  ids: string[];
+}): Promise<{
+  organizationId: string;
+  kind: 'plan' | 'addon';
+  targetKey: string | null;
+  matchedExternalId: string | null;
+} | null> {
+  if (params.ids.length === 0) return null;
+  const service = await createServiceClient();
+  const { data, error } = await service.rpc('billing_lookup_paid_grant_from_provider_ids', {
+    p_provider: params.provider,
+    p_ids: params.ids,
+  });
+  if (error) throw new Error(error.message);
+  const row = data && typeof data === 'object' && !Array.isArray(data) ? data : null;
+  if (row?.found !== 1 && row?.found !== '1') return null;
+  const organizationId = typeof row.organization_id === 'string' ? row.organization_id : null;
+  const kind = row.kind === 'addon' || row.kind === 'plan' ? row.kind : null;
+  if (!organizationId || !kind) return null;
+  return {
+    organizationId,
+    kind,
+    targetKey: typeof row.target_key === 'string' ? row.target_key : null,
+    matchedExternalId: typeof row.matched_external_id === 'string' ? row.matched_external_id : null,
+  };
+}
+
 export async function reversePaidGrant(params: {
   organizationId: string;
   kind: 'plan' | 'addon';
   targetKey?: string | null;
   provider?: BillingProvider | null;
   externalId?: string | null;
+  providerIds?: string[] | null;
   reason?: string | null;
-}): Promise<void> {
+}): Promise<{ reversed: number }> {
   assertOrgId(params.organizationId);
   const service = await createServiceClient();
-  const { error } = await service.rpc('billing_reverse_paid_grant', {
+  const { data, error } = await service.rpc('billing_reverse_paid_grant', {
     p_organization_id: params.organizationId,
     p_kind: params.kind,
     p_target_key: params.targetKey ?? null,
     p_provider: params.provider ?? null,
     p_external_id: params.externalId ?? null,
     p_reason: params.reason ?? 'refunded',
+    p_provider_ids: params.providerIds ?? null,
   });
   if (error) throw new Error(error.message);
+  const row = data && typeof data === 'object' && !Array.isArray(data) ? data : null;
+  return { reversed: typeof row?.reversed === 'number' ? row.reversed : 0 };
 }
 
 export async function setPaidSubscriptionStatus(params: {
