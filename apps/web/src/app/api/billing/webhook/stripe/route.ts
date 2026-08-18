@@ -3,6 +3,7 @@ import { parseAddonCheckoutReference, parseCheckoutReference } from '@sincvete/s
 import {
   applyPaidAddon,
   applyPaidPlan,
+  extendPaidPlanPeriod,
   recordBillingEvent,
   setPaidSubscriptionStatus,
   upsertBillingCustomer,
@@ -15,12 +16,19 @@ type StripeObject = {
   id?: string;
   object?: string;
   client_reference_id?: string;
-  customer?: string;
+  customer?: string | { id?: string };
   customer_email?: string;
   metadata?: Record<string, string>;
   status?: string;
   payment_status?: string;
+  billing_reason?: string;
+  subscription?: string | { id?: string };
 };
+
+function stripeId(value: string | { id?: string } | undefined): string | undefined {
+  if (!value) return undefined;
+  return typeof value === 'string' ? value : value.id;
+}
 
 export async function POST(request: Request) {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -113,12 +121,24 @@ export async function POST(request: Request) {
           interval: planRef.interval,
         });
       }
-      if (object.customer) {
+      const customerId = stripeId(object.customer);
+      if (customerId) {
         await upsertBillingCustomer({
           organizationId: (addonRef ?? planRef)!.organizationId,
           provider: 'stripe',
-          customerId: object.customer,
+          customerId,
           email: object.customer_email ?? null,
+        });
+      }
+    } else if (event.type === 'invoice.paid' || event.type === 'invoice.payment_succeeded') {
+      const reason = object.billing_reason ?? '';
+      if (reason === 'subscription_cycle' || reason === 'subscription_update') {
+        await extendPaidPlanPeriod({
+          organizationId,
+          stripeCustomerId: stripeId(object.customer),
+          interval: metadata.interval === 'annual' ? 'annual' : 'monthly',
+          provider: 'stripe',
+          externalId: object.id ?? eventId,
         });
       }
     } else if (event.type === 'customer.subscription.updated' && organizationId) {

@@ -30,6 +30,7 @@ import { ORGANIZATION_COLUMNS } from '@/lib/db-columns';
 import {
   FEATURES,
   assertWithinLimit,
+  getSeatUsageMeters,
   planRestrictionResult,
 } from '@/lib/entitlements';
 
@@ -41,6 +42,16 @@ function actionError<T = void>(error: unknown): ActionResult<T> {
   }
   console.error(error);
   return { success: false, error: 'Ocurrió un error inesperado' };
+}
+
+async function assertVeterinarianSeatAvailable(organizationId: string) {
+  const seats = await getSeatUsageMeters(organizationId);
+  const meter = seats.find((item) => item.featureKey === FEATURES.PROFESSIONALS_MAX);
+  await assertWithinLimit({
+    organizationId,
+    featureKey: FEATURES.PROFESSIONALS_MAX,
+    currentCount: meter?.used ?? 0,
+  });
 }
 
 /** Request-scoped clinic metadata (non-PHI). Dedupes layout + forms + dashboard. */
@@ -377,7 +388,7 @@ export async function updateTeamMember(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    await requirePermission('users:manage');
+    const session = await requirePermission('users:manage');
     const parsed = updateMemberSchema.safeParse({
       memberId: formData.get('memberId'),
       role: formData.get('role'),
@@ -389,6 +400,18 @@ export async function updateTeamMember(
     }
 
     const supabase = await createServerClient();
+    const { data: member } = await supabase
+      .from('branch_members')
+      .select('role, is_active, deleted_at')
+      .eq('id', parsed.data.memberId)
+      .maybeSingle();
+    const currentlyActiveVet =
+      member?.role === 'veterinarian' && member.is_active === true && member.deleted_at == null;
+    const willBeActiveVet = parsed.data.role === 'veterinarian' && parsed.data.isActive;
+    if (willBeActiveVet && !currentlyActiveVet) {
+      await assertVeterinarianSeatAvailable(session.organizationId);
+    }
+
     const { error } = await supabase
       .from('branch_members')
       .update({
@@ -470,6 +493,25 @@ export async function inviteTeamMember(
         featureKey: FEATURES.USERS_MAX,
         currentCount: (profileCount ?? 0) + (inviteCount ?? 0),
       });
+    }
+
+    if (parsed.data.role === 'veterinarian') {
+      let alreadyVet = false;
+      if (existingUser) {
+        const { data: vetRow } = await supabaseForLimit
+          .from('branch_members')
+          .select('id')
+          .eq('user_id', existingUser.id)
+          .eq('role', 'veterinarian')
+          .eq('is_active', true)
+          .is('deleted_at', null)
+          .limit(1)
+          .maybeSingle();
+        alreadyVet = Boolean(vetRow);
+      }
+      if (!alreadyVet) {
+        await assertVeterinarianSeatAvailable(session.organizationId);
+      }
     }
 
     if (existingUser) {

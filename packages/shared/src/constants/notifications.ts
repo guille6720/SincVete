@@ -44,6 +44,7 @@ export const NOTIFICATION_RELATED_TYPES = [
   'plan_expired',
   'plan_past_due',
   'plan_quota',
+  'plan_ending',
   'addon_ending',
   'addon_expired',
 ] as const;

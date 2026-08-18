@@ -6,8 +6,15 @@ import {
   canSuperadminAssignPlan,
   COMMERCIAL_QUOTA_WARN_RATIO,
   COMMERCIAL_TRIAL_REMIND_DAYS,
+  findSeatDowngradeBlockers,
+  formatSeatAssignmentMessage,
+  getResolvedFeatureLimit,
   isFeatureKey,
+  isLegacyPlanKey,
+  isSeatFeatureKey,
   resolveOrganizationEntitlements,
+  SEAT_FEATURE_KEYS,
+  SEAT_USAGE_LABELS,
   type ActionResult,
   type AddonFeatureRow,
   type EntitlementResolutionInput,
@@ -16,6 +23,7 @@ import {
   type OrganizationEntitlements,
   type PaginatedResult,
   type PlanFeatureRow,
+  type SeatUsageMeter,
   type SubscriptionStatus,
 } from '@sincvete/shared';
 import type { Json } from '@sincvete/db';
@@ -144,6 +152,7 @@ export type SuperadminOrgCommercial = {
   entitlements: OrganizationEntitlements;
   overrides: SuperadminOverrideRow[];
   usage: SuperadminUsageRow[];
+  seats: SeatUsageMeter[];
 };
 
 function asObject(value: Json | null | undefined): Record<string, Json | undefined> | null {
@@ -203,6 +212,49 @@ function formDateToTimestamptz(value: string): string | null {
   return trimmed;
 }
 
+function seatLimitsFromRows(
+  rows: { feature_key: string; enabled: boolean; limit_value: number | null }[] | null
+): Record<string, number | null> {
+  const limits: Record<string, number | null> = {};
+  for (const row of rows ?? []) {
+    if (!isSeatFeatureKey(row.feature_key)) continue;
+    if (row.enabled === false) {
+      limits[row.feature_key] = 0;
+      continue;
+    }
+    limits[row.feature_key] = row.limit_value === null ? null : Number(row.limit_value);
+  }
+  return limits;
+}
+
+async function superadminSeatAssignmentError(params: {
+  organizationId: string;
+  planKey: string;
+  planName?: string | null;
+  currentPlanKey?: string | null;
+  allowOverSeats: boolean;
+}): Promise<string | null> {
+  if (params.allowOverSeats || isLegacyPlanKey(params.planKey)) return null;
+  if (params.currentPlanKey && params.currentPlanKey === params.planKey) return null;
+  const supabase = await createServerClient();
+  const [usageRes, limitsRes] = await Promise.all([
+    supabase.rpc('superadmin_list_org_seat_usage', { p_organization_id: params.organizationId }),
+    supabase.rpc('list_plan_seat_limits', { p_plan_key: params.planKey }),
+  ]);
+  if (usageRes.error || limitsRes.error) {
+    return 'No se pudieron verificar los cupos de la clínica.';
+  }
+  const usedByKey = Object.fromEntries(
+    (usageRes.data ?? []).map((row) => [row.feature_key, Number(row.used) || 0])
+  );
+  const blockers = findSeatDowngradeBlockers({
+    usedByKey,
+    targetLimits: seatLimitsFromRows(limitsRes.data),
+  });
+  if (blockers.length === 0) return null;
+  return formatSeatAssignmentMessage(blockers, params.planName || params.planKey);
+}
+
 export async function getSuperadminOrgCommercial(
   organizationId: string
 ): Promise<SuperadminOrgCommercial> {
@@ -214,6 +266,10 @@ export async function getSuperadminOrgCommercial(
   if (error) throw new Error(error.message);
   const bundle = asObject(data);
   if (!bundle) throw new Error('Respuesta comercial inválida');
+
+  const seatsRes = await supabase.rpc('superadmin_list_org_seat_usage', {
+    p_organization_id: organizationId,
+  });
 
   const org = asObject(bundle.organization);
   if (!org?.id || !asString(org.id)) throw new Error('Organización inválida');
@@ -368,6 +424,17 @@ export async function getSuperadminOrgCommercial(
   });
 
   const status = asSubscriptionStatus(subscriptionRaw?.status);
+  const entitlements = resolveOrganizationEntitlements(input);
+  const usedByKey = new Map<string, number>();
+  for (const row of seatsRes.data ?? []) {
+    usedByKey.set(row.feature_key, Number(row.used) || 0);
+  }
+  const seats: SeatUsageMeter[] = SEAT_FEATURE_KEYS.map((featureKey) => ({
+    featureKey,
+    label: SEAT_USAGE_LABELS[featureKey] ?? featureKey,
+    used: usedByKey.get(featureKey) ?? 0,
+    limit: getResolvedFeatureLimit(entitlements, featureKey),
+  }));
 
   return {
     organization: {
@@ -391,9 +458,10 @@ export async function getSuperadminOrgCommercial(
     catalog,
     addonCatalog,
     organizationAddons,
-    entitlements: resolveOrganizationEntitlements(input),
+    entitlements,
     overrides,
     usage,
+    seats,
   };
 }
 
@@ -404,11 +472,24 @@ export async function changeOrganizationPlan(formData: FormData): Promise<Action
     const planKey = String(formData.get('planKey') ?? '');
     const reason = String(formData.get('reason') ?? '').trim() || null;
     const allowLegacy = formData.get('allowLegacy') === 'on';
+    const allowOverSeats = formData.get('allowOverSeats') === 'on';
     if (!organizationId || !planKey) {
       return { success: false, error: 'Plan y organización son obligatorios' };
     }
     if (!canSuperadminAssignPlan(planKey, allowLegacy)) {
       return { success: false, error: 'Ese plan no se puede asignar' };
+    }
+    const commercial = await getSuperadminOrgCommercial(organizationId);
+    const planName = commercial.plans.find((plan) => plan.key === planKey)?.name ?? planKey;
+    const seatError = await superadminSeatAssignmentError({
+      organizationId,
+      planKey,
+      planName,
+      currentPlanKey: commercial.subscription?.planKey ?? null,
+      allowOverSeats,
+    });
+    if (seatError) {
+      return { success: false, error: seatError };
     }
     const supabase = await createServerClient();
     const { error } = await supabase.rpc('superadmin_change_plan', {
@@ -457,9 +538,22 @@ export async function endOrganizationTrial(formData: FormData): Promise<ActionRe
     const organizationId = String(formData.get('organizationId') ?? '');
     const planKey = String(formData.get('planKey') ?? 'basic') || 'basic';
     const reason = String(formData.get('reason') ?? '').trim() || null;
+    const allowOverSeats = formData.get('allowOverSeats') === 'on';
     if (!organizationId) return { success: false, error: 'Organización inválida' };
     if (!canSuperadminAssignPlan(planKey, false) || planKey === 'trial') {
       return { success: false, error: 'Elegí un plan comercial para terminar el trial' };
+    }
+    const commercial = await getSuperadminOrgCommercial(organizationId);
+    const planName = commercial.plans.find((plan) => plan.key === planKey)?.name ?? planKey;
+    const seatError = await superadminSeatAssignmentError({
+      organizationId,
+      planKey,
+      planName,
+      currentPlanKey: commercial.subscription?.planKey ?? null,
+      allowOverSeats,
+    });
+    if (seatError) {
+      return { success: false, error: seatError };
     }
     const supabase = await createServerClient();
     const { error } = await supabase.rpc('superadmin_end_trial', {
@@ -590,8 +684,10 @@ export type SuperadminCommercialSummary = {
   pastDue: number;
   expired: number;
   cancelled: number;
+  plansEndingSoon: number;
   addonsActive: number;
   addonsEndingSoon: number;
+  orgsOverSeats: number;
 };
 
 export async function getSuperadminCommercialSummary(): Promise<SuperadminCommercialSummary> {
@@ -609,8 +705,10 @@ export async function getSuperadminCommercialSummary(): Promise<SuperadminCommer
     pastDue: asNumber(row?.past_due) ?? 0,
     expired: asNumber(row?.expired) ?? 0,
     cancelled: asNumber(row?.cancelled) ?? 0,
+    plansEndingSoon: asNumber(row?.plans_ending_soon) ?? 0,
     addonsActive: asNumber(row?.addons_active) ?? 0,
     addonsEndingSoon: asNumber(row?.addons_ending_soon) ?? 0,
+    orgsOverSeats: asNumber(row?.orgs_over_seats) ?? 0,
   };
 }
 

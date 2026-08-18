@@ -4,11 +4,14 @@ import { revalidatePath } from 'next/cache';
 import {
   ADDON_PRIMARY_FEATURE,
   amountForInterval,
-  canCheckoutPlan,
-  canCheckoutAddonOffer,
   canCancelOwnAddon,
   canCancelOwnSubscription,
+  canCheckoutAddonOffer,
+  canCheckoutPlan,
+  canRenewOwnPlan,
   canUseResolvedFeature,
+  findSeatDowngradeBlockers,
+  formatSeatDowngradeMessage,
   isAddonKey,
   isPeriodEndingSoon,
   isPurchasableAddonKey,
@@ -19,6 +22,7 @@ import {
   type AddonOfferState,
   type BillingInterval,
   type MeteredUsageMeter,
+  type SeatUsageMeter,
   type PublicAddonCatalogItem,
   type PublicPlanCatalogItem,
   type SubscriptionStatus,
@@ -26,10 +30,10 @@ import {
 import { PermissionError, requirePermission } from '@/lib/permissions';
 import { createServerClient } from '@/lib/supabase/server';
 import { billingConfigured, resolveBillingProvider } from '@/lib/billing/crypto';
-import { listPublicAddonsCatalog, listPublicPlansCatalog } from '@/lib/billing/catalog';
+import { listPublicAddonsCatalog, listPublicPlanSeatLimits, listPublicPlansCatalog } from '@/lib/billing/catalog';
 import { createMercadoPagoCheckoutUrl } from '@/lib/billing/mercadopago';
 import { createStripeBillingPortalUrl, createStripeCheckoutUrl } from '@/lib/billing/stripe';
-import { getMeteredUsageMeters, getOrganizationEntitlements } from '@/lib/entitlements';
+import { getMeteredUsageMeters, getOrganizationEntitlements, getSeatUsageMeters } from '@/lib/entitlements';
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (error instanceof PermissionError) {
@@ -65,11 +69,15 @@ export type PlanBillingState = {
     status: SubscriptionStatus | null;
     trialEndsAt: string | null;
     endsAt: string | null;
+    endingSoon: boolean;
+    canRenew: boolean;
   };
   hasStripeCustomer: boolean;
   canCancel: boolean;
   plans: PublicPlanCatalogItem[];
   usage: MeteredUsageMeter[];
+  seats: SeatUsageMeter[];
+  seatBlocksByPlan: Record<string, string>;
   events: PlanBillingEvent[];
   addonOffers: ClinicAddonOffer[];
 };
@@ -77,7 +85,7 @@ export type PlanBillingState = {
 export async function getPlanBillingState(): Promise<PlanBillingState> {
   const session = await requirePermission('org:manage');
   const supabase = await createServerClient();
-  const [plans, addonCatalog, subRes, customerRes, usage, eventsRes, addonsRes, entitlements] =
+  const [plans, addonCatalog, subRes, customerRes, usage, seats, eventsRes, addonsRes, entitlements] =
     await Promise.all([
     listPublicPlansCatalog(),
     listPublicAddonsCatalog(),
@@ -96,6 +104,7 @@ export async function getPlanBillingState(): Promise<PlanBillingState> {
       .eq('organization_id', session.organizationId)
       .maybeSingle(),
     getMeteredUsageMeters(session.organizationId),
+    getSeatUsageMeters(session.organizationId),
     supabase.rpc('list_own_billing_events', { p_limit: 12 }),
     supabase.rpc('list_own_addons'),
     getOrganizationEntitlements(session.organizationId),
@@ -116,6 +125,23 @@ export async function getPlanBillingState(): Promise<PlanBillingState> {
     ])
   );
 
+  const usedByKey = Object.fromEntries(seats.map((meter) => [meter.featureKey, meter.used]));
+  const planLimits = await Promise.all(
+    plans.map(async (plan) => [plan.key, await listPublicPlanSeatLimits(plan.key)] as const)
+  );
+  const limitsByPlan = Object.fromEntries(planLimits);
+  const seatBlocksByPlan: Record<string, string> = {};
+  for (const plan of plans) {
+    if (plan.key === planRow?.key) continue;
+    const blockers = findSeatDowngradeBlockers({
+      usedByKey,
+      targetLimits: limitsByPlan[plan.key] ?? {},
+    });
+    if (blockers.length > 0) {
+      seatBlocksByPlan[plan.key] = formatSeatDowngradeMessage(blockers, plan.name);
+    }
+  }
+
   return {
     configured: billingConfigured(),
     provider: resolveBillingProvider(),
@@ -125,6 +151,12 @@ export async function getPlanBillingState(): Promise<PlanBillingState> {
       status,
       trialEndsAt: subRes.data?.trial_ends_at ?? null,
       endsAt: subRes.data?.ends_at ?? null,
+      endingSoon: isPeriodEndingSoon({ endsAt: subRes.data?.ends_at ?? null }),
+      canRenew: canRenewOwnPlan({
+        planKey: planRow?.key ?? null,
+        status,
+        endsAt: subRes.data?.ends_at ?? null,
+      }),
     },
     hasStripeCustomer: customerRes.data?.provider === 'stripe',
     canCancel: canCancelOwnSubscription({
@@ -133,6 +165,8 @@ export async function getPlanBillingState(): Promise<PlanBillingState> {
     }),
     plans,
     usage,
+    seats,
+    seatBlocksByPlan,
     events: (eventsRes.data ?? []).map((row) => ({
       id: row.id,
       provider: row.provider,
@@ -180,6 +214,12 @@ export async function startPlanCheckout(formData: FormData): Promise<ActionResul
     const plan = plans.find((item) => item.key === planKey);
     if (!plan || !canCheckoutPlan(plan.pricing) || !amountForInterval(plan.pricing, interval as BillingInterval)) {
       return { success: false, error: 'Este plan no tiene checkout público. Contactanos para Enterprise.' };
+    }
+
+    const billingState = await getPlanBillingState();
+    const seatBlock = billingState.seatBlocksByPlan[planKey];
+    if (seatBlock) {
+      return { success: false, error: seatBlock };
     }
 
     const supabase = await createServerClient();

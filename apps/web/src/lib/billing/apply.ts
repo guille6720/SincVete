@@ -100,6 +100,37 @@ export async function applyPaidAddon(params: {
   if (error) throw new Error(error.message);
 }
 
+export async function extendPaidPlanPeriod(params: {
+  organizationId?: string | null;
+  stripeCustomerId?: string | null;
+  interval?: BillingInterval;
+  provider?: BillingProvider;
+  externalId?: string;
+}): Promise<boolean> {
+  const service = await createServiceClient();
+  let organizationId = params.organizationId ?? null;
+  if (!organizationId && params.stripeCustomerId) {
+    const { data, error } = await service
+      .from('billing_customers')
+      .select('organization_id')
+      .eq('provider', 'stripe')
+      .eq('customer_id', params.stripeCustomerId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    organizationId = data?.organization_id ?? null;
+  }
+  if (!organizationId) return false;
+  assertOrgId(organizationId);
+  const { error } = await service.rpc('billing_extend_paid_plan', {
+    p_organization_id: organizationId,
+    p_interval: params.interval ?? 'monthly',
+    p_provider: params.provider ?? 'stripe',
+    p_external_id: params.externalId ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return true;
+}
+
 export async function setPaidSubscriptionStatus(params: {
   organizationId: string;
   status: Extract<SubscriptionStatus, 'active' | 'past_due' | 'cancelled' | 'expired'>;

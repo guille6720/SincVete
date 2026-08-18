@@ -148,6 +148,16 @@ export const METERED_FEATURE_KEYS = [
   FEATURES.STORAGE_MAX_MB,
 ] as const satisfies readonly FeatureKey[];
 
+/** Occupancy limits (not monthly meters). */
+export const SEAT_FEATURE_KEYS = [
+  FEATURES.USERS_MAX,
+  FEATURES.BRANCHES_MAX,
+  FEATURES.PROFESSIONALS_MAX,
+  FEATURES.PATIENTS_MAX,
+] as const satisfies readonly FeatureKey[];
+
+export type SeatFeatureKey = (typeof SEAT_FEATURE_KEYS)[number];
+
 export function isLegacyPlanKey(key: string): boolean {
   return key === COMMERCIAL_PLAN_KEYS.LEGACY;
 }
@@ -217,6 +227,10 @@ export function parseSuperadminEmails(raw: string | undefined | null): string[] 
 
 export function isMeteredFeatureKey(value: string): boolean {
   return (METERED_FEATURE_KEYS as readonly string[]).includes(value);
+}
+
+export function isSeatFeatureKey(value: string): value is SeatFeatureKey {
+  return (SEAT_FEATURE_KEYS as readonly string[]).includes(value);
 }
 
 export function validateUsageIncrementAmount(amount: unknown): amount is number {

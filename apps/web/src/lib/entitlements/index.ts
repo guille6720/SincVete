@@ -11,11 +11,14 @@ import {
   utcMonthPeriod,
   METERED_FEATURE_KEYS,
   METERED_USAGE_LABELS,
+  SEAT_FEATURE_KEYS,
+  SEAT_USAGE_LABELS,
   type ActionResult,
   type FeatureCatalogRow,
   type FeatureKey,
   type FeatureOverrideRow,
   type MeteredUsageMeter,
+  type SeatUsageMeter,
   type OrganizationEntitlements,
   type AddonFeatureRow,
   type PlanFeatureRow,
@@ -239,6 +242,27 @@ export async function getMeteredUsageMeters(organizationId: string): Promise<Met
   return METERED_FEATURE_KEYS.map((featureKey) => ({
     featureKey,
     label: METERED_USAGE_LABELS[featureKey] ?? featureKey,
+    used: usedByKey.get(featureKey) ?? 0,
+    limit: getResolvedFeatureLimit(entitlements, featureKey),
+  }));
+}
+
+export async function getSeatUsageMeters(organizationId: string): Promise<SeatUsageMeter[]> {
+  const supabase = await createServerClient();
+  const [entitlements, usageRes] = await Promise.all([
+    getOrganizationEntitlements(organizationId),
+    supabase.rpc('list_own_seat_usage'),
+  ]);
+  if (usageRes.error) {
+    throw new Error(usageRes.error.message);
+  }
+  const usedByKey = new Map<string, number>();
+  for (const row of usageRes.data ?? []) {
+    usedByKey.set(row.feature_key, Number(row.used) || 0);
+  }
+  return SEAT_FEATURE_KEYS.map((featureKey) => ({
+    featureKey,
+    label: SEAT_USAGE_LABELS[featureKey] ?? featureKey,
     used: usedByKey.get(featureKey) ?? 0,
     limit: getResolvedFeatureLimit(entitlements, featureKey),
   }));

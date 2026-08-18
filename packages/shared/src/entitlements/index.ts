@@ -23,11 +23,15 @@ export {
   clinicalAiKindFeature,
   utcMonthPeriod,
   METERED_USAGE_LABELS,
+  SEAT_USAGE_LABELS,
   wouldExceedLimit,
   formatMeteredUsage,
+  findSeatDowngradeBlockers,
+  formatSeatDowngradeMessage,
+  formatSeatAssignmentMessage,
 } from './limits';
 
-export type { MeteredUsageMeter } from './limits';
+export type { MeteredUsageMeter, SeatUsageMeter, SeatDowngradeBlocker } from './limits';
 
 export {
   getNavFeatureKey,
@@ -44,6 +48,7 @@ export {
   canCancelOwnAddon,
   canCancelOwnSubscription,
   canCheckoutAddonOffer,
+  canRenewOwnPlan,
   isPeriodEndingSoon,
   isQuotaNearLimit,
   isTrialEndingSoon,

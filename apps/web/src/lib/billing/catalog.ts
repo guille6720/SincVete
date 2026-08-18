@@ -3,6 +3,7 @@ import {
   FALLBACK_PUBLIC_PLANS,
   isPurchasableAddonKey,
   isPurchasablePlanKey,
+  isSeatFeatureKey,
   parsePlanPricing,
   type PublicAddonCatalogItem,
   type PublicPlanCatalogItem,
@@ -91,4 +92,25 @@ export async function listPublicAddonsCatalog(): Promise<PublicAddonCatalogItem[
   } catch {
     return FALLBACK_PUBLIC_ADDONS;
   }
+}
+
+export async function listPublicPlanSeatLimits(
+  planKey: string
+): Promise<Record<string, number | null>> {
+  if (!isPurchasablePlanKey(planKey)) return {};
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc('list_public_plan_limits', { p_plan_key: planKey });
+  if (error) {
+    throw new Error(error.message);
+  }
+  const limits: Record<string, number | null> = {};
+  for (const row of data ?? []) {
+    if (!isSeatFeatureKey(row.feature_key)) continue;
+    if (row.enabled === false) {
+      limits[row.feature_key] = 0;
+      continue;
+    }
+    limits[row.feature_key] = row.limit_value === null ? null : Number(row.limit_value);
+  }
+  return limits;
 }

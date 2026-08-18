@@ -28,7 +28,7 @@ export {
 export function formatBillingEventLabel(eventType: string | null | undefined): string {
   const type = (eventType ?? '').toLowerCase();
   if (!type) return 'Evento de pago';
-  if (type.includes('completed') || type.includes('approved') || type === 'payment.created') {
+  if (type.includes('completed') || type.includes('approved') || type === 'payment.created' || type === 'invoice.paid' || type.includes('payment_succeeded')) {
     return 'Pago acreditado';
   }
   if (type.includes('failed') || type.includes('rejected') || type.includes('payment_failed')) {

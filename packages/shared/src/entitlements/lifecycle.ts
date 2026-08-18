@@ -1,4 +1,4 @@
-import { isLegacyPlanKey } from '../constants/features';
+import { isLegacyPlanKey, isPublicPricingPlanKey } from '../constants/features';
 import type { SubscriptionStatus } from './resolve';
 
 /**
@@ -67,6 +67,17 @@ export function canCancelOwnSubscription(params: {
 
 export function canCancelOwnAddon(params: { status?: SubscriptionStatus | null }): boolean {
   return params.status === 'active';
+}
+
+/** One-time paid plans (MP / Stripe payment) can be bought again to extend ends_at. */
+export function canRenewOwnPlan(params: {
+  planKey?: string | null;
+  status?: SubscriptionStatus | null;
+  endsAt?: string | null;
+}): boolean {
+  if (!params.planKey || !isPublicPricingPlanKey(params.planKey)) return false;
+  if (!params.endsAt) return false;
+  return params.status === 'trialing' || params.status === 'active' || params.status === 'past_due';
 }
 
 export function resolveAddonOfferState(params: {

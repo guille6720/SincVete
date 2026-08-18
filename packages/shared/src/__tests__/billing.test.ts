@@ -75,7 +75,7 @@ describe('plan pricing catalog', () => {
   });
 
   it('labels provider webhook types for clinic history', () => {
-    expect(formatBillingEventLabel('checkout.session.completed')).toBe('Pago acreditado');
+    expect(formatBillingEventLabel('invoice.paid')).toBe('Pago acreditado');
     expect(formatBillingEventLabel('invoice.payment_failed')).toBe('Pago rechazado');
     expect(formatBillingEventLabel('customer.subscription.canceled')).toBe('Cancelación');
   });

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { COMMERCIAL_PLAN_KEYS, SUPERADMIN_ASSIGNABLE_PLAN_KEYS, formatBillingEventLabel } from '@sincvete/shared';
+import { COMMERCIAL_PLAN_KEYS, SUPERADMIN_ASSIGNABLE_PLAN_KEYS, formatBillingEventLabel, formatMeteredUsage, isQuotaNearLimit } from '@sincvete/shared';
 import type { SuperadminBillingEvent, SuperadminOrgCommercial } from '@/actions/superadmin';
 import {
   changeOrganizationPlan,
@@ -127,6 +127,10 @@ export function SuperadminOrgDetail({
               <input type="checkbox" name="allowLegacy" />
               Confirmo asignar legacy (migración / Superadmin explícito)
             </label>
+            <label className="flex items-center gap-2 text-sm md:col-span-2">
+              <input type="checkbox" name="allowOverSeats" />
+              Asignar igual si la clínica ya supera los cupos del plan
+            </label>
             <Button type="submit" isPending={pending} className="md:col-span-2 w-fit">
               Guardar plan
             </Button>
@@ -170,6 +174,10 @@ export function SuperadminOrgDetail({
                   ))}
               </Select>
               <Input name="reason" placeholder="motivo" />
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="allowOverSeats" />
+                Asignar igual si supera los cupos
+              </label>
               <Button type="submit" variant="outline" isPending={pending}>
                 Terminar trial
               </Button>
@@ -415,6 +423,27 @@ export function SuperadminOrgDetail({
               Conceder acceso temporal
             </Button>
           </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Cupos</CardTitle>
+          <CardDescription>Ocupación actual: usuarios, sucursales, veterinarios y pacientes.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          {data.seats.map((meter) => (
+            <div key={meter.featureKey} className="flex items-center justify-between gap-3">
+              <span>{meter.label}</span>
+              <span
+                className={
+                  isQuotaNearLimit(meter) ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground'
+                }
+              >
+                {formatMeteredUsage(meter)}
+              </span>
+            </div>
+          ))}
         </CardContent>
       </Card>
 

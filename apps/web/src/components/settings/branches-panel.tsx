@@ -11,13 +11,17 @@ import { Badge } from '@/components/ui/badge';
 import {
   APP_TIMEZONE,
   TIMEZONES,
+  formatMeteredUsage,
   generateBranchCode,
+  isQuotaNearLimit,
   type Branch,
   type PaginatedResult,
+  type SeatUsageMeter,
 } from '@sincvete/shared';
 
 interface BranchesPanelProps {
   initialData: PaginatedResult<Branch>;
+  seatMeter?: SeatUsageMeter;
 }
 
 function BranchCreateForm({ onDone }: { onDone: () => void }) {
@@ -121,7 +125,7 @@ function BranchEditForm({ branch, onDone }: { branch: Branch; onDone: () => void
   );
 }
 
-export function BranchesPanel({ initialData }: BranchesPanelProps) {
+export function BranchesPanel({ initialData, seatMeter }: BranchesPanelProps) {
   const [showNew, setShowNew] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -134,6 +138,12 @@ export function BranchesPanel({ initialData }: BranchesPanelProps) {
             <CardDescription>
               {initialData.total} sucursal{initialData.total !== 1 ? 'es' : ''} registrada
               {initialData.total !== 1 ? 's' : ''}
+              {seatMeter ? (
+                <span className={isQuotaNearLimit(seatMeter) ? ' text-amber-700 dark:text-amber-300' : ''}>
+                  {' '}
+                  · {formatMeteredUsage(seatMeter)}
+                </span>
+              ) : null}
             </CardDescription>
           </div>
           <Button variant="outline" size="sm" onClick={() => setShowNew((v) => !v)}>

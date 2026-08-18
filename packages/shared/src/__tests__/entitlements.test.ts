@@ -5,6 +5,7 @@ import {
   ONBOARDING_PLAN_KEY,
   ONBOARDING_TRIAL_DAYS,
   METERED_FEATURE_KEYS,
+  SEAT_FEATURE_KEYS,
   PUBLIC_PRICING_PLAN_KEYS,
   SUPERADMIN_ASSIGNABLE_PLAN_KEYS,
   assertNotLegacyAutoAssign,
@@ -12,6 +13,7 @@ import {
   isAutoAssignableOnboardingPlan,
   isLegacyPlanKey,
   isMeteredFeatureKey,
+  isSeatFeatureKey,
   isPublicPricingPlanKey,
   parseSuperadminEmails,
   validateUsageIncrementAmount,
@@ -25,6 +27,9 @@ import {
   getEntitledClinicHrefs,
   isClinicPathEntitled,
   formatMeteredUsage,
+  findSeatDowngradeBlockers,
+  formatSeatDowngradeMessage,
+  formatSeatAssignmentMessage,
   utcMonthPeriod,
   isSubscriptionPeriodOpen,
   isTrialEndingSoon,
@@ -33,6 +38,7 @@ import {
   canCancelOwnSubscription,
   canCancelOwnAddon,
   canCheckoutAddonOffer,
+  canRenewOwnPlan,
   resolveAddonOfferState,
   authorizeCronSecret,
   type EntitlementResolutionInput,
@@ -525,6 +531,35 @@ describe('usage increment validation helpers', () => {
     expect(isMeteredFeatureKey(FEATURES.AI)).toBe(false);
   });
 
+  it('blocks a downgrade when occupancy already exceeds the target seats', () => {
+    expect(SEAT_FEATURE_KEYS).toContain(FEATURES.USERS_MAX);
+    expect(isSeatFeatureKey(FEATURES.PATIENTS_MAX)).toBe(true);
+    expect(isSeatFeatureKey(FEATURES.AI_MONTHLY_REQUESTS)).toBe(false);
+    const blockers = findSeatDowngradeBlockers({
+      usedByKey: { 'users.max': 12, 'branches.max': 1, 'patients.max': 10 },
+      targetLimits: { 'users.max': 3, 'branches.max': 1, 'patients.max': null },
+    });
+    expect(blockers).toEqual([
+      { featureKey: 'users.max', label: 'Usuarios', used: 12, limit: 3 },
+    ]);
+    expect(findSeatDowngradeBlockers({
+      usedByKey: { 'users.max': 3 },
+      targetLimits: { 'users.max': 3 },
+    })).toEqual([]);
+    expect(
+      formatSeatDowngradeMessage(
+        [{ featureKey: 'users.max', label: 'Usuarios', used: 12, limit: 3 }],
+        'Basic'
+      )
+    ).toContain('Basic');
+    expect(
+      formatSeatAssignmentMessage(
+        [{ featureKey: 'users.max', label: 'Usuarios', used: 12, limit: 3 }],
+        'Basic'
+      )
+    ).toContain('Confirmá');
+  });
+
   it('counts storage usage in whole megabytes', () => {
     expect(bytesToStorageMb(0)).toBe(0);
     expect(bytesToStorageMb(-1)).toBe(0);
@@ -714,6 +749,16 @@ describe('commercial lifecycle helpers', () => {
     expect(canCheckoutAddonOffer('active')).toBe(true);
     expect(canCheckoutAddonOffer('included')).toBe(false);
     expect(canCheckoutAddonOffer('blocked')).toBe(false);
+    expect(
+      canRenewOwnPlan({ planKey: 'pro', status: 'active', endsAt: '2026-09-18T12:00:00.000Z' })
+    ).toBe(true);
+    expect(canRenewOwnPlan({ planKey: 'pro', status: 'active', endsAt: null })).toBe(false);
+    expect(canRenewOwnPlan({ planKey: 'legacy', status: 'active', endsAt: '2026-09-18T12:00:00.000Z' })).toBe(
+      false
+    );
+    expect(canRenewOwnPlan({ planKey: 'trial', status: 'trialing', endsAt: '2026-08-20T12:00:00.000Z' })).toBe(
+      false
+    );
   });
 
   it('reminds extras with ends_at in the lead window, not open-ended grants', () => {

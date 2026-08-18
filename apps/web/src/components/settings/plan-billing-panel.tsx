@@ -124,7 +124,8 @@ export function PlanBillingPanel({
         <CardHeader>
           <CardTitle>Plan actual</CardTitle>
           <CardDescription>
-            El trial se crea al registrar la clínica. El upgrade se cobra por Mercado Pago o Stripe.
+            El trial se crea al registrar la clínica. El plan de pago es por período: renovalo antes de
+            que venza. Stripe con suscripción se extiende solo.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap items-center gap-2 text-sm">
@@ -138,8 +139,13 @@ export function PlanBillingPanel({
             </span>
           ) : null}
           {state.current.endsAt ? (
-            <span className="text-muted-foreground">
+            <span
+              className={
+                state.current.endingSoon ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground'
+              }
+            >
               Vigente hasta {new Date(state.current.endsAt).toLocaleDateString('es-AR')}
+              {state.current.endingSoon ? ' · vence pronto, renovalo para no perderlo' : ''}
             </span>
           ) : null}
         </CardContent>
@@ -221,6 +227,29 @@ export function PlanBillingPanel({
         </Card>
       ) : null}
 
+      {state.seats.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Cupos</CardTitle>
+            <CardDescription>Usuarios, sucursales, veterinarios y pacientes activos del plan.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {state.seats.map((meter) => (
+              <div key={meter.featureKey} className="flex items-center justify-between gap-3">
+                <span>{meter.label}</span>
+                <span
+                  className={
+                    isQuotaNearLimit(meter) ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground'
+                  }
+                >
+                  {formatMeteredUsage(meter)}
+                </span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
+
       {state.usage.length > 0 ? (
         <Card>
           <CardHeader>
@@ -277,6 +306,7 @@ export function PlanBillingPanel({
         {state.plans.map((plan) => {
           const current = state.current.planKey === plan.key;
           const monthly = formatArsAmount(plan.pricing.monthlyAmount);
+          const seatBlock = state.seatBlocksByPlan[plan.key];
           return (
             <Card key={plan.key} className={plan.pricing.recommended ? 'border-primary' : undefined}>
               <CardHeader>
@@ -296,6 +326,7 @@ export function PlanBillingPanel({
                     <li key={item}>{item}</li>
                   ))}
                 </ul>
+                {seatBlock ? <p className="text-amber-700 dark:text-amber-300">{seatBlock}</p> : null}
                 {plan.pricing.cta === 'contact' || !canCheckoutPlan(plan.pricing) ? (
                   <p className="text-muted-foreground">Escribinos para Enterprise.</p>
                 ) : (
@@ -303,20 +334,27 @@ export function PlanBillingPanel({
                     <Button
                       type="button"
                       size="sm"
-                      disabled={pending || !state.configured || current}
+                      disabled={
+                        pending || !state.configured || Boolean(seatBlock) || (current && !state.current.canRenew)
+                      }
                       onClick={() => void checkout(plan.key, 'monthly')}
                     >
-                      Mensual
+                      {current && state.current.canRenew ? 'Renovar mensual' : 'Mensual'}
                     </Button>
                     {plan.pricing.annualAmount ? (
                       <Button
                         type="button"
                         size="sm"
                         variant="outline"
-                        disabled={pending || !state.configured || current}
+                        disabled={
+                          pending ||
+                          !state.configured ||
+                          Boolean(seatBlock) ||
+                          (current && !state.current.canRenew)
+                        }
                         onClick={() => void checkout(plan.key, 'annual')}
                       >
-                        Anual
+                        {current && state.current.canRenew ? 'Renovar anual' : 'Anual'}
                       </Button>
                     ) : null}
                   </div>

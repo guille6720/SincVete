@@ -3330,6 +3330,51 @@ export interface Database {
         Args: Record<PropertyKey, never>;
         Returns: Json;
       };
+      list_own_seat_usage: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          feature_key: string;
+          used: number;
+        }[];
+      };
+      list_public_plan_limits: {
+        Args: {
+          p_plan_key: string;
+        };
+        Returns: {
+          feature_key: string;
+          enabled: boolean;
+          limit_value: number | null;
+        }[];
+      };
+      organization_seat_usage: {
+        Args: {
+          p_organization_id: string;
+        };
+        Returns: {
+          feature_key: string;
+          used: number;
+        }[];
+      };
+      superadmin_list_org_seat_usage: {
+        Args: {
+          p_organization_id: string;
+        };
+        Returns: {
+          feature_key: string;
+          used: number;
+        }[];
+      };
+      list_plan_seat_limits: {
+        Args: {
+          p_plan_key: string;
+        };
+        Returns: {
+          feature_key: string;
+          enabled: boolean;
+          limit_value: number | null;
+        }[];
+      };
       billing_apply_paid_plan: {
         Args: {
           p_organization_id: string;
@@ -3348,6 +3393,15 @@ export interface Database {
           p_provider: string;
           p_external_id: string;
           p_interval?: string;
+        };
+        Returns: Json;
+      };
+      billing_extend_paid_plan: {
+        Args: {
+          p_organization_id: string;
+          p_interval?: string;
+          p_provider?: string | null;
+          p_external_id?: string | null;
         };
         Returns: Json;
       };

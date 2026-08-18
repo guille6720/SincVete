@@ -36,13 +36,15 @@ export function SuperadminCommercialOps({ summary }: { summary: SuperadminCommer
     { label: 'Pago pendiente', value: summary.pastDue },
     { label: 'Vencidas', value: summary.expired },
     { label: 'Canceladas', value: summary.cancelled },
+    { label: 'Planes por vencer', value: summary.plansEndingSoon },
     { label: 'Extras activos', value: summary.addonsActive },
     { label: 'Extras por vencer', value: summary.addonsEndingSoon },
+    { label: 'Sobre cupos', value: summary.orgsOverSeats },
   ];
 
   return (
     <div className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-4 lg:grid-cols-8">
+      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {cards.map((card) => (
           <Card key={card.label}>
             <CardContent className="pt-4">

@@ -13,6 +13,7 @@ import type {
   OrganizationInvitation,
   OrganizationSettings,
   PaginatedResult,
+  SeatUsageMeter,
   TeamMemberRow,
 } from '@sincvete/shared';
 
@@ -29,6 +30,7 @@ interface SettingsPageClientProps {
     invitations: OrganizationInvitation[];
     branches: Branch[];
   };
+  seats?: SeatUsageMeter[];
   planBilling?: PlanBillingState;
   checkoutBanner?: string | null;
 }
@@ -39,6 +41,7 @@ export function SettingsPageClient({
   clinic,
   branches,
   team,
+  seats = [],
   planBilling,
   checkoutBanner,
 }: SettingsPageClientProps) {
@@ -62,13 +65,18 @@ export function SettingsPageClient({
         />
       )}
 
-      {activeTab === 'sucursales' && branches && <BranchesPanel initialData={branches} />}
+      {activeTab === 'sucursales' && branches && (
+        <BranchesPanel initialData={branches} seatMeter={seats.find((meter) => meter.featureKey === 'branches.max')} />
+      )}
 
       {activeTab === 'equipo' && team && (
         <TeamPanel
           members={team.members}
           invitations={team.invitations}
           branches={team.branches}
+          seatMeters={seats.filter(
+            (meter) => meter.featureKey === 'users.max' || meter.featureKey === 'professionals.max'
+          )}
         />
       )}
 

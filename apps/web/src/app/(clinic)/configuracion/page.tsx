@@ -7,10 +7,11 @@ import {
   listTeamMembers,
 } from '@/actions/settings';
 import { getPlanBillingState } from '@/actions/plan-billing';
+import { getSeatUsageMeters } from '@/lib/entitlements';
 import { SettingsPageClient } from '@/components/settings/settings-page-client';
 import type { SettingsTab } from '@/components/settings/settings-tabs';
 import { hasPermission } from '@sincvete/shared';
-import type { Branch } from '@sincvete/shared';
+import type { Branch, SeatUsageMeter } from '@sincvete/shared';
 
 interface PageProps {
   searchParams: Promise<{ tab?: string; checkout?: string }>;
@@ -36,6 +37,7 @@ export default async function ConfiguracionPage({ searchParams }: PageProps) {
 
   let clinicData;
   let planBilling;
+  let seats: SeatUsageMeter[] = [];
   if (hasPermission(session.permissions, 'org:manage')) {
     const result = await getOrganizationSettingsForm();
     if (result.success && result.data) {
@@ -48,6 +50,17 @@ export default async function ConfiguracionPage({ searchParams }: PageProps) {
       planBilling = await getPlanBillingState();
     } catch {
       planBilling = undefined;
+    }
+  }
+
+  if (
+    hasPermission(session.permissions, 'users:manage') ||
+    hasPermission(session.permissions, 'branch:manage')
+  ) {
+    try {
+      seats = await getSeatUsageMeters(session.organizationId);
+    } catch {
+      seats = [];
     }
   }
 
@@ -78,6 +91,7 @@ export default async function ConfiguracionPage({ searchParams }: PageProps) {
       clinic={clinicData}
       branches={branchesData}
       team={teamData}
+      seats={seats}
       planBilling={planBilling}
       checkoutBanner={params.checkout ?? null}
     />
