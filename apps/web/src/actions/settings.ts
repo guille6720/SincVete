@@ -27,8 +27,15 @@ import type { Json } from '@sincvete/db';
 import { createServerClient, createServiceClient } from '@/lib/supabase/server';
 import { PermissionError, requirePermission, requireSession } from '@/lib/permissions';
 import { ORGANIZATION_COLUMNS } from '@/lib/db-columns';
+import {
+  FEATURES,
+  assertWithinLimit,
+  planRestrictionResult,
+} from '@/lib/entitlements';
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
@@ -192,6 +199,16 @@ export async function createBranch(
     }
 
     const supabase = await createServerClient();
+    const { count } = await supabase
+      .from('branches')
+      .select('id', { count: 'exact', head: true })
+      .is('deleted_at', null);
+    await assertWithinLimit({
+      organizationId: session.organizationId,
+      featureKey: FEATURES.BRANCHES_MAX,
+      currentCount: count ?? 0,
+    });
+
     const { error } = await supabase
       .from('branches')
       .insert({
@@ -412,6 +429,7 @@ export async function inviteTeamMember(
       };
     }
 
+    const supabaseForLimit = await createServerClient();
     const service = await createServiceClient();
 
     const { data: existingUsers } = await service.auth.admin.listUsers({
@@ -422,6 +440,37 @@ export async function inviteTeamMember(
     const existingUser = existingUsers.users.find(
       (u) => u.email?.toLowerCase() === parsed.data.email
     );
+
+    let alreadyInOrg = false;
+    if (existingUser) {
+      const { data: existingProfile } = await supabaseForLimit
+        .from('profiles')
+        .select('id')
+        .eq('id', existingUser.id)
+        .is('deleted_at', null)
+        .maybeSingle();
+      alreadyInOrg = Boolean(existingProfile);
+    }
+
+    if (!alreadyInOrg) {
+      const [{ count: profileCount }, { count: inviteCount }] = await Promise.all([
+        supabaseForLimit
+          .from('profiles')
+          .select('id', { count: 'exact', head: true })
+          .eq('is_active', true)
+          .is('deleted_at', null),
+        supabaseForLimit
+          .from('organization_invitations')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'pending')
+          .is('deleted_at', null),
+      ]);
+      await assertWithinLimit({
+        organizationId: session.organizationId,
+        featureKey: FEATURES.USERS_MAX,
+        currentCount: (profileCount ?? 0) + (inviteCount ?? 0),
+      });
+    }
 
     if (existingUser) {
       const supabase = await createServerClient();

@@ -6,6 +6,8 @@ import { ClinicSettingsForm } from '@/components/settings/clinic-settings-form';
 import { BranchesPanel } from '@/components/settings/branches-panel';
 import { TeamPanel } from '@/components/settings/team-panel';
 import { RolesPanel } from '@/components/settings/roles-panel';
+import { PlanBillingPanel } from '@/components/settings/plan-billing-panel';
+import type { PlanBillingState } from '@/actions/plan-billing';
 import type {
   Branch,
   OrganizationInvitation,
@@ -27,6 +29,8 @@ interface SettingsPageClientProps {
     invitations: OrganizationInvitation[];
     branches: Branch[];
   };
+  planBilling?: PlanBillingState;
+  checkoutBanner?: string | null;
 }
 
 export function SettingsPageClient({
@@ -35,6 +39,8 @@ export function SettingsPageClient({
   clinic,
   branches,
   team,
+  planBilling,
+  checkoutBanner,
 }: SettingsPageClientProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab);
 
@@ -43,7 +49,7 @@ export function SettingsPageClient({
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Configuración</h1>
         <p className="text-muted-foreground">
-          Administrá tu clínica, sucursales, equipo y permisos
+          Administrá tu clínica, plan, sucursales, equipo y permisos
         </p>
       </div>
 
@@ -67,6 +73,13 @@ export function SettingsPageClient({
       )}
 
       {activeTab === 'roles' && <RolesPanel />}
+      {activeTab === 'plan' && planBilling ? (
+        <PlanBillingPanel state={planBilling} checkoutBanner={checkoutBanner} />
+      ) : activeTab === 'plan' ? (
+        <p className="text-sm text-muted-foreground">
+          No se pudo cargar el plan. Superadmin puede asignarlo mientras tanto.
+        </p>
+      ) : null}
     </div>
   );
 }

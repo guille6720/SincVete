@@ -3,8 +3,7 @@ import { NAV_FEATURE_BY_HREF } from '@sincvete/shared';
 
 /**
  * Maps clinic nav href → commercial feature key.
- * Phase 1: do NOT hide modules based on this map (backward compatible).
- * Phase 2 Superadmin / UX upgrade states can use it safely.
+ * Phase 3 enforces on server actions and gated pages; do not hide clinic nav modules.
  */
 export function getNavFeatureKey(href: string): FeatureKey | null {
   if (NAV_FEATURE_BY_HREF[href]) return NAV_FEATURE_BY_HREF[href];

@@ -7,6 +7,7 @@ import {
   clinicalAiApplySoapSchema,
   clinicalAiExcerpt,
   clinicalAiGenerateSchema,
+  clinicalAiKindFeature,
   clinicalAiListSchema,
   hashClinicalAiPrompt,
   parseClinicalAiOutput,
@@ -24,6 +25,13 @@ import { getSessionContext } from '@/actions/auth';
 import { getClinicalEntry } from '@/actions/clinical-entries';
 import { getConsultation } from '@/actions/consultations';
 import { ClinicalAiConfigError, completeClinicalAiJson, isClinicalAiConfigured } from '@/lib/ai/openai';
+import {
+  FEATURES,
+  canUseFeature,
+  consumeMeteredFeature,
+  planRestrictionResult,
+  requireFeature,
+} from '@/lib/entitlements';
 import type { Json } from '@sincvete/db';
 
 function isNextRedirect(error: unknown): boolean {
@@ -38,6 +46,8 @@ function isNextRedirect(error: unknown): boolean {
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (isNextRedirect(error)) throw error;
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError || error instanceof ClinicalAiConfigError) {
     return { success: false, error: error.message };
   }
@@ -73,9 +83,32 @@ export async function canGenerateClinicalAi(): Promise<boolean> {
   return session.permissions.includes('clinical:write');
 }
 
-export async function getClinicalAiStatus(): Promise<{ configured: boolean; canGenerate: boolean }> {
-  const canGenerate = await canGenerateClinicalAi();
-  return { configured: isClinicalAiConfigured(), canGenerate };
+export async function getClinicalAiStatus(): Promise<{
+  configured: boolean;
+  canGenerate: boolean;
+  entitled: boolean;
+  soapEntitled: boolean;
+}> {
+  const session = await getSessionContext();
+  const canGenerate = Boolean(session?.permissions.includes('clinical:write'));
+  if (!session) {
+    return {
+      configured: isClinicalAiConfigured(),
+      canGenerate: false,
+      entitled: false,
+      soapEntitled: false,
+    };
+  }
+  const [entitled, soapEntitled] = await Promise.all([
+    canUseFeature({ organizationId: session.organizationId, featureKey: FEATURES.AI }),
+    canUseFeature({ organizationId: session.organizationId, featureKey: FEATURES.AI_SOAP_ASSISTANT }),
+  ]);
+  return {
+    configured: isClinicalAiConfigured(),
+    canGenerate,
+    entitled,
+    soapEntitled,
+  };
 }
 
 export async function listClinicalAiSuggestions(
@@ -182,6 +215,12 @@ export async function generateClinicalAi(
       context,
       snapshot,
       notes: parsed.data.notes,
+    });
+    await requireFeature(session.organizationId, FEATURES.AI);
+    await requireFeature(session.organizationId, clinicalAiKindFeature(parsed.data.kind));
+    await consumeMeteredFeature({
+      organizationId: session.organizationId,
+      featureKey: FEATURES.AI_MONTHLY_REQUESTS,
     });
     const completion = await completeClinicalAiJson(prompt.system, prompt.user);
     const output = parseClinicalAiOutput(parsed.data.kind, completion.text);

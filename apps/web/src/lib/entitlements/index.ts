@@ -4,6 +4,9 @@ import {
   canUseResolvedFeature,
   getResolvedFeatureLimit,
   resolveOrganizationEntitlements,
+  validateUsageIncrementAmount,
+  wouldExceedLimit,
+  type ActionResult,
   type FeatureCatalogRow,
   type FeatureKey,
   type FeatureOverrideRow,
@@ -14,10 +17,37 @@ import {
 import { createServerClient } from '@/lib/supabase/server';
 
 export class FeatureNotAvailableError extends Error {
-  constructor(featureKey: string, message = 'Esta función no está incluida en tu plan') {
-    super(`${message} (${featureKey})`);
+  featureKey: string;
+  constructor(
+    featureKey: string,
+    message = 'Esta función no está incluida en el plan actual de tu clínica'
+  ) {
+    super(message);
     this.name = 'FeatureNotAvailableError';
+    this.featureKey = featureKey;
   }
+}
+
+export class FeatureQuotaExceededError extends Error {
+  featureKey: string;
+  constructor(featureKey: string, message = 'Alcanzaste el límite de tu plan para esta función') {
+    super(message);
+    this.name = 'FeatureQuotaExceededError';
+    this.featureKey = featureKey;
+  }
+}
+
+export function isPlanRestrictionError(
+  error: unknown
+): error is FeatureNotAvailableError | FeatureQuotaExceededError {
+  return error instanceof FeatureNotAvailableError || error instanceof FeatureQuotaExceededError;
+}
+
+export function planRestrictionResult<T = void>(error: unknown): ActionResult<T> | null {
+  if (isPlanRestrictionError(error)) {
+    return { success: false, error: error.message };
+  }
+  return null;
 }
 
 type NestedFeature = { key: string } | { key: string }[] | null;
@@ -193,6 +223,56 @@ export async function tryConsumeFeatureUsage(params: {
     throw new Error(error.message);
   }
   return data;
+}
+
+export async function consumeMeteredFeature(params: {
+  organizationId: string;
+  featureKey: FeatureKey;
+  amount?: number;
+  requireEnabled?: FeatureKey;
+}): Promise<number> {
+  if (params.requireEnabled) {
+    await requireFeature(params.organizationId, params.requireEnabled);
+  }
+  const amount = params.amount ?? 1;
+  if (!validateUsageIncrementAmount(amount)) {
+    throw new Error('La cantidad de uso debe ser un entero positivo');
+  }
+  const limit = await getFeatureLimit({
+    organizationId: params.organizationId,
+    featureKey: params.featureKey,
+  });
+  if (limit === 0) {
+    throw new FeatureNotAvailableError(params.featureKey);
+  }
+  const next = await tryConsumeFeatureUsage({
+    featureKey: params.featureKey,
+    amount,
+    limit,
+  });
+  if (next === null) {
+    throw new FeatureQuotaExceededError(params.featureKey);
+  }
+  return next;
+}
+
+export async function assertWithinLimit(params: {
+  organizationId: string;
+  featureKey: FeatureKey;
+  currentCount: number;
+  increment?: number;
+}): Promise<void> {
+  const increment = params.increment ?? 1;
+  const limit = await getFeatureLimit({
+    organizationId: params.organizationId,
+    featureKey: params.featureKey,
+  });
+  if (wouldExceedLimit(params.currentCount, increment, limit)) {
+    if (limit === 0) {
+      throw new FeatureNotAvailableError(params.featureKey);
+    }
+    throw new FeatureQuotaExceededError(params.featureKey);
+  }
 }
 
 export { FEATURES };

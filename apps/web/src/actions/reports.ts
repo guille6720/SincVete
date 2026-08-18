@@ -12,6 +12,7 @@ import {
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
 import { getSessionContext } from '@/actions/auth';
+import { FEATURES, canUseFeature, requireFeature } from '@/lib/entitlements';
 
 function num(value: unknown): number {
   return Number(value ?? 0);
@@ -109,6 +110,12 @@ export async function canReadReports(): Promise<boolean> {
   return session.permissions.includes('reports:read');
 }
 
+export async function canUseBasicReports(): Promise<boolean> {
+  const session = await getSessionContext();
+  if (!session || !session.permissions.includes('reports:read')) return false;
+  return canUseFeature({ organizationId: session.organizationId, featureKey: FEATURES.BASIC_REPORTS });
+}
+
 export async function getClinicReport(input?: {
   from?: string;
   to?: string;
@@ -121,11 +128,27 @@ export async function getClinicReport(input?: {
   const range = parsed.success ? parsed.data : fallback;
 
   const session = await getSessionContext();
+  if (!session) {
+    return {
+      from: range.from,
+      to: range.to,
+      operations: null,
+      billing: null,
+      inventory: null,
+      daily: [],
+    };
+  }
+  await requireFeature(session.organizationId, FEATURES.BASIC_REPORTS);
+  const includeAdvanced = await canUseFeature({
+    organizationId: session.organizationId,
+    featureKey: FEATURES.ADVANCED_REPORTS,
+  });
+
   const supabase = await createServerClient();
   const { data, error } = await supabase.rpc('get_clinic_report', {
     p_from: range.from,
     p_to: range.to,
-    p_branch_id: session?.branchId ?? null,
+    p_branch_id: session.branchId ?? null,
   });
 
   if (error) throw error;
@@ -135,8 +158,8 @@ export async function getClinicReport(input?: {
     from: String(raw.from ?? range.from).slice(0, 10),
     to: String(raw.to ?? range.to).slice(0, 10),
     operations: parseOperations(raw.operations),
-    billing: parseBilling(raw.billing),
-    inventory: parseInventory(raw.inventory),
+    billing: includeAdvanced ? parseBilling(raw.billing) : null,
+    inventory: includeAdvanced ? parseInventory(raw.inventory) : null,
     daily: parseDaily(raw.daily),
   };
 }

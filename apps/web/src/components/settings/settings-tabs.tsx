@@ -2,10 +2,11 @@
 
 import { cn } from '@/lib/utils';
 
-export type SettingsTab = 'clinica' | 'sucursales' | 'equipo' | 'roles';
+export type SettingsTab = 'clinica' | 'sucursales' | 'equipo' | 'roles' | 'plan';
 
 const TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'clinica', label: 'Clínica' },
+  { id: 'plan', label: 'Plan' },
   { id: 'sucursales', label: 'Sucursales' },
   { id: 'equipo', label: 'Equipo' },
   { id: 'roles', label: 'Roles' },

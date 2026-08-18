@@ -18,10 +18,17 @@ interface OwnerPortalCardProps {
   ownerId: string;
   ownerEmail: string | null;
   canWrite: boolean;
+  portalEnabled?: boolean;
   status: OwnerPortalStatus | null;
 }
 
-export function OwnerPortalCard({ ownerId, ownerEmail, canWrite, status }: OwnerPortalCardProps) {
+export function OwnerPortalCard({
+  ownerId,
+  ownerEmail,
+  canWrite,
+  portalEnabled = true,
+  status,
+}: OwnerPortalCardProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
@@ -92,11 +99,21 @@ export function OwnerPortalCard({ ownerId, ownerEmail, canWrite, status }: Owner
             </Button>
           </div>
         )}
+        {!portalEnabled && (
+          <p className="text-sm text-muted-foreground">
+            El portal del tutor no está incluido en el plan actual.
+          </p>
+        )}
         {error && <p className="text-sm text-destructive">{error}</p>}
         {canWrite && (
           <div className="flex flex-wrap gap-2">
             {access !== 'active' && (
-              <Button type="button" size="sm" onClick={handleInvite} disabled={pending || !ownerEmail}>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleInvite}
+                disabled={pending || !ownerEmail || !portalEnabled}
+              >
                 {access === 'invited' ? 'Reenviar invitación' : 'Invitar al portal'}
               </Button>
             )}

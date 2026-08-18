@@ -1,6 +1,6 @@
 import { ArrowRight, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
-import { APP_NAME } from '@sincvete/shared';
+import { APP_NAME, type PublicPlanCatalogItem } from '@sincvete/shared';
 import { Button } from '@/components/ui/button';
 import { BrandLogo } from '@/components/brand/syncvete-logo';
 import { MarketingFooter } from '@/components/landing/marketing-footer';
@@ -53,11 +53,11 @@ const MODULES = [
 const FAQ = [
   {
     q: '¿Puedo probar antes de suscribirme?',
-    a: 'Sí. Al registrarte tenés 10 días gratis con la clínica completa. Sin tarjeta.',
+    a: 'Sí. Al registrarte tu clínica arranca en trial, sin tarjeta. Después elegís Basic, Pro, Premium o Enterprise desde Configuración.',
   },
   {
-    q: '¿Qué incluye el plan Clínica?',
-    a: 'Hasta 10 profesionales, farmacia, inventario, facturación, caja, laboratorio, internación, cirugías, IA clínica y multi-sucursal.',
+    q: '¿Qué incluye cada plan?',
+    a: 'Basic cubre la operación diaria. Pro suma internación, laboratorio, farmacia, facturación y portal. Premium agrega IA, WhatsApp e imágenes. Enterprise es a medida.',
   },
   {
     q: '¿Los tutores ven datos de otros pacientes?',
@@ -69,7 +69,7 @@ const FAQ = [
   },
 ] as const;
 
-export function SyncVeteHomeLanding() {
+export function SyncVeteHomeLanding({ plans }: { plans?: PublicPlanCatalogItem[] }) {
   return (
     <div className="landing-root min-h-screen bg-[var(--land-bg)] text-[var(--land-ink)]">
       <MarketingHeader />
@@ -95,7 +95,7 @@ export function SyncVeteHomeLanding() {
                 asChild
               >
                 <Link href="/register">
-                  Empezar 10 días gratis
+                  Empezar trial gratis
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </Button>
@@ -193,7 +193,7 @@ export function SyncVeteHomeLanding() {
         </div>
       </section>
 
-      <PlansPricingSection />
+      <PlansPricingSection plans={plans} />
 
       {/* FAQ */}
       <section id="faq" className="scroll-mt-24 border-t border-[var(--land-line)] py-20 md:py-28">
@@ -228,7 +228,7 @@ export function SyncVeteHomeLanding() {
             Empezá a operar con {APP_NAME} hoy
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-white/75">
-            Creá tu clínica en minutos. 10 días gratis. Después elegís Esencial o Clínica.
+            Creá tu clínica en minutos, sin tarjeta. Después elegís Basic, Pro, Premium o Enterprise.
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Button

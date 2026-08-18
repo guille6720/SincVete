@@ -7,6 +7,7 @@ import {
 } from '@/actions/clinical-ai';
 import { ClinicalAiGenerateForm } from '@/components/clinical-ai/clinical-ai-generate-form';
 import { ClinicalAiHistory } from '@/components/clinical-ai/clinical-ai-history';
+import { FeatureUnavailableNotice } from '@/components/entitlements/feature-gate';
 import {
   CLINICAL_AI_KINDS,
   type ClinicalAiKind,
@@ -54,16 +55,23 @@ export default async function IaClinicaPage({ searchParams }: IaClinicaPageProps
         </p>
       </div>
 
-      <ClinicalAiGenerateForm
-        defaultPatientId={patient?.id}
-        defaultPatientName={patient?.name}
-        defaultOwnerId={patient?.owner_id}
-        defaultKind={kind ?? 'patient_summary'}
-        consultationId={params.consultationId?.trim() || undefined}
-        clinicalEntryId={params.clinicalEntryId?.trim() || undefined}
-        configured={status.configured}
-        canGenerate={status.canGenerate}
-      />
+      {!status.entitled ? (
+        <FeatureUnavailableNotice
+          title="IA clínica no incluida"
+          description="Esta función forma parte de planes superiores. Contactá a SyncVete para habilitarla."
+        />
+      ) : (
+        <ClinicalAiGenerateForm
+          defaultPatientId={patient?.id}
+          defaultPatientName={patient?.name}
+          defaultOwnerId={patient?.owner_id}
+          defaultKind={kind ?? 'patient_summary'}
+          consultationId={params.consultationId?.trim() || undefined}
+          clinicalEntryId={params.clinicalEntryId?.trim() || undefined}
+          configured={status.configured}
+          canGenerate={status.canGenerate}
+        />
+      )}
 
       <ClinicalAiHistory data={history} />
     </div>

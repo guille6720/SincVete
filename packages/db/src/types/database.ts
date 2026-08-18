@@ -2975,6 +2975,66 @@ export interface Database {
         };
         Relationships: [];
       };
+      billing_customers: {
+        Row: {
+          organization_id: string;
+          provider: string;
+          customer_id: string;
+          email: string | null;
+          metadata: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          organization_id: string;
+          provider: string;
+          customer_id: string;
+          email?: string | null;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          organization_id?: string;
+          provider?: string;
+          customer_id?: string;
+          email?: string | null;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      billing_events: {
+        Row: {
+          id: string;
+          provider: string;
+          event_id: string;
+          event_type: string | null;
+          organization_id: string | null;
+          payload: Json;
+          processed_at: string;
+        };
+        Insert: {
+          id?: string;
+          provider: string;
+          event_id: string;
+          event_type?: string | null;
+          organization_id?: string | null;
+          payload?: Json;
+          processed_at?: string;
+        };
+        Update: {
+          id?: string;
+          provider?: string;
+          event_id?: string;
+          event_type?: string | null;
+          organization_id?: string | null;
+          payload?: Json;
+          processed_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -3075,6 +3135,30 @@ export interface Database {
           p_organization_id: string;
           p_feature_key: string;
           p_reason?: string | null;
+        };
+        Returns: Json;
+      };
+      list_public_plans: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      billing_apply_paid_plan: {
+        Args: {
+          p_organization_id: string;
+          p_plan_key: string;
+          p_provider: string;
+          p_external_id: string;
+          p_interval?: string;
+          p_status?: SubscriptionStatus;
+        };
+        Returns: Json;
+      };
+      billing_set_subscription_status: {
+        Args: {
+          p_organization_id: string;
+          p_status: SubscriptionStatus;
+          p_provider?: string | null;
+          p_external_id?: string | null;
         };
         Returns: Json;
       };

@@ -7,9 +7,10 @@ import { getAppointment } from '@/actions/appointments';
 import { getInvoice } from '@/actions/billing';
 import { getLabOrder } from '@/actions/lab';
 import { getVaccination } from '@/actions/vaccinations';
-import { canSendWhatsApp, listWhatsAppMessages } from '@/actions/whatsapp';
+import { canAccessWhatsApp, canSendWhatsApp, listWhatsAppMessages } from '@/actions/whatsapp';
 import { WhatsAppComposeForm } from '@/components/whatsapp/whatsapp-compose-form';
 import { WhatsAppHistory } from '@/components/whatsapp/whatsapp-history';
+import { FeatureUnavailableNotice } from '@/components/entitlements/feature-gate';
 import {
   WHATSAPP_TEMPLATES,
   formatAppointmentTime,
@@ -37,8 +38,10 @@ interface WhatsAppPageProps {
 }
 
 export default async function WhatsAppPage({ searchParams }: WhatsAppPageProps) {
+  const canAccess = await canAccessWhatsApp();
+  if (!canAccess) redirect('/dashboard');
+
   const canSend = await canSendWhatsApp();
-  if (!canSend) redirect('/dashboard');
 
   const params = await searchParams;
   const page = Math.max(1, Number(params.page) || 1);
@@ -155,18 +158,25 @@ export default async function WhatsAppPage({ searchParams }: WhatsAppPageProps) 
         </p>
       </div>
 
-      <WhatsAppComposeForm
-        clinicName={clinicName}
-        defaultOwnerId={ownerId || undefined}
-        defaultOwnerName={ownerName || undefined}
-        defaultPatientId={patientId || undefined}
-        defaultPatientName={patientName || undefined}
-        defaultPhone={phone || undefined}
-        defaultTemplate={resolvedTemplate}
-        relatedType={relatedType}
-        relatedId={relatedId}
-        vars={vars}
-      />
+      {canSend ? (
+        <WhatsAppComposeForm
+          clinicName={clinicName}
+          defaultOwnerId={ownerId || undefined}
+          defaultOwnerName={ownerName || undefined}
+          defaultPatientId={patientId || undefined}
+          defaultPatientName={patientName || undefined}
+          defaultPhone={phone || undefined}
+          defaultTemplate={resolvedTemplate}
+          relatedType={relatedType}
+          relatedId={relatedId}
+          vars={vars}
+        />
+      ) : (
+        <FeatureUnavailableNotice
+          title="WhatsApp no incluido"
+          description="El envío por WhatsApp forma parte de planes superiores. Contactá a SyncVete para habilitarlo."
+        />
+      )}
 
       <Suspense fallback={<div className="text-sm text-muted-foreground">Cargando historial...</div>}>
         <WhatsAppHistory data={history} initialSearch={search} />

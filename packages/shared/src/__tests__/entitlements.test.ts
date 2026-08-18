@@ -15,6 +15,9 @@ import {
   isPublicPricingPlanKey,
   parseSuperadminEmails,
   validateUsageIncrementAmount,
+  bytesToStorageMb,
+  clinicalAiKindFeature,
+  wouldExceedLimit,
   canUseResolvedFeature,
   getResolvedFeatureLimit,
   resolveFeatureEntitlement,
@@ -411,5 +414,26 @@ describe('usage increment validation helpers', () => {
     expect(METERED_FEATURE_KEYS).not.toContain(FEATURES.AI);
     expect(isMeteredFeatureKey(FEATURES.STORAGE_MAX_MB)).toBe(true);
     expect(isMeteredFeatureKey(FEATURES.AI)).toBe(false);
+  });
+
+  it('counts storage usage in whole megabytes', () => {
+    expect(bytesToStorageMb(0)).toBe(0);
+    expect(bytesToStorageMb(-1)).toBe(0);
+    expect(bytesToStorageMb(1)).toBe(1);
+    expect(bytesToStorageMb(1024 * 1024)).toBe(1);
+    expect(bytesToStorageMb(1024 * 1024 + 1)).toBe(2);
+  });
+
+  it('maps clinical AI kinds to feature keys', () => {
+    expect(clinicalAiKindFeature('patient_summary')).toBe(FEATURES.AI_PATIENT_SUMMARY);
+    expect(clinicalAiKindFeature('soap_assist')).toBe(FEATURES.AI_SOAP_ASSISTANT);
+    expect(clinicalAiKindFeature('owner_instructions')).toBe(FEATURES.AI_OWNER_INSTRUCTIONS);
+  });
+
+  it('wouldExceedLimit follows null/0/positive convention', () => {
+    expect(wouldExceedLimit(100, 1, null)).toBe(false);
+    expect(wouldExceedLimit(0, 1, 0)).toBe(true);
+    expect(wouldExceedLimit(2, 1, 3)).toBe(false);
+    expect(wouldExceedLimit(3, 1, 3)).toBe(true);
   });
 });

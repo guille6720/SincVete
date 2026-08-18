@@ -3,6 +3,7 @@
 import { randomUUID } from 'crypto';
 import {
   buildPaginatedResult,
+  bytesToStorageMb,
   patientListSchema,
   patientSchema,
   type ActionResult,
@@ -15,6 +16,12 @@ import { PermissionError, requirePermission } from '@/lib/permissions';
 import { getSessionContext } from '@/lib/session';
 import { revalidatePatient, revalidatePatientsList } from '@/lib/cache-revalidate';
 import { PATIENT_COLUMNS } from '@/lib/db-columns';
+import {
+  FEATURES,
+  assertWithinLimit,
+  consumeMeteredFeature,
+  planRestrictionResult,
+} from '@/lib/entitlements';
 
 const PATIENT_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 const PATIENT_PHOTO_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
@@ -31,6 +38,8 @@ function isNextRedirect(error: unknown): boolean {
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (isNextRedirect(error)) throw error;
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
@@ -93,6 +102,11 @@ async function uploadPatientPhoto(
 
   const path = `${organizationId}/${patientId}/${randomUUID()}.${ext}`;
   const supabase = await createServerClient();
+  await consumeMeteredFeature({
+    organizationId,
+    featureKey: FEATURES.STORAGE_MAX_MB,
+    amount: bytesToStorageMb(file.size),
+  });
   const buffer = Buffer.from(await file.arrayBuffer());
 
   const { error } = await supabase.storage.from('patient-photos').upload(path, buffer, {
@@ -179,6 +193,13 @@ export async function createPatient(
         fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
       };
     }
+
+    const activeCount = await countActivePatients();
+    await assertWithinLimit({
+      organizationId: session.organizationId,
+      featureKey: FEATURES.PATIENTS_MAX,
+      currentCount: activeCount,
+    });
 
     const supabase = await createServerClient();
     const { data, error } = await supabase

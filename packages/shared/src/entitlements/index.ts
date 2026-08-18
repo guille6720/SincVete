@@ -15,3 +15,5 @@ export {
   canUseResolvedFeature,
   getResolvedFeatureLimit,
 } from './resolve';
+
+export { bytesToStorageMb, clinicalAiKindFeature, wouldExceedLimit } from './limits';

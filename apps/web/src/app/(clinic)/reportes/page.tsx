@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation';
-import { canReadReports, getClinicReport } from '@/actions/reports';
+import { canReadReports, canUseBasicReports, getClinicReport } from '@/actions/reports';
 import { getOrganization } from '@/actions/settings';
 import { ReportsView } from '@/components/reports/reports-view';
+import { FeatureUnavailableNotice } from '@/components/entitlements/feature-gate';
 import {
   getReportPeriod,
   isValidReportRange,
@@ -15,6 +16,19 @@ interface ReportesPageProps {
 export default async function ReportesPage({ searchParams }: ReportesPageProps) {
   const canRead = await canReadReports();
   if (!canRead) redirect('/dashboard');
+
+  const entitled = await canUseBasicReports();
+  if (!entitled) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold tracking-tight">Reportes</h1>
+        <FeatureUnavailableNotice
+          title="Reportes no incluidos"
+          description="Los reportes de operación forman parte de planes superiores."
+        />
+      </div>
+    );
+  }
 
   const params = await searchParams;
   const fallback = getReportPeriod('month');
