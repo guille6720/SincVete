@@ -357,6 +357,31 @@ export function AppShell({
                     Renovar extra
                   </Link>
                 </p>
+              ) : billingBanner.kind === 'quota_over' ? (
+                <p>
+                  Superaste el cupo
+                  {billingBanner.quotaLabel ? ` de ${billingBanner.quotaLabel}` : ''}
+                  {billingBanner.quotaUsed != null && billingBanner.quotaLimit != null
+                    ? ` (${billingBanner.quotaUsed}/${billingBanner.quotaLimit})`
+                    : ''}
+                  . Subí de plan o reducí el uso.{' '}
+                  <Link href="/configuracion?tab=plan" className="font-medium underline underline-offset-4">
+                    Ver plan
+                  </Link>
+                </p>
+              ) : billingBanner.kind === 'quota_near' ? (
+                <p>
+                  El cupo
+                  {billingBanner.quotaLabel ? ` de ${billingBanner.quotaLabel}` : ''} está cerca del
+                  límite
+                  {billingBanner.quotaUsed != null && billingBanner.quotaLimit != null
+                    ? ` (${billingBanner.quotaUsed}/${billingBanner.quotaLimit})`
+                    : ''}
+                  .{' '}
+                  <Link href="/configuracion?tab=plan" className="font-medium underline underline-offset-4">
+                    Ver plan
+                  </Link>
+                </p>
               ) : (
                 <p>
                   Tu plan venció{billingBanner.planName ? ` (${billingBanner.planName})` : ''}. Elegí uno

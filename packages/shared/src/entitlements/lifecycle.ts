@@ -126,7 +126,9 @@ export type ClinicCommercialBannerKind =
   | 'expired'
   | 'plan_ending'
   | 'addon_ending'
-  | 'checkout_pending';
+  | 'checkout_pending'
+  | 'quota_over'
+  | 'quota_near';
 
 export type ClinicCommercialBanner = {
   kind: ClinicCommercialBannerKind;
@@ -134,6 +136,15 @@ export type ClinicCommercialBanner = {
   trialEndsAt: string | null;
   endsAt: string | null;
   addonName: string | null;
+  quotaLabel?: string | null;
+  quotaUsed?: number | null;
+  quotaLimit?: number | null;
+};
+
+export type ClinicSeatMeter = {
+  label: string;
+  used: number;
+  limit: number | null;
 };
 
 export type ClinicCommercialBannerInput = {
@@ -147,12 +158,42 @@ export type ClinicCommercialBannerInput = {
   latestClosedPlanName?: string | null;
   addonsEnding?: Array<{ name: string; endsAt: string }>;
   checkoutPending?: OpenCheckoutIntent | null;
+  seats?: ClinicSeatMeter[];
   now?: Date;
 };
+
+function pickQuotaBannerSeat(
+  seats: ClinicSeatMeter[] | undefined
+): { over: boolean; label: string; used: number; limit: number } | null {
+  const finite = (seats ?? []).filter(
+    (seat): seat is ClinicSeatMeter & { limit: number } =>
+      seat.limit !== null && Number.isFinite(seat.limit) && seat.limit > 0
+  );
+  const ranked = (items: Array<ClinicSeatMeter & { limit: number }>) =>
+    items
+      .slice()
+      .sort((a, b) => b.used / b.limit - a.used / a.limit)[0];
+  const over = ranked(finite.filter((seat) => seat.used > seat.limit));
+  if (over) {
+    return { over: true, label: over.label, used: over.used, limit: over.limit };
+  }
+  const near = ranked(
+    finite.filter(
+      (seat) =>
+        seat.used <= seat.limit && isQuotaNearLimit({ used: seat.used, limit: seat.limit })
+    )
+  );
+  if (near) {
+    return { over: false, label: near.label, used: near.used, limit: near.limit };
+  }
+  return null;
+}
 
 /**
  * One sticky clinic banner. A checkout in flight beats renewal nags
  * so Mercado Pago one-time payers are not asked to charge twice.
+ * Seat quota is last: Superadmin already lists over-seat clinics; the clinic
+ * should see the same occupancy without opening the notification bell.
  * Lead time is COMMERCIAL_TRIAL_REMIND_DAYS, not plan/add-on duration.
  */
 export function resolveClinicCommercialBanner(
@@ -223,6 +264,21 @@ export function resolveClinicCommercialBanner(
       endsAt: addon.endsAt,
       addonName: addon.name,
     };
+  }
+  if (input.hasOpenSubscription && !isLegacyPlanKey(input.planKey ?? '')) {
+    const seat = pickQuotaBannerSeat(input.seats);
+    if (seat) {
+      return {
+        kind: seat.over ? 'quota_over' : 'quota_near',
+        planName,
+        trialEndsAt: null,
+        endsAt: null,
+        addonName: null,
+        quotaLabel: seat.label,
+        quotaUsed: seat.used,
+        quotaLimit: seat.limit,
+      };
+    }
   }
   return null;
 }

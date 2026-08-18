@@ -425,10 +425,20 @@ export const getClinicCommercialShell = cache(
       const addonsEnding = (addonsRes.data ?? [])
         .filter((row) => row.status === 'active' && row.ends_at)
         .map((row) => ({ name: row.addon_name, endsAt: row.ends_at as string }));
-      return {
-        entitledHrefs,
-        banner: resolveClinicCommercialBanner({ ...bannerInput, addonsEnding }),
-      };
+      const bannerWithAddons = resolveClinicCommercialBanner({ ...bannerInput, addonsEnding });
+      if (bannerWithAddons) {
+        return { entitledHrefs, banner: bannerWithAddons };
+      }
+      try {
+        const seats = await getSeatUsageMeters(organizationId);
+        return {
+          entitledHrefs,
+          banner: resolveClinicCommercialBanner({ ...bannerInput, addonsEnding, seats }),
+        };
+      } catch (error) {
+        console.error('[entitlements] seat banner failed open', error);
+        return { entitledHrefs, banner: null };
+      }
     } catch (error) {
       console.error('[entitlements] clinic shell failed open', error);
       return { entitledHrefs: null, banner: null };

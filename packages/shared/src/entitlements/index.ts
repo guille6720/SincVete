@@ -63,5 +63,6 @@ export type {
   CheckoutIntentKind,
   ClinicCommercialBanner,
   ClinicCommercialBannerKind,
+  ClinicSeatMeter,
   OpenCheckoutIntent,
 } from './lifecycle';

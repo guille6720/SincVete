@@ -863,6 +863,51 @@ describe('commercial lifecycle helpers', () => {
         now,
       })?.kind
     ).toBe('checkout_pending');
+    expect(
+      resolveClinicCommercialBanner({
+        hasOpenSubscription: true,
+        status: 'active',
+        planKey: 'pro',
+        planName: 'Pro',
+        endsAt: '2026-09-18T12:00:00.000Z',
+        seats: [{ label: 'Usuarios', used: 6, limit: 5 }],
+        now,
+      })
+    ).toMatchObject({
+      kind: 'quota_over',
+      quotaLabel: 'Usuarios',
+      quotaUsed: 6,
+      quotaLimit: 5,
+    });
+    expect(
+      resolveClinicCommercialBanner({
+        hasOpenSubscription: true,
+        status: 'active',
+        planKey: 'pro',
+        endsAt: '2026-09-18T12:00:00.000Z',
+        seats: [{ label: 'Usuarios', used: 8, limit: 10 }],
+        now,
+      })?.kind
+    ).toBe('quota_near');
+    expect(
+      resolveClinicCommercialBanner({
+        hasOpenSubscription: true,
+        status: 'active',
+        planKey: 'legacy',
+        seats: [{ label: 'Usuarios', used: 20, limit: 5 }],
+        now,
+      })
+    ).toBeNull();
+    expect(
+      resolveClinicCommercialBanner({
+        hasOpenSubscription: true,
+        status: 'active',
+        planKey: 'pro',
+        endsAt: '2026-08-20T12:00:00.000Z',
+        seats: [{ label: 'Usuarios', used: 6, limit: 5 }],
+        now,
+      })?.kind
+    ).toBe('plan_ending');
   });
 
   it('reuses the same checkout and blocks a second plan payment', () => {
