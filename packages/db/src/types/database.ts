@@ -3401,6 +3401,16 @@ export interface Database {
           used: number;
         }[];
       };
+      organization_metered_overages: {
+        Args: {
+          p_organization_id: string;
+        };
+        Returns: {
+          feature_key: string;
+          used: number;
+          limit_value: number;
+        }[];
+      };
       superadmin_list_org_seat_usage: {
         Args: {
           p_organization_id: string;

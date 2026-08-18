@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { formatBillingEventLabel, formatMeteredUsage, SEAT_USAGE_LABELS } from '@sincvete/shared';
+import { formatBillingEventLabel, formatMeteredUsage, quotaUsageLabel } from '@sincvete/shared';
 import {
   cancelSuperadminCheckoutIntents,
   type SuperadminAddonEndingSoonRow,
@@ -274,7 +274,7 @@ export function SuperadminCommercialQueues({
           <CardHeader>
             <CardTitle className="text-lg">Sobre cupos</CardTitle>
             <CardDescription>
-              Clínicas cuya ocupación actual supera un cupo finito del plan. Legacy no entra.
+              Clínicas cuya ocupación o uso del mes supera un cupo finito del plan. Legacy no entra.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -302,12 +302,12 @@ export function SuperadminCommercialQueues({
                     <td className="py-2">
                       {formatMeteredUsage({
                         featureKey: row.featureKey,
-                        label: SEAT_USAGE_LABELS[row.featureKey] ?? row.featureKey,
+                        label: quotaUsageLabel(row.featureKey),
                         used: row.used,
                         limit: row.limitValue,
                       })}
                       <div className="text-xs text-muted-foreground">
-                        {SEAT_USAGE_LABELS[row.featureKey] ?? row.featureKey}
+                        {quotaUsageLabel(row.featureKey)}
                       </div>
                     </td>
                   </tr>

@@ -24,6 +24,7 @@ export {
   utcMonthPeriod,
   METERED_USAGE_LABELS,
   SEAT_USAGE_LABELS,
+  quotaUsageLabel,
   wouldExceedLimit,
   formatMeteredUsage,
   findSeatDowngradeBlockers,

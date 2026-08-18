@@ -13,8 +13,11 @@ import {
   isLegacyPlanKey,
   isSeatFeatureKey,
   resolveOrganizationEntitlements,
+  METERED_FEATURE_KEYS,
+  METERED_USAGE_LABELS,
   SEAT_FEATURE_KEYS,
   SEAT_USAGE_LABELS,
+  utcMonthPeriod,
   type ActionResult,
   type AddonFeatureRow,
   type EntitlementResolutionInput,
@@ -24,6 +27,7 @@ import {
   type PaginatedResult,
   type PlanFeatureRow,
   type SeatUsageMeter,
+  type MeteredUsageMeter,
   type SubscriptionStatus,
 } from '@sincvete/shared';
 import type { Json } from '@sincvete/db';
@@ -165,6 +169,7 @@ export type SuperadminOrgCommercial = {
   overrides: SuperadminOverrideRow[];
   usage: SuperadminUsageRow[];
   seats: SeatUsageMeter[];
+  meters: MeteredUsageMeter[];
 };
 
 function asObject(value: Json | null | undefined): Record<string, Json | undefined> | null {
@@ -447,6 +452,19 @@ export async function getSuperadminOrgCommercial(
     used: usedByKey.get(featureKey) ?? 0,
     limit: getResolvedFeatureLimit(entitlements, featureKey),
   }));
+  const period = utcMonthPeriod();
+  const meterUsedByKey = new Map<string, number>();
+  for (const row of usage) {
+    if (row.periodStart === period.start) {
+      meterUsedByKey.set(row.featureKey, row.usageCount);
+    }
+  }
+  const meters: MeteredUsageMeter[] = METERED_FEATURE_KEYS.map((featureKey) => ({
+    featureKey,
+    label: METERED_USAGE_LABELS[featureKey] ?? featureKey,
+    used: meterUsedByKey.get(featureKey) ?? 0,
+    limit: getResolvedFeatureLimit(entitlements, featureKey),
+  }));
 
   return {
     organization: {
@@ -474,6 +492,7 @@ export async function getSuperadminOrgCommercial(
     overrides,
     usage,
     seats,
+    meters,
   };
 }
 

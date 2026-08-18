@@ -40,6 +40,10 @@ export const SEAT_USAGE_LABELS: Record<string, string> = {
   'patients.max': 'Pacientes',
 };
 
+export function quotaUsageLabel(featureKey: string): string {
+  return SEAT_USAGE_LABELS[featureKey] ?? METERED_USAGE_LABELS[featureKey] ?? featureKey;
+}
+
 export type MeteredUsageMeter = {
   featureKey: string;
   label: string;

@@ -27,6 +27,7 @@ import {
   getEntitledClinicHrefs,
   isClinicPathEntitled,
   formatMeteredUsage,
+  quotaUsageLabel,
   findSeatDowngradeBlockers,
   formatSeatDowngradeMessage,
   formatSeatAssignmentMessage,
@@ -633,6 +634,9 @@ describe('clinic nav entitlements', () => {
     expect(formatMeteredUsage({ featureKey: 'storage.max_mb', label: 'Storage', used: 12, limit: null })).toBe(
       '12 MB / ilimitado'
     );
+    expect(quotaUsageLabel('users.max')).toBe('Usuarios');
+    expect(quotaUsageLabel('ai.monthly_requests')).toBe('IA clínica');
+    expect(quotaUsageLabel('storage.max_mb')).toBe('Almacenamiento');
   });
 
   it('utcMonthPeriod uses UTC month bounds', () => {

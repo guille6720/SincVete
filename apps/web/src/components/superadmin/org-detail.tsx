@@ -494,9 +494,27 @@ export function SuperadminOrgDetail({
       <Card>
         <CardHeader>
           <CardTitle>Uso</CardTitle>
-          <CardDescription>Contadores medidos del mes (y periodos recientes).</CardDescription>
+          <CardDescription>Contadores medidos del mes frente al cupo del plan o extra.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
+          <div className="space-y-2 text-sm">
+            {data.meters.map((meter) => (
+              <div key={meter.featureKey} className="flex items-center justify-between gap-3">
+                <span>{meter.label}</span>
+                <span
+                  className={
+                    meter.limit != null && meter.used > meter.limit
+                      ? 'text-destructive'
+                      : isQuotaNearLimit(meter)
+                        ? 'text-amber-700 dark:text-amber-300'
+                        : 'text-muted-foreground'
+                  }
+                >
+                  {formatMeteredUsage(meter)}
+                </span>
+              </div>
+            ))}
+          </div>
           {data.usage.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin usage registrado.</p>
           ) : (
