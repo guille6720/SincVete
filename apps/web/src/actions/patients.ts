@@ -12,7 +12,7 @@ import {
   type PaginatedResult,
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
-import { PermissionError, requirePermission } from '@/lib/permissions';
+import { PermissionError, requirePermission, requirePermissionAndFeature, canPermissionAndFeature } from '@/lib/permissions';
 import { getSessionContext } from '@/lib/session';
 import { revalidatePatient, revalidatePatientsList } from '@/lib/cache-revalidate';
 import { PATIENT_COLUMNS } from '@/lib/db-columns';
@@ -183,7 +183,7 @@ export async function createPatient(
   formData: FormData
 ): Promise<ActionResult<{ id: string }>> {
   try {
-    const session = await requirePermission('patients:write');
+    const session = await requirePermissionAndFeature('patients:write', FEATURES.PATIENTS);
     const parsed = parsePatientForm(formData);
 
     if (!parsed.success) {
@@ -255,7 +255,7 @@ export async function updatePatient(
   formData: FormData
 ): Promise<ActionResult<{ id: string }>> {
   try {
-    await requirePermission('patients:write');
+    await requirePermissionAndFeature('patients:write', FEATURES.PATIENTS);
     const parsed = parsePatientForm(formData);
 
     if (!parsed.success) {
@@ -321,7 +321,7 @@ export async function updatePatient(
 
 export async function deletePatient(patientId: string): Promise<ActionResult> {
   try {
-    await requirePermission('patients:write');
+    await requirePermissionAndFeature('patients:write', FEATURES.PATIENTS);
     const supabase = await createServerClient();
 
     const { data, error } = await supabase
@@ -367,15 +367,11 @@ export async function countActivePatients(): Promise<number> {
 }
 
 export async function canManagePatients(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('patients:write');
+  return canPermissionAndFeature('patients:write', FEATURES.PATIENTS);
 }
 
 export async function canReadPatients(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('patients:read');
+  return canPermissionAndFeature('patients:read', FEATURES.PATIENTS);
 }
 
 export async function searchPatientsForSelect(

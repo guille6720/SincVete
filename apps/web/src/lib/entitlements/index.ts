@@ -4,6 +4,7 @@ import {
   canUseResolvedFeature,
   getEntitledClinicHrefs,
   getResolvedFeatureLimit,
+  isSubscriptionPeriodOpen,
   resolveOrganizationEntitlements,
   validateUsageIncrementAmount,
   wouldExceedLimit,
@@ -66,6 +67,12 @@ function featureKeyFromJoin(features: NestedFeature): string | null {
  */
 export const loadOrganizationEntitlementInput = cache(async (organizationId: string) => {
   const supabase = await createServerClient();
+  const { error: expireError } = await supabase.rpc('expire_due_subscriptions', {
+    p_organization_id: organizationId,
+  });
+  if (expireError) {
+    console.warn('[entitlements] expire_due_subscriptions', expireError.message);
+  }
 
   const [featuresRes, subscriptionRes, overridesRes] = await Promise.all([
     supabase
@@ -107,9 +114,15 @@ export const loadOrganizationEntitlementInput = cache(async (organizationId: str
   const activeSub = subscriptionRes.data;
   const planJoin = activeSub?.plans as { key?: string; name?: string } | { key?: string; name?: string }[] | null;
   const planRow = Array.isArray(planJoin) ? planJoin[0] : planJoin;
+  const periodOpen = isSubscriptionPeriodOpen({
+    status: (activeSub?.status as SubscriptionStatus | undefined) ?? null,
+    trialEndsAt: activeSub?.trial_ends_at ?? null,
+    endsAt: activeSub?.ends_at ?? null,
+  });
+  const commerciallyActive = Boolean(activeSub) && periodOpen;
   let planFeatures: PlanFeatureRow[] = [];
 
-  if (activeSub?.plan_id) {
+  if (commerciallyActive && activeSub?.plan_id) {
     const { data: pfData, error: pfError } = await supabase
       .from('plan_features')
       .select('enabled, limit_value, features!inner(key)')
@@ -150,7 +163,7 @@ export const loadOrganizationEntitlementInput = cache(async (organizationId: str
     features,
     planFeatures,
     overrides,
-    hasActiveSubscription: Boolean(activeSub),
+    hasActiveSubscription: commerciallyActive,
     planId: activeSub?.plan_id ?? null,
     subscriptionStatus: (activeSub?.status as SubscriptionStatus | undefined) ?? null,
     planKey: planRow?.key ?? null,
@@ -288,7 +301,7 @@ export async function assertWithinLimit(params: {
 export { FEATURES };
 
 export type ClinicCommercialBanner = {
-  kind: 'trial' | 'past_due';
+  kind: 'trial' | 'past_due' | 'expired';
   planName: string | null;
   trialEndsAt: string | null;
 };
@@ -304,18 +317,36 @@ export const getClinicCommercialShell = cache(
       const input = await loadOrganizationEntitlementInput(organizationId);
       const entitlements = resolveOrganizationEntitlements(input);
       let banner: ClinicCommercialBanner | null = null;
-      if (input.subscriptionStatus === 'trialing') {
+      if (input.hasActiveSubscription && input.subscriptionStatus === 'trialing') {
         banner = {
           kind: 'trial',
           planName: input.planName,
           trialEndsAt: input.trialEndsAt,
         };
-      } else if (input.subscriptionStatus === 'past_due') {
+      } else if (input.hasActiveSubscription && input.subscriptionStatus === 'past_due') {
         banner = {
           kind: 'past_due',
           planName: input.planName,
           trialEndsAt: null,
         };
+      } else if (!input.hasActiveSubscription) {
+        const supabase = await createServerClient();
+        const latest = await supabase
+          .from('organization_subscriptions')
+          .select('status, plans(name)')
+          .eq('organization_id', organizationId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const latestJoin = latest.data?.plans as { name?: string } | { name?: string }[] | null;
+        const latestPlan = Array.isArray(latestJoin) ? latestJoin[0] : latestJoin;
+        if (latest.data?.status === 'expired' || latest.data?.status === 'cancelled') {
+          banner = {
+            kind: 'expired',
+            planName: latestPlan?.name ?? input.planName,
+            trialEndsAt: null,
+          };
+        }
       }
       return {
         entitledHrefs: getEntitledClinicHrefs(entitlements),

@@ -14,6 +14,7 @@ export {
   resolveOrganizationEntitlements,
   canUseResolvedFeature,
   getResolvedFeatureLimit,
+  isSubscriptionPeriodOpen,
 } from './resolve';
 
 export {

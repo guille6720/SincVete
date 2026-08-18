@@ -12,13 +12,14 @@ import {
   type PrescriptionListRow,
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
-import { PermissionError, requirePermission } from '@/lib/permissions';
+import { PermissionError, requirePermission, requirePermissionAndFeature, canPermissionAndFeature } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
 import {
   revalidatePrescription,
   revalidatePrescriptionBoard,
 } from '@/lib/cache-revalidate';
 import { PRESCRIPTION_COLUMNS, PRESCRIPTION_ITEM_COLUMNS } from '@/lib/db-columns';
+import { FEATURES, planRestrictionResult } from '@/lib/entitlements';
 import { revalidatePath } from 'next/cache';
 
 function isNextRedirect(error: unknown): boolean {
@@ -33,6 +34,8 @@ function isNextRedirect(error: unknown): boolean {
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (isNextRedirect(error)) throw error;
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
@@ -174,7 +177,7 @@ export async function createPrescription(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const session = await requirePermission('clinical:write');
+    const session = await requirePermissionAndFeature('clinical:write', FEATURES.PHARMACY);
     const parsed = prescriptionCreateSchema.safeParse({
       patientId: formData.get('patientId'),
       ownerId: formData.get('ownerId'),
@@ -237,7 +240,7 @@ export async function createPrescription(
 
 export async function dispensePrescription(prescriptionId: string): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.PHARMACY);
     const supabase = await createServerClient();
 
     const { error } = await supabase.rpc('dispense_prescription', {
@@ -261,7 +264,7 @@ export async function voidPrescription(
   reason?: string
 ): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.PHARMACY);
     const supabase = await createServerClient();
 
     const { error } = await supabase.rpc('void_prescription', {
@@ -313,13 +316,9 @@ export async function searchPharmacyProducts(search: string): Promise<
 }
 
 export async function canManagePharmacy(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:write');
+  return canPermissionAndFeature('clinical:write', FEATURES.PHARMACY);
 }
 
 export async function canReadPharmacy(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:read');
+  return canPermissionAndFeature('clinical:read', FEATURES.PHARMACY);
 }

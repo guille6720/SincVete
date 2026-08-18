@@ -15,9 +15,10 @@ import {
   type VaccinationListRow,
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
-import { PermissionError, requirePermission } from '@/lib/permissions';
+import { PermissionError, requirePermission, requirePermissionAndFeature, canPermissionAndFeature } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
 import { VACCINATION_COLUMNS } from '@/lib/db-columns';
+import { FEATURES, planRestrictionResult } from '@/lib/entitlements';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -31,6 +32,8 @@ function isNextRedirect(error: unknown): boolean {
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (isNextRedirect(error)) throw error;
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
@@ -165,7 +168,7 @@ export async function recordVaccinationAction(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const session = await requirePermission('clinical:write');
+    const session = await requirePermissionAndFeature('clinical:write', FEATURES.VACCINATION);
     const parsed = vaccinationRecordSchema.safeParse({
       patientId: formData.get('patientId'),
       ownerId: formData.get('ownerId'),
@@ -239,7 +242,7 @@ export async function updateVaccination(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.VACCINATION);
     const parsed = vaccinationUpdateSchema.safeParse({
       administeredAt: formData.get('administeredAt'),
       manufacturer: formData.get('manufacturer'),
@@ -282,13 +285,9 @@ export async function updateVaccination(
 }
 
 export async function canManageVaccinations(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:write');
+  return canPermissionAndFeature('clinical:write', FEATURES.VACCINATION);
 }
 
 export async function canReadVaccinations(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:read');
+  return canPermissionAndFeature('clinical:read', FEATURES.VACCINATION);
 }

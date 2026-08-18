@@ -14,10 +14,11 @@ import {
   type Role,
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
-import { PermissionError, requirePermission } from '@/lib/permissions';
+import { PermissionError, requirePermission, requirePermissionAndFeature, canPermissionAndFeature } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
 import { revalidateAgenda, revalidateDashboard } from '@/lib/cache-revalidate';
 import { APPOINTMENT_COLUMNS } from '@/lib/db-columns';
+import { FEATURES, planRestrictionResult } from '@/lib/entitlements';
 import { cache } from 'react';
 
 function isNextRedirect(error: unknown): boolean {
@@ -32,6 +33,8 @@ function isNextRedirect(error: unknown): boolean {
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (isNextRedirect(error)) throw error;
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
@@ -122,7 +125,7 @@ export async function createAppointment(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const session = await requirePermission('appointments:write');
+    const session = await requirePermissionAndFeature('appointments:write', FEATURES.APPOINTMENTS);
     const parsed = parseAppointmentForm(formData);
 
     if (!parsed.success) {
@@ -178,7 +181,7 @@ export async function updateAppointment(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    await requirePermission('appointments:write');
+    await requirePermissionAndFeature('appointments:write', FEATURES.APPOINTMENTS);
     const parsed = parseAppointmentForm(formData);
 
     if (!parsed.success) {
@@ -227,7 +230,7 @@ export async function updateAppointmentStatus(
   cancellationReason?: string
 ): Promise<ActionResult> {
   try {
-    await requirePermission('appointments:write');
+    await requirePermissionAndFeature('appointments:write', FEATURES.APPOINTMENTS);
     const supabase = await createServerClient();
 
     const { error } = await supabase
@@ -252,7 +255,7 @@ export async function updateAppointmentStatus(
 
 export async function deleteAppointment(appointmentId: string): Promise<ActionResult> {
   try {
-    await requirePermission('appointments:write');
+    await requirePermissionAndFeature('appointments:write', FEATURES.APPOINTMENTS);
     const supabase = await createServerClient();
 
     const { error } = await supabase
@@ -313,13 +316,9 @@ export async function getAssignableStaff(): Promise<AssignableStaffMember[]> {
 }
 
 export async function canManageAppointments(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('appointments:write');
+  return canPermissionAndFeature('appointments:write', FEATURES.APPOINTMENTS);
 }
 
 export async function canReadAppointments(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('appointments:read');
+  return canPermissionAndFeature('appointments:read', FEATURES.APPOINTMENTS);
 }

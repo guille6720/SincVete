@@ -13,8 +13,9 @@ import {
   type PaginatedResult,
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
-import { PermissionError, requirePermission } from '@/lib/permissions';
+import { PermissionError, requirePermission, requirePermissionAndFeature, canPermissionAndFeature } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
+import { FEATURES, planRestrictionResult, canUseFeature } from '@/lib/entitlements';
 import {
   revalidateAgenda,
   revalidateClinicalEntry,
@@ -36,6 +37,8 @@ function isNextRedirect(error: unknown): boolean {
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (isNextRedirect(error)) throw error;
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
@@ -181,7 +184,7 @@ export async function startWalkInConsultation(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const session = await requirePermission('clinical:write');
+    const session = await requirePermissionAndFeature('clinical:write', FEATURES.CONSULTATIONS);
     const parsed = consultationStartSchema.safeParse({
       patientId: formData.get('patientId'),
       ownerId: formData.get('ownerId'),
@@ -234,7 +237,7 @@ export async function startConsultationFromAppointment(
   appointmentId: string
 ): Promise<ActionResult<{ id: string }>> {
   try {
-    const session = await requirePermission('clinical:write');
+    const session = await requirePermissionAndFeature('clinical:write', FEATURES.CONSULTATIONS);
     const supabase = await createServerClient();
 
     const { data: existing } = await supabase
@@ -304,7 +307,7 @@ export async function saveConsultationDraft(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.CONSULTATIONS);
     const parsed = parseSoapForm(formData);
 
     if (!parsed.success) {
@@ -349,7 +352,7 @@ export async function completeConsultationAction(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.CONSULTATIONS);
     const parsed = parseSoapForm(formData);
 
     if (!parsed.success) {
@@ -414,7 +417,7 @@ export async function completeConsultationAction(
 
 export async function cancelConsultation(consultationId: string): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.CONSULTATIONS);
     const supabase = await createServerClient();
 
     const { data: consultationMeta } = await supabase
@@ -442,22 +445,24 @@ export async function cancelConsultation(consultationId: string): Promise<Action
 }
 
 export async function canManageConsultations(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:write');
+  return canPermissionAndFeature('clinical:write', FEATURES.CONSULTATIONS);
 }
 
 export async function canReadConsultations(): Promise<boolean> {
   const session = await getSessionContext();
   if (!session) return false;
-  return (
-    session.permissions.includes('clinical:read') ||
-    session.permissions.includes('appointments:read')
-  );
+  if (
+    !session.permissions.includes('clinical:read') &&
+    !session.permissions.includes('appointments:read')
+  ) {
+    return false;
+  }
+  return canUseFeature({
+    organizationId: session.organizationId,
+    featureKey: FEATURES.CONSULTATIONS,
+  });
 }
 
 export async function canReadConsultationHistory(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:read');
+  return canPermissionAndFeature('clinical:read', FEATURES.CONSULTATIONS);
 }

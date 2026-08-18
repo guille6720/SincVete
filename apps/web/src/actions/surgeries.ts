@@ -14,9 +14,10 @@ import {
   type SurgeryListRow,
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
-import { PermissionError, requirePermission } from '@/lib/permissions';
+import { PermissionError, requirePermission, requirePermissionAndFeature, canPermissionAndFeature } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
 import { SURGERY_COLUMNS } from '@/lib/db-columns';
+import { FEATURES, planRestrictionResult } from '@/lib/entitlements';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -30,6 +31,8 @@ function isNextRedirect(error: unknown): boolean {
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (isNextRedirect(error)) throw error;
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
@@ -184,7 +187,7 @@ export async function scheduleSurgery(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const session = await requirePermission('clinical:write');
+    const session = await requirePermissionAndFeature('clinical:write', FEATURES.SURGERY);
     const scheduledAtRaw = String(formData.get('scheduledAt') ?? '');
     const scheduledAt = scheduledAtRaw.includes('T') && !scheduledAtRaw.includes('Z')
       ? fromLocalDateTimeInput(scheduledAtRaw)
@@ -260,7 +263,7 @@ export async function saveSurgeryWorksheet(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.SURGERY);
     const parsed = parseWorksheet(formData);
 
     if (!parsed.success) {
@@ -292,7 +295,7 @@ export async function saveSurgeryWorksheet(
 
 export async function startSurgery(surgeryId: string): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.SURGERY);
     const supabase = await createServerClient();
 
     const { data: surgery } = await supabase
@@ -339,7 +342,7 @@ export async function startSurgery(surgeryId: string): Promise<ActionResult> {
 
 export async function moveSurgeryToRecovery(surgeryId: string): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.SURGERY);
     const supabase = await createServerClient();
 
     const { error } = await supabase
@@ -367,7 +370,7 @@ export async function completeSurgeryAction(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.SURGERY);
     const parsed = parseWorksheet(formData);
 
     if (!parsed.success) {
@@ -417,7 +420,7 @@ export async function completeSurgeryAction(
 
 export async function cancelSurgery(surgeryId: string): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.SURGERY);
     const supabase = await createServerClient();
 
     const { error } = await supabase
@@ -440,13 +443,9 @@ export async function cancelSurgery(surgeryId: string): Promise<ActionResult> {
 }
 
 export async function canManageSurgeries(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:write');
+  return canPermissionAndFeature('clinical:write', FEATURES.SURGERY);
 }
 
 export async function canReadSurgeries(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:read');
+  return canPermissionAndFeature('clinical:read', FEATURES.SURGERY);
 }

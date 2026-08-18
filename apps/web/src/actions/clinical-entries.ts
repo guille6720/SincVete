@@ -12,8 +12,9 @@ import {
   type PaginatedResult,
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
-import { PermissionError, requirePermission } from '@/lib/permissions';
+import { PermissionError, requirePermission, requirePermissionAndFeature, canPermissionAndFeature } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
+import { FEATURES, planRestrictionResult } from '@/lib/entitlements';
 import {
   revalidateClinicalEntry,
   revalidateClinicalEntryList,
@@ -33,6 +34,8 @@ function isNextRedirect(error: unknown): boolean {
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (isNextRedirect(error)) throw error;
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
@@ -155,7 +158,7 @@ export async function createClinicalEntry(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const session = await requirePermission('clinical:write');
+    const session = await requirePermissionAndFeature('clinical:write', FEATURES.CLINICAL_HISTORY);
     const parsed = parseClinicalEntryForm(formData);
 
     if (!parsed.success) {
@@ -214,7 +217,7 @@ export async function updateClinicalEntry(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.CLINICAL_HISTORY);
     const parsed = parseClinicalEntryForm(formData);
 
     if (!parsed.success) {
@@ -260,7 +263,7 @@ export async function updateClinicalEntry(
 
 export async function deleteClinicalEntry(entryId: string): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.CLINICAL_HISTORY);
     const supabase = await createServerClient();
 
     const { data: entry } = await supabase
@@ -289,15 +292,11 @@ export async function deleteClinicalEntry(entryId: string): Promise<ActionResult
 }
 
 export async function canManageClinical(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:write');
+  return canPermissionAndFeature('clinical:write', FEATURES.CLINICAL_HISTORY);
 }
 
 export async function canReadClinical(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:read');
+  return canPermissionAndFeature('clinical:read', FEATURES.CLINICAL_HISTORY);
 }
 
 export async function countPatientClinicalEntries(patientId: string): Promise<number> {

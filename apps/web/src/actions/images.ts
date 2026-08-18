@@ -317,6 +317,9 @@ export async function canManageImages(): Promise<boolean> {
 
 export async function canReadImages(): Promise<boolean> {
   const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:read');
+  if (!session || !session.permissions.includes('clinical:read')) return false;
+  return canUseFeature({
+    organizationId: session.organizationId,
+    featureKey: FEATURES.CLINICAL_IMAGES,
+  });
 }

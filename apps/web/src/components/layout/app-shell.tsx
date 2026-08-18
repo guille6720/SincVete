@@ -320,12 +320,20 @@ export function AppShell({
                     Elegí un plan
                   </Link>
                 </p>
-              ) : (
+              ) : billingBanner.kind === 'past_due' ? (
                 <p>
                   Hay un pago pendiente{billingBanner.planName ? ` de ${billingBanner.planName}` : ''}. La
                   clínica sigue operativa.{' '}
                   <Link href="/configuracion?tab=plan" className="font-medium underline underline-offset-4">
                     Actualizar plan
+                  </Link>
+                </p>
+              ) : (
+                <p>
+                  Tu plan venció{billingBanner.planName ? ` (${billingBanner.planName})` : ''}. Elegí uno
+                  para seguir usando los módulos.{' '}
+                  <Link href="/configuracion?tab=plan" className="font-medium underline underline-offset-4">
+                    Ver planes
                   </Link>
                 </p>
               )}

@@ -170,6 +170,27 @@ export function resolveOrganizationEntitlements(
   return result;
 }
 
+export function isSubscriptionPeriodOpen(params: {
+  status: SubscriptionStatus | null | undefined;
+  trialEndsAt?: string | null;
+  endsAt?: string | null;
+  now?: Date;
+}): boolean {
+  const status = params.status;
+  if (status !== 'trialing' && status !== 'active' && status !== 'past_due') {
+    return false;
+  }
+  const now = (params.now ?? new Date()).getTime();
+  if (status === 'trialing') {
+    if (!params.trialEndsAt) return true;
+    const ends = new Date(params.trialEndsAt).getTime();
+    return Number.isFinite(ends) && ends > now;
+  }
+  if (!params.endsAt) return true;
+  const ends = new Date(params.endsAt).getTime();
+  return Number.isFinite(ends) && ends > now;
+}
+
 export function canUseResolvedFeature(
   entitlements: OrganizationEntitlements,
   featureKey: FeatureKey | string

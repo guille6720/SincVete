@@ -3162,6 +3162,12 @@ export interface Database {
         };
         Returns: Json;
       };
+      expire_due_subscriptions: {
+        Args: {
+          p_organization_id?: string | null;
+        };
+        Returns: number;
+      };
       handle_new_user_signup: {
         Args: {
           p_full_name: string;

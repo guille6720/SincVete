@@ -16,9 +16,10 @@ import {
   type PaginatedResult,
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
-import { PermissionError, requirePermission } from '@/lib/permissions';
+import { PermissionError, requirePermission, requirePermissionAndFeature, canPermissionAndFeature } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
 import { HOSPITALIZATION_COLUMNS, HOSPITALIZATION_NOTE_COLUMNS } from '@/lib/db-columns';
+import { FEATURES, planRestrictionResult } from '@/lib/entitlements';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -32,6 +33,8 @@ function isNextRedirect(error: unknown): boolean {
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (isNextRedirect(error)) throw error;
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
@@ -197,7 +200,7 @@ export async function admitHospitalization(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const session = await requirePermission('clinical:write');
+    const session = await requirePermissionAndFeature('clinical:write', FEATURES.HOSPITALIZATION);
     const parsed = hospitalizationAdmitSchema.safeParse({
       patientId: formData.get('patientId'),
       ownerId: formData.get('ownerId'),
@@ -265,7 +268,7 @@ export async function updateHospitalization(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.HOSPITALIZATION);
     const parsed = hospitalizationUpdateSchema.safeParse({
       status: formData.get('status'),
       cage: formData.get('cage'),
@@ -315,7 +318,7 @@ export async function addHospitalizationNote(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const session = await requirePermission('clinical:write');
+    const session = await requirePermissionAndFeature('clinical:write', FEATURES.HOSPITALIZATION);
     const parsed = hospitalizationNoteSchema.safeParse({
       noteType: formData.get('noteType') || 'evolucion',
       content: formData.get('content'),
@@ -371,7 +374,7 @@ export async function dischargeHospitalizationAction(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.HOSPITALIZATION);
     const parsed = hospitalizationDischargeSchema.safeParse({
       outcome: formData.get('outcome'),
       summary: formData.get('summary'),
@@ -423,13 +426,9 @@ export async function dischargeHospitalizationAction(
 }
 
 export async function canManageHospitalizations(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:write');
+  return canPermissionAndFeature('clinical:write', FEATURES.HOSPITALIZATION);
 }
 
 export async function canReadHospitalizations(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:read');
+  return canPermissionAndFeature('clinical:read', FEATURES.HOSPITALIZATION);
 }

@@ -9,8 +9,8 @@ import {
   type PaginatedResult,
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
-import { requirePermission } from '@/lib/permissions';
-import { getSessionContext } from '@/actions/auth';
+import { requirePermissionIfFeature, canPermissionAndFeature } from '@/lib/permissions';
+import { FEATURES } from '@/lib/entitlements';
 
 function toListRow(
   row: AuditLogListRow & { total_count?: number }
@@ -26,9 +26,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 }
 
 export async function canReadAudit(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('audit:read');
+  return canPermissionAndFeature('audit:read', FEATURES.AUDIT);
 }
 
 export async function listAuditLogs(
@@ -42,8 +40,11 @@ export async function listAuditLogs(
     to?: string;
   } = {}
 ): Promise<PaginatedResult<AuditLogListRow>> {
-  await requirePermission('audit:read');
   const parsed = auditLogListSchema.parse(input);
+  const session = await requirePermissionIfFeature('audit:read', FEATURES.AUDIT);
+  if (!session) {
+    return buildPaginatedResult([], 0, parsed.page, parsed.pageSize);
+  }
   const supabase = await createServerClient();
 
   const range =
@@ -72,7 +73,8 @@ export async function listAuditLogs(
 }
 
 export async function getAuditLog(id: string): Promise<AuditLogDetail | null> {
-  await requirePermission('audit:read');
+  const session = await requirePermissionIfFeature('audit:read', FEATURES.AUDIT);
+  if (!session) return null;
   const supabase = await createServerClient();
 
   const { data: log, error } = await supabase

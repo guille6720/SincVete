@@ -17,8 +17,9 @@ import {
   type PaymentListRow,
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
-import { PermissionError, requirePermission } from '@/lib/permissions';
+import { PermissionError, requirePermission, requirePermissionAndFeature, canPermissionAndFeature } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
+import { FEATURES, planRestrictionResult } from '@/lib/entitlements';
 import { getOrganization } from '@/actions/settings';
 
 function isNextRedirect(error: unknown): boolean {
@@ -33,6 +34,8 @@ function isNextRedirect(error: unknown): boolean {
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (isNextRedirect(error)) throw error;
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
@@ -204,7 +207,7 @@ export async function createInvoice(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const session = await requirePermission('billing:write');
+    const session = await requirePermissionAndFeature('billing:write', FEATURES.BILLING);
     const parsed = invoiceCreateSchema.safeParse({
       ownerId: formData.get('ownerId'),
       patientId: formData.get('patientId'),
@@ -291,7 +294,7 @@ export async function updateInvoice(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const session = await requirePermission('billing:write');
+    const session = await requirePermissionAndFeature('billing:write', FEATURES.BILLING);
     const parsed = invoiceUpdateSchema.safeParse({
       dueAt: formData.get('dueAt'),
       notes: formData.get('notes'),
@@ -367,7 +370,7 @@ export async function updateInvoice(
 
 export async function issueInvoiceAction(invoiceId: string): Promise<ActionResult> {
   try {
-    await requirePermission('billing:write');
+    await requirePermissionAndFeature('billing:write', FEATURES.BILLING);
     const supabase = await createServerClient();
     const { error } = await supabase.rpc('issue_invoice', { p_invoice_id: invoiceId });
 
@@ -390,7 +393,7 @@ export async function registerPaymentAction(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    await requirePermission('billing:write');
+    await requirePermissionAndFeature('billing:write', FEATURES.BILLING);
     const parsed = paymentSchema.safeParse({
       amount: formData.get('amount'),
       method: formData.get('method') || 'efectivo',
@@ -431,7 +434,7 @@ export async function registerPaymentAction(
 
 export async function voidInvoiceAction(invoiceId: string): Promise<ActionResult> {
   try {
-    await requirePermission('billing:write');
+    await requirePermissionAndFeature('billing:write', FEATURES.BILLING);
     const supabase = await createServerClient();
     const { error } = await supabase.rpc('void_invoice', { p_invoice_id: invoiceId });
 
@@ -449,13 +452,9 @@ export async function voidInvoiceAction(invoiceId: string): Promise<ActionResult
 }
 
 export async function canManageBilling(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('billing:write');
+  return canPermissionAndFeature('billing:write', FEATURES.BILLING);
 }
 
 export async function canReadBilling(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('billing:read');
+  return canPermissionAndFeature('billing:read', FEATURES.BILLING);
 }

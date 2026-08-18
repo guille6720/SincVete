@@ -25,6 +25,7 @@ import {
   getEntitledClinicHrefs,
   isClinicPathEntitled,
   utcMonthPeriod,
+  isSubscriptionPeriodOpen,
   type EntitlementResolutionInput,
   type FeatureCatalogRow,
 } from '../index';
@@ -485,5 +486,43 @@ describe('clinic nav entitlements', () => {
     const period = utcMonthPeriod(new Date('2026-08-18T10:00:00.000Z'));
     expect(period.start).toBe('2026-08-01');
     expect(period.end).toBe('2026-08-31');
+  });
+});
+
+describe('subscription period', () => {
+  const now = new Date('2026-08-18T12:00:00.000Z');
+
+  it('keeps open-ended trial and legacy active without end dates', () => {
+    expect(
+      isSubscriptionPeriodOpen({ status: 'trialing', trialEndsAt: null, endsAt: null, now })
+    ).toBe(true);
+    expect(
+      isSubscriptionPeriodOpen({ status: 'active', trialEndsAt: null, endsAt: null, now })
+    ).toBe(true);
+  });
+
+  it('closes trial and paid periods after their end timestamps', () => {
+    expect(
+      isSubscriptionPeriodOpen({
+        status: 'trialing',
+        trialEndsAt: '2026-08-01T00:00:00.000Z',
+        now,
+      })
+    ).toBe(false);
+    expect(
+      isSubscriptionPeriodOpen({
+        status: 'active',
+        endsAt: '2026-08-17T00:00:00.000Z',
+        now,
+      })
+    ).toBe(false);
+    expect(
+      isSubscriptionPeriodOpen({
+        status: 'past_due',
+        endsAt: '2026-08-19T00:00:00.000Z',
+        now,
+      })
+    ).toBe(true);
+    expect(isSubscriptionPeriodOpen({ status: 'expired', now })).toBe(false);
   });
 });
