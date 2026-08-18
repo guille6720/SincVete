@@ -30,6 +30,7 @@ import {
   SPECIES_EMOJI,
   buildClinicalAiPath,
   buildWhatsAppComposePath,
+  isClinicPathEntitled,
   type ClinicalEntryListRow,
   type HospitalizationStatus,
   type Owner,
@@ -51,6 +52,7 @@ interface PatientDetailProps {
   activeHospitalization?: { id: string; status: HospitalizationStatus } | null;
   activeSurgery?: { id: string; status: SurgeryStatus } | null;
   vaccineStatus?: VaccinationDueRow[];
+  entitledHrefs?: string[] | null;
 }
 
 function formatAge(birthDate: string | null): string | null {
@@ -86,10 +88,12 @@ export function PatientDetail({
   activeHospitalization = null,
   activeSurgery = null,
   vaccineStatus = [],
+  entitledHrefs = null,
 }: PatientDetailProps) {
   const router = useRouter();
   const [pending, runPending] = usePendingAction();
   const age = formatAge(patient.birth_date);
+  const entitled = (href: string) => isClinicPathEntitled(href, entitledHrefs);
 
   const handleDelete = () => {
     if (!confirm('¿Eliminar este paciente? Esta acción no se puede deshacer.')) return;
@@ -114,7 +118,7 @@ export function PatientDetail({
         </Button>
         {(canWrite || canReadClinical || canWriteClinical || canSendWhatsApp) && (
           <div className="flex flex-wrap gap-2">
-            {canReadClinical && (
+            {canReadClinical && entitled('/historia-clinica') && (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/pacientes/${patient.id}/historia`}>
                   <ClipboardList className="mr-2 h-4 w-4" />
@@ -122,7 +126,8 @@ export function PatientDetail({
                 </Link>
               </Button>
             )}
-            {activeHospitalization && canReadClinical ? (
+            {entitled('/internacion') &&
+              (activeHospitalization && canReadClinical ? (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/internacion/${activeHospitalization.id}`}>
                   <BedDouble className="mr-2 h-4 w-4" />
@@ -139,8 +144,8 @@ export function PatientDetail({
                   </Link>
                 </Button>
               )
-            )}
-            {canWriteClinical && !patient.is_deceased && (
+            ))}
+            {canWriteClinical && !patient.is_deceased && entitled('/vacunacion') && (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/vacunacion/nueva?patientId=${patient.id}`}>
                   <Syringe className="mr-2 h-4 w-4" />
@@ -148,7 +153,8 @@ export function PatientDetail({
                 </Link>
               </Button>
             )}
-            {activeSurgery && canReadClinical ? (
+            {entitled('/cirugias') &&
+              (activeSurgery && canReadClinical ? (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/cirugias/${activeSurgery.id}`}>
                   <Scissors className="mr-2 h-4 w-4" />
@@ -165,8 +171,8 @@ export function PatientDetail({
                   </Link>
                 </Button>
               )
-            )}
-            {canWriteClinical && !patient.is_deceased && (
+            ))}
+            {canWriteClinical && !patient.is_deceased && entitled('/laboratorio') && (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/laboratorio/nueva?patientId=${patient.id}`}>
                   <FlaskConical className="mr-2 h-4 w-4" />
@@ -174,7 +180,7 @@ export function PatientDetail({
                 </Link>
               </Button>
             )}
-            {canWriteClinical && !patient.is_deceased && (
+            {canWriteClinical && !patient.is_deceased && entitled('/farmacia') && (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/farmacia/nueva?patientId=${patient.id}`}>
                   <Pill className="mr-2 h-4 w-4" />
@@ -182,7 +188,7 @@ export function PatientDetail({
                 </Link>
               </Button>
             )}
-            {canReadClinical && (
+            {canReadClinical && entitled('/imagenes') && (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/imagenes?patientId=${patient.id}`}>
                   <Images className="mr-2 h-4 w-4" />
@@ -190,7 +196,7 @@ export function PatientDetail({
                 </Link>
               </Button>
             )}
-            {canWriteClinical && !patient.is_deceased && (
+            {canWriteClinical && !patient.is_deceased && entitled('/imagenes') && (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/imagenes/nueva?patientId=${patient.id}`}>
                   <Images className="mr-2 h-4 w-4" />
@@ -198,7 +204,7 @@ export function PatientDetail({
                 </Link>
               </Button>
             )}
-            {canWriteBilling && (
+            {canWriteBilling && entitled('/facturacion') && (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/facturacion/nueva?patientId=${patient.id}`}>
                   <Receipt className="mr-2 h-4 w-4" />
@@ -206,7 +212,7 @@ export function PatientDetail({
                 </Link>
               </Button>
             )}
-            {canReadClinical && (
+            {canReadClinical && entitled('/ia-clinica') && (
               <Button variant="outline" size="sm" asChild>
                 <Link
                   href={buildClinicalAiPath({
@@ -219,7 +225,7 @@ export function PatientDetail({
                 </Link>
               </Button>
             )}
-            {canSendWhatsApp && (
+            {canSendWhatsApp && entitled('/whatsapp') && (
               <Button variant="outline" size="sm" asChild>
                 <Link
                   href={buildWhatsAppComposePath({
@@ -297,7 +303,7 @@ export function PatientDetail({
                     {patient.is_active ? 'Activo' : 'Inactivo'}
                   </Badge>
                 )}
-                {activeHospitalization && (
+                {activeHospitalization && entitled('/internacion') && (
                   <Badge variant="warning" className="text-sm">
                     {HOSPITALIZATION_STATUS_LABELS[activeHospitalization.status]}
                   </Badge>
@@ -355,7 +361,7 @@ export function PatientDetail({
         </CardContent>
       </Card>
 
-      {canReadClinical && (
+      {canReadClinical && entitled('/historia-clinica') && (
         <PatientClinicalRecent
           patientId={patient.id}
           entries={recentClinicalEntries}
@@ -364,7 +370,7 @@ export function PatientDetail({
         />
       )}
 
-      {canReadClinical && (
+      {canReadClinical && entitled('/vacunacion') && (
         <PatientVaccineStatus
           patientId={patient.id}
           items={vaccineStatus}

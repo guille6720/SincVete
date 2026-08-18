@@ -24,6 +24,7 @@ import {
   resolveOrganizationEntitlements,
   getEntitledClinicHrefs,
   isClinicPathEntitled,
+  formatMeteredUsage,
   utcMonthPeriod,
   isSubscriptionPeriodOpen,
   isTrialEndingSoon,
@@ -480,10 +481,21 @@ describe('clinic nav entitlements', () => {
     expect(hrefs).not.toContain('/whatsapp');
     expect(isClinicPathEntitled('/whatsapp', hrefs)).toBe(false);
     expect(isClinicPathEntitled('/whatsapp/nuevo', hrefs)).toBe(false);
+    expect(isClinicPathEntitled('/imagenes?patientId=abc', hrefs)).toBe(false);
+    expect(isClinicPathEntitled('/internacion/nueva?patientId=abc', hrefs)).toBe(false);
     expect(isClinicPathEntitled('/configuracion', hrefs)).toBe(true);
     expect(isClinicPathEntitled('/pacientes/nuevo', hrefs)).toBe(false);
     expect(isClinicPathEntitled('/ruta-desconocida', hrefs)).toBe(true);
     expect(isClinicPathEntitled('/whatsapp', null)).toBe(true);
+  });
+
+  it('formats metered usage for the clinic UI', () => {
+    expect(formatMeteredUsage({ featureKey: 'ai.monthly_requests', label: 'IA', used: 3, limit: 10 })).toBe(
+      '3 / 10'
+    );
+    expect(formatMeteredUsage({ featureKey: 'storage.max_mb', label: 'Storage', used: 12, limit: null })).toBe(
+      '12 MB / ilimitado'
+    );
   });
 
   it('utcMonthPeriod uses UTC month bounds', () => {

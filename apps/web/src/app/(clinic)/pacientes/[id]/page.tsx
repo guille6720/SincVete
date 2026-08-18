@@ -8,6 +8,7 @@ import { getActiveSurgeryByPatient } from '@/actions/surgeries';
 import { PatientDetail } from '@/components/patients/patient-detail';
 import { getSessionContext } from '@/lib/session';
 import { CLINICAL_RECENT_PAGE_SIZE } from '@sincvete/shared';
+import { getClinicCommercialShell } from '@/lib/entitlements';
 
 interface PatientPageProps {
   params: Promise<{ id: string }>;
@@ -22,7 +23,7 @@ export default async function PacienteDetailPage({ params }: PatientPageProps) {
 
   const canReadClinical = session.permissions.includes('clinical:read');
 
-  const [owner, recentClinical, activeHospitalization, activeSurgery, vaccineStatus] =
+  const [owner, recentClinical, activeHospitalization, activeSurgery, vaccineStatus, commercial] =
     await Promise.all([
       getOwner(patient.owner_id),
       canReadClinical
@@ -35,6 +36,7 @@ export default async function PacienteDetailPage({ params }: PatientPageProps) {
       getActiveHospitalizationByPatient(id),
       getActiveSurgeryByPatient(id),
       listPatientVaccineStatus(id),
+      getClinicCommercialShell(session.organizationId),
     ]);
 
   return (
@@ -51,6 +53,7 @@ export default async function PacienteDetailPage({ params }: PatientPageProps) {
       vaccineStatus={vaccineStatus}
       canWriteBilling={session.permissions.includes('billing:write')}
       canSendWhatsApp={session.permissions.includes('whatsapp:send')}
+      entitledHrefs={commercial.entitledHrefs}
     />
   );
 }

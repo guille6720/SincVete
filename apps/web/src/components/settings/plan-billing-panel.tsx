@@ -11,7 +11,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { canCheckoutPlan, formatArsAmount } from '@sincvete/shared';
+import { canCheckoutPlan, formatArsAmount, formatBillingEventLabel, formatMeteredUsage, isQuotaNearLimit } from '@sincvete/shared';
 import { usePendingAction } from '@/lib/hooks/use-pending-action';
 
 function statusLabel(status: PlanBillingState['current']['status']) {
@@ -122,18 +122,40 @@ export function PlanBillingPanel({
             <CardDescription>Cupos del plan actual. El contador se reinicia cada mes (UTC).</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            {state.usage.map((meter) => {
-              const unit = meter.featureKey === 'storage.max_mb' ? ' MB' : '';
-              let value = 'No incluido';
-              if (meter.limit === null) value = `${meter.used}${unit} / ilimitado`;
-              else if (meter.limit > 0) value = `${meter.used} / ${meter.limit}${unit}`;
-              return (
-                <div key={meter.featureKey} className="flex items-center justify-between gap-3">
-                  <span>{meter.label}</span>
-                  <span className="text-muted-foreground">{value}</span>
-                </div>
-              );
-            })}
+            {state.usage.map((meter) => (
+              <div key={meter.featureKey} className="flex items-center justify-between gap-3">
+                <span>{meter.label}</span>
+                <span
+                  className={
+                    isQuotaNearLimit(meter) ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground'
+                  }
+                >
+                  {formatMeteredUsage(meter)}
+                </span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {state.events.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Historial de pagos</CardTitle>
+            <CardDescription>Eventos confirmados por Mercado Pago o Stripe. Sin datos de la tarjeta.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {state.events.map((event) => (
+              <div key={event.id} className="flex items-center justify-between gap-3">
+                <span>
+                  {formatBillingEventLabel(event.eventType)}
+                  <span className="text-muted-foreground"> · {event.provider}</span>
+                </span>
+                <span className="text-muted-foreground">
+                  {new Date(event.processedAt).toLocaleString('es-AR')}
+                </span>
+              </div>
+            ))}
           </CardContent>
         </Card>
       ) : null}

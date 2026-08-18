@@ -19,7 +19,7 @@ import {
 import { createServerClient, createServiceClient } from '@/lib/supabase/server';
 import { PermissionError, requirePermission, requirePortalSession } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
-import { FEATURES, planRestrictionResult, requireFeature } from '@/lib/entitlements';
+import { FEATURES, planRestrictionResult, requireFeature, canUseFeature } from '@/lib/entitlements';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -114,7 +114,12 @@ export async function revokeOwnerPortalAccess(ownerId: string): Promise<ActionRe
 }
 
 export async function getOwnerPortalHome(): Promise<OwnerPortalHome | null> {
-  await requirePortalSession();
+  const session = await requirePortalSession();
+  const allowed = await canUseFeature({
+    organizationId: session.organizationId,
+    featureKey: FEATURES.OWNER_PORTAL,
+  });
+  if (!allowed) return null;
   const supabase = await createServerClient();
   const { data, error } = await supabase.rpc('get_owner_portal_home');
   if (error) return null;
@@ -122,7 +127,12 @@ export async function getOwnerPortalHome(): Promise<OwnerPortalHome | null> {
 }
 
 export async function getOwnerPortalPatient(patientId: string): Promise<OwnerPortalPatient | null> {
-  await requirePortalSession();
+  const session = await requirePortalSession();
+  const allowed = await canUseFeature({
+    organizationId: session.organizationId,
+    featureKey: FEATURES.OWNER_PORTAL,
+  });
+  if (!allowed) return null;
   const supabase = await createServerClient();
   const { data, error } = await supabase.rpc('get_owner_portal_patient', {
     p_patient_id: patientId,

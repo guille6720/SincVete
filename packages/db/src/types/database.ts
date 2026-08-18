@@ -3075,6 +3075,8 @@ export interface Database {
           p_search?: string | null;
           p_page?: number;
           p_page_size?: number;
+          p_plan_key?: string | null;
+          p_status?: string | null;
         };
         Returns: {
           id: string;
@@ -3191,6 +3193,34 @@ export interface Database {
       billing_cancel_own_subscription: {
         Args: Record<PropertyKey, never>;
         Returns: Json;
+      };
+      superadmin_commercial_summary: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      superadmin_list_billing_events: {
+        Args: {
+          p_organization_id: string;
+          p_limit?: number;
+        };
+        Returns: {
+          id: string;
+          provider: string;
+          event_id: string;
+          event_type: string | null;
+          processed_at: string;
+        }[];
+      };
+      list_own_billing_events: {
+        Args: {
+          p_limit?: number;
+        };
+        Returns: {
+          id: string;
+          provider: string;
+          event_type: string | null;
+          processed_at: string;
+        }[];
       };
       handle_new_user_signup: {
         Args: {

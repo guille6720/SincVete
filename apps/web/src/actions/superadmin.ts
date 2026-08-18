@@ -52,6 +52,8 @@ export async function listSuperadminOrganizations(params: {
   search?: string;
   page?: number;
   pageSize?: number;
+  planKey?: string;
+  status?: string;
 }): Promise<PaginatedResult<SuperadminOrgListRow>> {
   await requireSuperadmin();
   const supabase = await createServerClient();
@@ -61,6 +63,8 @@ export async function listSuperadminOrganizations(params: {
     p_search: params.search?.trim() || null,
     p_page: page,
     p_page_size: pageSize,
+    p_plan_key: params.planKey?.trim() || null,
+    p_status: params.status?.trim() || null,
   });
   if (error) throw new Error(error.message);
   const rows = data ?? [];
@@ -459,4 +463,78 @@ export async function clearOrganizationFeatureOverride(formData: FormData): Prom
   } catch (error) {
     return actionError(error);
   }
+}
+
+export type SuperadminCommercialSummary = {
+  organizations: number;
+  trialing: number;
+  active: number;
+  pastDue: number;
+  expired: number;
+  cancelled: number;
+};
+
+export async function getSuperadminCommercialSummary(): Promise<SuperadminCommercialSummary> {
+  await requireSuperadmin();
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc('superadmin_commercial_summary');
+  if (error) throw new Error(error.message);
+  const row = asObject(data);
+  return {
+    organizations: asNumber(row?.organizations) ?? 0,
+    trialing: asNumber(row?.trialing) ?? 0,
+    active: asNumber(row?.active) ?? 0,
+    pastDue: asNumber(row?.past_due) ?? 0,
+    expired: asNumber(row?.expired) ?? 0,
+    cancelled: asNumber(row?.cancelled) ?? 0,
+  };
+}
+
+export async function runSuperadminCommercialLifecycle(): Promise<
+  ActionResult<{ expired: number; notices: number }>
+> {
+  try {
+    await requireSuperadmin();
+    const supabase = await createServerClient();
+    const { data, error } = await supabase.rpc('run_commercial_lifecycle');
+    if (error) return { success: false, error: error.message };
+    const row = asObject(data);
+    revalidatePath('/superadmin');
+    return {
+      success: true,
+      data: {
+        expired: asNumber(row?.expired) ?? 0,
+        notices: asNumber(row?.notices) ?? 0,
+      },
+    };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export type SuperadminBillingEvent = {
+  id: string;
+  provider: string;
+  eventId: string;
+  eventType: string | null;
+  processedAt: string;
+};
+
+export async function listSuperadminBillingEvents(
+  organizationId: string
+): Promise<SuperadminBillingEvent[]> {
+  await requireSuperadmin();
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc('superadmin_list_billing_events', {
+    p_organization_id: organizationId,
+    p_limit: 25,
+  });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    provider: row.provider,
+    eventId: row.event_id,
+    eventType: row.event_type,
+    processedAt: row.processed_at,
+  }));
 }

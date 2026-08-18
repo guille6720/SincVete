@@ -23,7 +23,10 @@ export {
   utcMonthPeriod,
   METERED_USAGE_LABELS,
   wouldExceedLimit,
+  formatMeteredUsage,
 } from './limits';
+
+export type { MeteredUsageMeter } from './limits';
 
 export {
   getNavFeatureKey,

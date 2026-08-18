@@ -8,10 +8,14 @@ import {
   resolveOrganizationEntitlements,
   validateUsageIncrementAmount,
   wouldExceedLimit,
+  utcMonthPeriod,
+  METERED_FEATURE_KEYS,
+  METERED_USAGE_LABELS,
   type ActionResult,
   type FeatureCatalogRow,
   type FeatureKey,
   type FeatureOverrideRow,
+  type MeteredUsageMeter,
   type OrganizationEntitlements,
   type PlanFeatureRow,
   type ResolvedEntitlement,
@@ -200,6 +204,32 @@ export async function getFeatureLimit(params: {
 }): Promise<number | null> {
   const entitlements = await getOrganizationEntitlements(params.organizationId);
   return getResolvedFeatureLimit(entitlements, params.featureKey);
+}
+
+export async function getMeteredUsageMeters(organizationId: string): Promise<MeteredUsageMeter[]> {
+  const supabase = await createServerClient();
+  const period = utcMonthPeriod();
+  const [entitlements, usageRes] = await Promise.all([
+    getOrganizationEntitlements(organizationId),
+    supabase
+      .from('feature_usage')
+      .select('usage_count, features!inner(key)')
+      .eq('organization_id', organizationId)
+      .eq('period_start', period.start),
+  ]);
+
+  const usedByKey = new Map<string, number>();
+  for (const row of usageRes.data ?? []) {
+    const key = featureKeyFromJoin(row.features as NestedFeature);
+    if (key) usedByKey.set(key, Number(row.usage_count) || 0);
+  }
+
+  return METERED_FEATURE_KEYS.map((featureKey) => ({
+    featureKey,
+    label: METERED_USAGE_LABELS[featureKey] ?? featureKey,
+    used: usedByKey.get(featureKey) ?? 0,
+    limit: getResolvedFeatureLimit(entitlements, featureKey),
+  }));
 }
 
 export async function getFeatureEntitlement(params: {

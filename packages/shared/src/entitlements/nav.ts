@@ -12,10 +12,11 @@ export function getNavFeatureKey(href: string): FeatureKey | null {
 }
 
 export function getNavHrefForPath(pathname: string): string | null {
-  if (NAV_FEATURE_BY_HREF[pathname]) return pathname;
+  const path = (pathname.split('?')[0] ?? pathname).split('#')[0] ?? pathname;
+  if (NAV_FEATURE_BY_HREF[path]) return path;
   return (
     Object.keys(NAV_FEATURE_BY_HREF).find(
-      (key) => pathname === key || pathname.startsWith(`${key}/`)
+      (key) => path === key || path.startsWith(`${key}/`)
     ) ?? null
   );
 }

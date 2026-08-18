@@ -6,12 +6,9 @@ import {
   canCheckoutPlan,
   canCancelOwnSubscription,
   isPurchasablePlanKey,
-  METERED_FEATURE_KEYS,
-  METERED_USAGE_LABELS,
-  utcMonthPeriod,
-  getResolvedFeatureLimit,
   type ActionResult,
   type BillingInterval,
+  type MeteredUsageMeter,
   type PublicPlanCatalogItem,
   type SubscriptionStatus,
 } from '@sincvete/shared';
@@ -21,7 +18,7 @@ import { billingConfigured, resolveBillingProvider } from '@/lib/billing/crypto'
 import { listPublicPlansCatalog } from '@/lib/billing/catalog';
 import { createMercadoPagoCheckoutUrl } from '@/lib/billing/mercadopago';
 import { createStripeBillingPortalUrl, createStripeCheckoutUrl } from '@/lib/billing/stripe';
-import { getOrganizationEntitlements } from '@/lib/entitlements';
+import { getMeteredUsageMeters } from '@/lib/entitlements';
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (error instanceof PermissionError) {
@@ -34,11 +31,11 @@ function actionError<T = void>(error: unknown): ActionResult<T> {
   return { success: false, error: 'Ocurrió un error inesperado' };
 }
 
-export type PlanUsageMeter = {
-  featureKey: string;
-  label: string;
-  used: number;
-  limit: number | null;
+export type PlanBillingEvent = {
+  id: string;
+  provider: string;
+  eventType: string | null;
+  processedAt: string;
 };
 
 export type PlanBillingState = {
@@ -54,14 +51,14 @@ export type PlanBillingState = {
   hasStripeCustomer: boolean;
   canCancel: boolean;
   plans: PublicPlanCatalogItem[];
-  usage: PlanUsageMeter[];
+  usage: MeteredUsageMeter[];
+  events: PlanBillingEvent[];
 };
 
 export async function getPlanBillingState(): Promise<PlanBillingState> {
   const session = await requirePermission('org:manage');
   const supabase = await createServerClient();
-  const period = utcMonthPeriod();
-  const [plans, subRes, customerRes, entitlements, usageRes] = await Promise.all([
+  const [plans, subRes, customerRes, usage, eventsRes] = await Promise.all([
     listPublicPlansCatalog(),
     supabase
       .from('organization_subscriptions')
@@ -77,22 +74,12 @@ export async function getPlanBillingState(): Promise<PlanBillingState> {
       .select('provider')
       .eq('organization_id', session.organizationId)
       .maybeSingle(),
-    getOrganizationEntitlements(session.organizationId),
-    supabase
-      .from('feature_usage')
-      .select('usage_count, features!inner(key)')
-      .eq('organization_id', session.organizationId)
-      .eq('period_start', period.start),
+    getMeteredUsageMeters(session.organizationId),
+    supabase.rpc('list_own_billing_events', { p_limit: 12 }),
   ]);
 
   const planJoin = subRes.data?.plans as { key?: string; name?: string } | { key?: string; name?: string }[] | null;
   const planRow = Array.isArray(planJoin) ? planJoin[0] : planJoin;
-  const usedByKey = new Map<string, number>();
-  for (const row of usageRes.data ?? []) {
-    const featureJoin = row.features as { key?: string } | { key?: string }[] | null;
-    const key = Array.isArray(featureJoin) ? featureJoin[0]?.key : featureJoin?.key;
-    if (key) usedByKey.set(key, Number(row.usage_count) || 0);
-  }
 
   return {
     configured: billingConfigured(),
@@ -104,17 +91,18 @@ export async function getPlanBillingState(): Promise<PlanBillingState> {
       trialEndsAt: subRes.data?.trial_ends_at ?? null,
       endsAt: subRes.data?.ends_at ?? null,
     },
-      hasStripeCustomer: customerRes.data?.provider === 'stripe',
+    hasStripeCustomer: customerRes.data?.provider === 'stripe',
     canCancel: canCancelOwnSubscription({
       planKey: planRow?.key ?? null,
       status: (subRes.data?.status as SubscriptionStatus | undefined) ?? null,
     }),
     plans,
-    usage: METERED_FEATURE_KEYS.map((featureKey) => ({
-      featureKey,
-      label: METERED_USAGE_LABELS[featureKey] ?? featureKey,
-      used: usedByKey.get(featureKey) ?? 0,
-      limit: getResolvedFeatureLimit(entitlements, featureKey),
+    usage,
+    events: (eventsRes.data ?? []).map((row) => ({
+      id: row.id,
+      provider: row.provider,
+      eventType: row.event_type,
+      processedAt: row.processed_at,
     })),
   };
 }

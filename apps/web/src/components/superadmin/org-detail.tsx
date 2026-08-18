@@ -2,11 +2,8 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import {
-  COMMERCIAL_PLAN_KEYS,
-  SUPERADMIN_ASSIGNABLE_PLAN_KEYS,
-} from '@sincvete/shared';
-import type { SuperadminOrgCommercial } from '@/actions/superadmin';
+import { COMMERCIAL_PLAN_KEYS, SUPERADMIN_ASSIGNABLE_PLAN_KEYS, formatBillingEventLabel } from '@sincvete/shared';
+import type { SuperadminBillingEvent, SuperadminOrgCommercial } from '@/actions/superadmin';
 import {
   changeOrganizationPlan,
   clearOrganizationFeatureOverride,
@@ -30,7 +27,13 @@ function sourceVariant(source: string) {
   return 'default' as const;
 }
 
-export function SuperadminOrgDetail({ data }: { data: SuperadminOrgCommercial }) {
+export function SuperadminOrgDetail({
+  data,
+  events = [],
+}: {
+  data: SuperadminOrgCommercial;
+  events?: SuperadminBillingEvent[];
+}) {
   const [message, setMessage] = useState<string | null>(null);
   const [pending, run] = usePendingAction();
   const orgId = data.organization.id;
@@ -356,6 +359,39 @@ export function SuperadminOrgDetail({ data }: { data: SuperadminOrgCommercial })
                       {row.periodStart} → {row.periodEnd}
                     </td>
                     <td className="py-2">{row.usageCount}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Pagos</CardTitle>
+          <CardDescription>Webhooks de Mercado Pago / Stripe. Sin payload completo.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {events.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Sin eventos de pago.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="text-left text-muted-foreground">
+                <tr>
+                  <th className="py-2">Evento</th>
+                  <th className="py-2">Proveedor</th>
+                  <th className="py-2">Cuando</th>
+                </tr>
+              </thead>
+              <tbody>
+                {events.map((event) => (
+                  <tr key={event.id} className="border-t">
+                    <td className="py-2">{formatBillingEventLabel(event.eventType)}</td>
+                    <td className="py-2">{event.provider}</td>
+                    <td className="py-2 text-muted-foreground">
+                      {new Date(event.processedAt).toLocaleString('es-AR')}
+                    </td>
                   </tr>
                 ))}
               </tbody>

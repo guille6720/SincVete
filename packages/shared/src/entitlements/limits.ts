@@ -33,6 +33,20 @@ export const METERED_USAGE_LABELS: Record<string, string> = {
   'storage.max_mb': 'Almacenamiento',
 };
 
+export type MeteredUsageMeter = {
+  featureKey: string;
+  label: string;
+  used: number;
+  limit: number | null;
+};
+
+export function formatMeteredUsage(meter: MeteredUsageMeter): string {
+  const unit = meter.featureKey === 'storage.max_mb' ? ' MB' : '';
+  if (meter.limit === null) return `${meter.used}${unit} / ilimitado`;
+  if (meter.limit <= 0) return 'No incluido';
+  return `${meter.used} / ${meter.limit}${unit}`;
+}
+
 /**
  * Limit convention: null = unlimited, 0 = unavailable, positive = max.
  * Returns true when the next increment would not be allowed.

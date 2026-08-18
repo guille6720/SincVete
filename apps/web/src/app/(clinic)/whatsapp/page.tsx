@@ -11,6 +11,8 @@ import { canAccessWhatsApp, canSendWhatsApp, listWhatsAppMessages } from '@/acti
 import { WhatsAppComposeForm } from '@/components/whatsapp/whatsapp-compose-form';
 import { WhatsAppHistory } from '@/components/whatsapp/whatsapp-history';
 import { FeatureUnavailableNotice } from '@/components/entitlements/feature-gate';
+import { getMeteredUsageMeters } from '@/lib/entitlements';
+import { getSessionContext } from '@/lib/session';
 import {
   WHATSAPP_TEMPLATES,
   formatAppointmentTime,
@@ -18,6 +20,7 @@ import {
   formatMoney,
   formatVaccinationDate,
   parseOrganizationSettings,
+  FEATURES,
   type WhatsAppRelatedType,
   type WhatsAppTemplateKey,
   type WhatsAppTemplateVars,
@@ -143,11 +146,19 @@ export default async function WhatsAppPage({ searchParams }: WhatsAppPageProps) 
     }
   }
 
-  const history = await listWhatsAppMessages({
-    page,
-    pageSize: 25,
-    search: search || undefined,
-  });
+  const [history, session] = await Promise.all([
+    listWhatsAppMessages({
+      page,
+      pageSize: 25,
+      search: search || undefined,
+    }),
+    getSessionContext(),
+  ]);
+  const usage = session
+    ? (await getMeteredUsageMeters(session.organizationId)).find(
+        (meter) => meter.featureKey === FEATURES.WHATSAPP_MONTHLY_MESSAGES
+      )
+    : null;
 
   return (
     <div className="space-y-8">
@@ -170,6 +181,7 @@ export default async function WhatsAppPage({ searchParams }: WhatsAppPageProps) 
           relatedType={relatedType}
           relatedId={relatedId}
           vars={vars}
+          usage={usage}
         />
       ) : (
         <FeatureUnavailableNotice

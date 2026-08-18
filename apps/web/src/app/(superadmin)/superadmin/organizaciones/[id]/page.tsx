@@ -1,5 +1,5 @@
 import { notFound, redirect } from 'next/navigation';
-import { getSuperadminOrgCommercial } from '@/actions/superadmin';
+import { getSuperadminOrgCommercial, listSuperadminBillingEvents } from '@/actions/superadmin';
 import { SuperadminOrgDetail } from '@/components/superadmin/org-detail';
 import { getSessionContext } from '@/lib/session';
 
@@ -12,8 +12,11 @@ export default async function SuperadminOrganizationPage({ params }: PageProps) 
   if (!session?.isPlatformAdmin) redirect('/dashboard');
 
   try {
-    const data = await getSuperadminOrgCommercial(id);
-    return <SuperadminOrgDetail data={data} />;
+    const [data, events] = await Promise.all([
+      getSuperadminOrgCommercial(id),
+      listSuperadminBillingEvents(id),
+    ]);
+    return <SuperadminOrgDetail data={data} events={events} />;
   } catch {
     notFound();
   }

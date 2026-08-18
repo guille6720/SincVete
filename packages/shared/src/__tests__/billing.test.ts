@@ -8,6 +8,7 @@ import {
   isPurchasablePlanKey,
   parseCheckoutReference,
   parsePlanPricing,
+  formatBillingEventLabel,
 } from '../index';
 
 describe('plan pricing catalog', () => {
@@ -50,5 +51,11 @@ describe('plan pricing catalog', () => {
     expect(
       parseCheckoutReference(`org:${COMMERCIAL_PLAN_KEYS.LEGACY}:monthly`)
     ).toBeNull();
+  });
+
+  it('labels provider webhook types for clinic history', () => {
+    expect(formatBillingEventLabel('checkout.session.completed')).toBe('Pago acreditado');
+    expect(formatBillingEventLabel('invoice.payment_failed')).toBe('Pago rechazado');
+    expect(formatBillingEventLabel('customer.subscription.canceled')).toBe('Cancelación');
   });
 });
