@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ROLES } from '../constants';
+import { NOTIFICATION_KINDS } from '../constants/notifications';
 
 export const emailSchema = z
   .string()
@@ -1089,9 +1090,7 @@ export type ClinicalImageCreateInput = z.infer<typeof clinicalImageCreateSchema>
 export type ClinicalImageListInput = z.infer<typeof clinicalImageListSchema>;
 
 export const notificationListSchema = paginationSchema.extend({
-  kind: z
-    .enum(['cita', 'laboratorio', 'stock', 'internacion', 'factura', 'receta'])
-    .optional(),
+  kind: z.enum(NOTIFICATION_KINDS).optional(),
   unreadOnly: z.coerce.boolean().optional(),
 });
 

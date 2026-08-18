@@ -168,7 +168,8 @@ export type NotificationKind =
   | 'stock'
   | 'internacion'
   | 'factura'
-  | 'receta';
+  | 'receta'
+  | 'plan';
 
 export interface Database {
   public: {
@@ -3167,6 +3168,29 @@ export interface Database {
           p_organization_id?: string | null;
         };
         Returns: number;
+      };
+      emit_plan_notification: {
+        Args: {
+          p_organization_id: string;
+          p_related_type: string;
+          p_related_id?: string | null;
+          p_title: string;
+          p_body?: string | null;
+          p_dedupe_hours?: number;
+        };
+        Returns: string;
+      };
+      run_commercial_lifecycle: {
+        Args: {
+          p_trial_remind_days?: number;
+          p_quota_warn_ratio?: number;
+          p_dedupe_hours?: number;
+        };
+        Returns: Json;
+      };
+      billing_cancel_own_subscription: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
       };
       handle_new_user_signup: {
         Args: {

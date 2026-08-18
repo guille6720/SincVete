@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import { getDashboardActivity, getDashboardContext, getDashboardSummary } from '@/actions/dashboard';
 import { getSessionContext } from '@/lib/session';
+import { getClinicCommercialShell } from '@/lib/entitlements';
 import { DashboardActivityFeed } from '@/components/dashboard/dashboard-activity-feed';
 import { DashboardHeader } from '@/components/dashboard/dashboard-header';
 import { DashboardQuickActions } from '@/components/dashboard/dashboard-quick-actions';
@@ -39,14 +40,20 @@ function DashboardSecondarySkeleton() {
 }
 
 /** Ops of the day — awaits summary only (activity deferred). */
-async function DashboardPrioritySection() {
+async function DashboardPrioritySection({ entitledHrefs }: { entitledHrefs: string[] | null }) {
   const session = await getSessionContext();
   const summary = await getDashboardSummary(session?.branchId ?? null);
-  return <DashboardStatCards summary={summary} variant="priority" />;
+  return <DashboardStatCards summary={summary} entitledHrefs={entitledHrefs} variant="priority" />;
 }
 
 /** Secondary widgets — reuses cached summary; activity runs in parallel. */
-async function DashboardSecondarySection({ canViewActivity }: { canViewActivity: boolean }) {
+async function DashboardSecondarySection({
+  canViewActivity,
+  entitledHrefs,
+}: {
+  canViewActivity: boolean;
+  entitledHrefs: string[] | null;
+}) {
   const session = await getSessionContext();
   const [summary, activity] = await Promise.all([
     getDashboardSummary(session?.branchId ?? null),
@@ -55,7 +62,7 @@ async function DashboardSecondarySection({ canViewActivity }: { canViewActivity:
 
   return (
     <div className="space-y-6">
-      <DashboardStatCards summary={summary} variant="secondary" />
+      <DashboardStatCards summary={summary} entitledHrefs={entitledHrefs} variant="secondary" />
       <div className="grid gap-4 xl:grid-cols-3">
         <DashboardSpeciesBreakdown summary={summary} />
         <div className="xl:col-span-2">
@@ -88,6 +95,7 @@ export async function DashboardView() {
   if (!session) return null;
 
   const context = await getDashboardContext();
+  const commercial = await getClinicCommercialShell(session.organizationId);
 
   return (
     <div className="relative space-y-6">
@@ -101,12 +109,18 @@ export async function DashboardView() {
         aria-hidden
       />
       <DashboardHeader session={session} context={context} />
-      <DashboardQuickActions canWritePatients={context?.canWritePatients ?? false} />
+      <DashboardQuickActions
+        canWritePatients={context?.canWritePatients ?? false}
+        entitledHrefs={commercial.entitledHrefs}
+      />
       <Suspense fallback={<DashboardPrioritySkeleton />}>
-        <DashboardPrioritySection />
+        <DashboardPrioritySection entitledHrefs={commercial.entitledHrefs} />
       </Suspense>
       <Suspense fallback={<DashboardSecondarySkeleton />}>
-        <DashboardSecondarySection canViewActivity={context?.canViewActivity ?? false} />
+        <DashboardSecondarySection
+          canViewActivity={context?.canViewActivity ?? false}
+          entitledHrefs={commercial.entitledHrefs}
+        />
       </Suspense>
     </div>
   );

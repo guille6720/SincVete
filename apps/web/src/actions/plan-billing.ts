@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import {
   amountForInterval,
   canCheckoutPlan,
+  canCancelOwnSubscription,
   isPurchasablePlanKey,
   METERED_FEATURE_KEYS,
   METERED_USAGE_LABELS,
@@ -51,6 +52,7 @@ export type PlanBillingState = {
     endsAt: string | null;
   };
   hasStripeCustomer: boolean;
+  canCancel: boolean;
   plans: PublicPlanCatalogItem[];
   usage: PlanUsageMeter[];
 };
@@ -102,7 +104,11 @@ export async function getPlanBillingState(): Promise<PlanBillingState> {
       trialEndsAt: subRes.data?.trial_ends_at ?? null,
       endsAt: subRes.data?.ends_at ?? null,
     },
-    hasStripeCustomer: customerRes.data?.provider === 'stripe',
+      hasStripeCustomer: customerRes.data?.provider === 'stripe',
+    canCancel: canCancelOwnSubscription({
+      planKey: planRow?.key ?? null,
+      status: (subRes.data?.status as SubscriptionStatus | undefined) ?? null,
+    }),
     plans,
     usage: METERED_FEATURE_KEYS.map((featureKey) => ({
       featureKey,
@@ -181,6 +187,39 @@ export async function startBillingPortal(): Promise<ActionResult<{ url: string }
     }
     const url = await createStripeBillingPortalUrl(data.customer_id);
     return { success: true, data: { url } };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function cancelClinicSubscription(): Promise<ActionResult> {
+  try {
+    const state = await getPlanBillingState();
+    if (!canCancelOwnSubscription(state.current)) {
+      return {
+        success: false,
+        error:
+          state.current.planKey === 'legacy'
+            ? 'El plan legado no se cancela desde la clínica. Pedile a Superadmin.'
+            : 'No hay una suscripción activa para cancelar',
+      };
+    }
+
+    const supabase = await createServerClient();
+    const { error } = await supabase.rpc('billing_cancel_own_subscription');
+    if (error) {
+      if (error.message.includes('legacy')) {
+        return { success: false, error: 'El plan legado no se cancela desde la clínica' };
+      }
+      if (error.message.includes('not authorized')) {
+        throw new PermissionError();
+      }
+      return { success: false, error: 'No se pudo cancelar el plan' };
+    }
+
+    revalidatePath('/configuracion');
+    revalidatePath('/dashboard');
+    return { success: true };
   } catch (error) {
     return actionError(error);
   }

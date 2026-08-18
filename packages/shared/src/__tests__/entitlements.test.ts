@@ -26,6 +26,10 @@ import {
   isClinicPathEntitled,
   utcMonthPeriod,
   isSubscriptionPeriodOpen,
+  isTrialEndingSoon,
+  isQuotaNearLimit,
+  canCancelOwnSubscription,
+  authorizeCronSecret,
   type EntitlementResolutionInput,
   type FeatureCatalogRow,
 } from '../index';
@@ -524,5 +528,37 @@ describe('subscription period', () => {
       })
     ).toBe(true);
     expect(isSubscriptionPeriodOpen({ status: 'expired', now })).toBe(false);
+  });
+});
+
+describe('commercial lifecycle helpers', () => {
+  const now = new Date('2026-08-18T12:00:00.000Z');
+
+  it('reminds only when trial_ends_at is within the lead window', () => {
+    expect(isTrialEndingSoon({ trialEndsAt: null, now })).toBe(false);
+    expect(isTrialEndingSoon({ trialEndsAt: '2026-08-18T11:00:00.000Z', now })).toBe(false);
+    expect(isTrialEndingSoon({ trialEndsAt: '2026-08-20T12:00:00.000Z', now })).toBe(true);
+    expect(isTrialEndingSoon({ trialEndsAt: '2026-09-18T12:00:00.000Z', now })).toBe(false);
+  });
+
+  it('warns at 80% of a finite quota and ignores unlimited or zero', () => {
+    expect(isQuotaNearLimit({ used: 8, limit: 10 })).toBe(true);
+    expect(isQuotaNearLimit({ used: 7, limit: 10 })).toBe(false);
+    expect(isQuotaNearLimit({ used: 100, limit: null })).toBe(false);
+    expect(isQuotaNearLimit({ used: 1, limit: 0 })).toBe(false);
+  });
+
+  it('allows clinic cancel except legacy', () => {
+    expect(canCancelOwnSubscription({ planKey: 'pro', status: 'active' })).toBe(true);
+    expect(canCancelOwnSubscription({ planKey: 'trial', status: 'trialing' })).toBe(true);
+    expect(canCancelOwnSubscription({ planKey: 'legacy', status: 'active' })).toBe(false);
+    expect(canCancelOwnSubscription({ planKey: 'basic', status: 'expired' })).toBe(false);
+  });
+
+  it('authorizes cron bearer without leaking unset secrets', () => {
+    expect(authorizeCronSecret({ authorizationHeader: 'Bearer abc', secret: 'abc' })).toBe(true);
+    expect(authorizeCronSecret({ cronSecretHeader: 'abc', secret: 'abc' })).toBe(true);
+    expect(authorizeCronSecret({ authorizationHeader: 'Bearer xyz', secret: 'abc' })).toBe(false);
+    expect(authorizeCronSecret({ authorizationHeader: 'Bearer abc', secret: '' })).toBe(false);
   });
 });

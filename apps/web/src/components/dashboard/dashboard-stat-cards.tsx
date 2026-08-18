@@ -19,11 +19,12 @@ import {
   ScrollText,
   Stethoscope,
 } from 'lucide-react';
-import { getCurrentMonthLabel, type DashboardSummary } from '@sincvete/shared';
+import { getCurrentMonthLabel, isClinicPathEntitled, type DashboardSummary } from '@sincvete/shared';
 import { cn } from '@/lib/utils';
 
 interface DashboardStatCardsProps {
   summary: DashboardSummary;
+  entitledHrefs?: string[] | null;
   /** priority = ops del día; secondary = resto; all = legacy completo */
   variant?: 'priority' | 'secondary' | 'all';
 }
@@ -98,6 +99,7 @@ const TONE_STYLES: Record<
 
 export function DashboardStatCards({
   summary,
+  entitledHrefs = null,
   variant = 'all',
 }: DashboardStatCardsProps) {
   const monthLabel = getCurrentMonthLabel();
@@ -265,8 +267,9 @@ export function DashboardStatCards({
     },
   ];
 
-  const visible =
-    variant === 'all' ? stats : stats.filter((stat) => stat.group === variant);
+  const visible = (variant === 'all' ? stats : stats.filter((stat) => stat.group === variant)).filter(
+    (stat) => !stat.href || isClinicPathEntitled(stat.href, entitledHrefs)
+  );
 
   if (visible.length === 0) return null;
 

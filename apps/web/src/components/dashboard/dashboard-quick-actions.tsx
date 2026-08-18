@@ -24,9 +24,11 @@ import {
   Zap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { isClinicPathEntitled } from '@sincvete/shared';
 
 interface DashboardQuickActionsProps {
   canWritePatients: boolean;
+  entitledHrefs?: string[] | null;
 }
 
 const ACTIONS: Array<{
@@ -185,9 +187,14 @@ const ACTIONS: Array<{
   },
 ];
 
-export function DashboardQuickActions({ canWritePatients }: DashboardQuickActionsProps) {
+export function DashboardQuickActions({
+  canWritePatients,
+  entitledHrefs = null,
+}: DashboardQuickActionsProps) {
   const visibleActions = ACTIONS.filter(
-    (action) => !action.requiresWrite || canWritePatients
+    (action) =>
+      (!action.requiresWrite || canWritePatients) &&
+      isClinicPathEntitled(action.href, entitledHrefs)
   );
 
   return (

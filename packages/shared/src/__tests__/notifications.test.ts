@@ -28,10 +28,12 @@ describe('notification helpers', () => {
     expect(buildNotificationHref('cita', 'abc')).toBe('/agenda/abc');
     expect(buildNotificationHref('stock', 'p1')).toBe('/inventario/p1');
     expect(buildNotificationHref('receta', 'r1')).toBe('/farmacia/r1');
+    expect(buildNotificationHref('plan', 'ignored')).toBe('/configuracion?tab=plan');
   });
 
   it('detects kinds and unread state', () => {
     expect(isNotificationKind('factura')).toBe(true);
+    expect(isNotificationKind('plan')).toBe(true);
     expect(isNotificationKind('push')).toBe(false);
     expect(isNotificationUnread(null)).toBe(true);
     expect(isNotificationUnread('2026-08-12T12:00:00.000Z')).toBe(false);

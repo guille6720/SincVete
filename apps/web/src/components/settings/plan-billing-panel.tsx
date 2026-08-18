@@ -1,7 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { startBillingPortal, startPlanCheckout, type PlanBillingState } from '@/actions/plan-billing';
+import { useRouter } from 'next/navigation';
+import {
+  cancelClinicSubscription,
+  startBillingPortal,
+  startPlanCheckout,
+  type PlanBillingState,
+} from '@/actions/plan-billing';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,7 +31,9 @@ export function PlanBillingPanel({
   checkoutBanner?: string | null;
 }) {
   const [message, setMessage] = useState<string | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const [pending, run] = usePendingAction();
+  const router = useRouter();
 
   async function checkout(planKey: string, interval: 'monthly' | 'annual') {
     setMessage(null);
@@ -50,6 +58,19 @@ export function PlanBillingPanel({
       return;
     }
     setMessage(result.error ?? 'No se pudo abrir el portal');
+  }
+
+  async function cancelPlan() {
+    setMessage(null);
+    const result = await run(() => cancelClinicSubscription());
+    if (!result) return;
+    if (result.success) {
+      setConfirmCancel(false);
+      setMessage('Plan cancelado. Podés elegir otro cuando quieras.');
+      router.refresh();
+      return;
+    }
+    setMessage(result.error ?? 'No se pudo cancelar el plan');
   }
 
   return (
@@ -182,6 +203,52 @@ export function PlanBillingPanel({
         <Button type="button" variant="outline" disabled={pending} onClick={() => void openPortal()}>
           Administrar facturación Stripe
         </Button>
+      ) : null}
+
+      {state.canCancel ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Cancelar plan</CardTitle>
+            <CardDescription>
+              El acceso se corta al cancelar. Los datos de la clínica no se borran. Legacy no se cancela
+              desde acá.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center gap-2">
+            {confirmCancel ? (
+              <>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  disabled={pending}
+                  onClick={() => void cancelPlan()}
+                >
+                  Sí, cancelar ahora
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={pending}
+                  onClick={() => setConfirmCancel(false)}
+                >
+                  Seguir con el plan
+                </Button>
+              </>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending}
+                onClick={() => setConfirmCancel(true)}
+              >
+                Cancelar plan
+              </Button>
+            )}
+          </CardContent>
+        </Card>
       ) : null}
     </div>
   );
