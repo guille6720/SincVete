@@ -1,10 +1,11 @@
 import { ArrowRight, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
-import { APP_NAME, type PublicPlanCatalogItem } from '@sincvete/shared';
+import { APP_NAME, type PublicAddonCatalogItem, type PublicPlanCatalogItem } from '@sincvete/shared';
 import { Button } from '@/components/ui/button';
 import { BrandLogo } from '@/components/brand/syncvete-logo';
 import { MarketingFooter } from '@/components/landing/marketing-footer';
 import { MarketingHeader } from '@/components/landing/marketing-header';
+import { AddonsPricingSection } from '@/components/landing/addons-pricing-section';
 import { PlansPricingSection } from '@/components/landing/plans-pricing-section';
 import { MarketingHeroVisual, LandingPhotoStrip, LandingClinicScene, LandingCtaBackdrop } from '@/components/landing/marketing-ui-mocks';
 
@@ -60,6 +61,10 @@ const FAQ = [
     a: 'Basic cubre la operación diaria. Pro suma internación, laboratorio, farmacia, facturación y portal. Premium agrega IA, WhatsApp e imágenes. Enterprise es a medida.',
   },
   {
+    q: '¿Puedo sumar IA o WhatsApp sin cambiar de plan?',
+    a: 'Sí. Después de registrar la clínica, desde Configuración → Plan podés comprar extras sobre Basic o Pro. Premium ya los incluye.',
+  },
+  {
     q: '¿Los tutores ven datos de otros pacientes?',
     a: 'No. El portal solo muestra las mascotas vinculadas a ese tutor.',
   },
@@ -69,7 +74,13 @@ const FAQ = [
   },
 ] as const;
 
-export function SyncVeteHomeLanding({ plans }: { plans?: PublicPlanCatalogItem[] }) {
+export function SyncVeteHomeLanding({
+  plans,
+  addons,
+}: {
+  plans?: PublicPlanCatalogItem[];
+  addons?: PublicAddonCatalogItem[];
+}) {
   return (
     <div className="landing-root min-h-screen bg-[var(--land-bg)] text-[var(--land-ink)]">
       <MarketingHeader />
@@ -194,6 +205,7 @@ export function SyncVeteHomeLanding({ plans }: { plans?: PublicPlanCatalogItem[]
       </section>
 
       <PlansPricingSection plans={plans} />
+      <AddonsPricingSection addons={addons} />
 
       {/* FAQ */}
       <section id="faq" className="scroll-mt-24 border-t border-[var(--land-line)] py-20 md:py-28">

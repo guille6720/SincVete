@@ -31,6 +31,11 @@ export function MarketingFooter() {
                 </Link>
               </li>
               <li>
+                <Link href="/#extras" className="hover:text-white">
+                  Extras
+                </Link>
+              </li>
+              <li>
                 <Link href="/#faq" className="hover:text-white">
                   FAQ
                 </Link>

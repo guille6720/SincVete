@@ -12,19 +12,38 @@ export const COMMERCIAL_QUOTA_WARN_RATIO = 0.8;
 
 export const PLAN_BILLING_HREF = '/configuracion?tab=plan';
 
-export function isTrialEndingSoon(params: {
-  trialEndsAt?: string | null;
+export type AddonOfferState = 'available' | 'active' | 'included' | 'blocked';
+
+export function isPeriodEndingSoon(params: {
+  endsAt?: string | null;
   now?: Date;
   remindDays?: number;
 }): boolean {
-  if (!params.trialEndsAt) return false;
-  const ends = new Date(params.trialEndsAt).getTime();
+  if (!params.endsAt) return false;
+  const ends = new Date(params.endsAt).getTime();
   if (!Number.isFinite(ends)) return false;
   const now = (params.now ?? new Date()).getTime();
   if (ends <= now) return false;
   const days = params.remindDays ?? COMMERCIAL_TRIAL_REMIND_DAYS;
   const windowMs = Math.max(days, 1) * 24 * 60 * 60 * 1000;
   return ends - now <= windowMs;
+}
+
+export function isTrialEndingSoon(params: {
+  trialEndsAt?: string | null;
+  now?: Date;
+  remindDays?: number;
+}): boolean {
+  return isPeriodEndingSoon({
+    endsAt: params.trialEndsAt,
+    now: params.now,
+    remindDays: params.remindDays,
+  });
+}
+
+/** Active extras can be bought again to extend the grant (one-time checkout). */
+export function canCheckoutAddonOffer(offerState: AddonOfferState): boolean {
+  return offerState === 'available' || offerState === 'active';
 }
 
 export function isQuotaNearLimit(params: {
@@ -49,8 +68,6 @@ export function canCancelOwnSubscription(params: {
 export function canCancelOwnAddon(params: { status?: SubscriptionStatus | null }): boolean {
   return params.status === 'active';
 }
-
-export type AddonOfferState = 'available' | 'active' | 'included' | 'blocked';
 
 export function resolveAddonOfferState(params: {
   planKey?: string | null;

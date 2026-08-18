@@ -32,8 +32,8 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Organizaciones</h1>
         <p className="text-muted-foreground">
-          Plan, trial, pagos y usage. Los cambios quedan auditados. Superadmin puede vencer planes
-          sin esperar al cron.
+          Plan, trial, pagos, extras y usage. Los cambios quedan auditados. Superadmin puede vencer
+          planes y extras sin esperar al cron.
         </p>
       </div>
       <SuperadminCommercialOps summary={summary} />

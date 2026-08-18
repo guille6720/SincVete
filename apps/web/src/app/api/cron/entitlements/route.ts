@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authorizeCronSecret } from '@sincvete/shared';
+import { authorizeCronSecret, COMMERCIAL_QUOTA_WARN_RATIO, COMMERCIAL_TRIAL_REMIND_DAYS } from '@sincvete/shared';
 import { createServiceClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -22,7 +22,10 @@ async function runLifecycle(request: Request) {
   if (!allowed) return unauthorized();
 
   const service = await createServiceClient();
-  const { data, error } = await service.rpc('run_commercial_lifecycle');
+  const { data, error } = await service.rpc('run_commercial_lifecycle', {
+    p_trial_remind_days: COMMERCIAL_TRIAL_REMIND_DAYS,
+    p_quota_warn_ratio: COMMERCIAL_QUOTA_WARN_RATIO,
+  });
   if (error) {
     console.error('[cron/entitlements]', error.message);
     return NextResponse.json({ error: 'no se pudo ejecutar el ciclo comercial' }, { status: 500 });

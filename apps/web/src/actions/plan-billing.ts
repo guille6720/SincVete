@@ -5,10 +5,12 @@ import {
   ADDON_PRIMARY_FEATURE,
   amountForInterval,
   canCheckoutPlan,
+  canCheckoutAddonOffer,
   canCancelOwnAddon,
   canCancelOwnSubscription,
   canUseResolvedFeature,
   isAddonKey,
+  isPeriodEndingSoon,
   isPurchasableAddonKey,
   isPurchasablePlanKey,
   isSubscriptionPeriodOpen,
@@ -51,6 +53,7 @@ export type ClinicAddonOffer = PublicAddonCatalogItem & {
   offerState: AddonOfferState;
   endsAt: string | null;
   canCancel: boolean;
+  endingSoon: boolean;
 };
 
 export type PlanBillingState = {
@@ -150,6 +153,7 @@ export async function getPlanBillingState(): Promise<PlanBillingState> {
         offerState,
         endsAt: ownedRow?.endsAt ?? null,
         canCancel: offerState === 'active' && canCancelOwnAddon({ status: ownedRow?.status }),
+        endingSoon: isPeriodEndingSoon({ endsAt: ownedRow?.endsAt ?? null }),
       };
     }),
   };
@@ -220,10 +224,7 @@ export async function startAddonCheckout(formData: FormData): Promise<ActionResu
     if (offer.offerState === 'included') {
       return { success: false, error: 'Ese extra ya está incluido en tu plan' };
     }
-    if (offer.offerState === 'active') {
-      return { success: false, error: 'Ya tenés ese extra activo' };
-    }
-    if (offer.offerState !== 'available') {
+    if (!canCheckoutAddonOffer(offer.offerState)) {
       return { success: false, error: 'Elegí un plan comercial antes de comprar extras' };
     }
     if (!canCheckoutPlan(offer.pricing) || !amountForInterval(offer.pricing, interval as BillingInterval)) {

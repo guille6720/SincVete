@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { SyncVeteHomeLanding } from '@/components/landing/syncvete-home-landing';
 import { APP_NAME } from '@sincvete/shared';
-import { listPublicPlansCatalog } from '@/lib/billing/catalog';
+import { listPublicAddonsCatalog, listPublicPlansCatalog } from '@/lib/billing/catalog';
 
 export const metadata: Metadata = {
   title: `${APP_NAME} — Gestión veterinaria para clínicas argentinas`,
@@ -9,6 +9,6 @@ export const metadata: Metadata = {
 };
 
 export default async function LandingPage() {
-  const plans = await listPublicPlansCatalog();
-  return <SyncVeteHomeLanding plans={plans} />;
+  const [plans, addons] = await Promise.all([listPublicPlansCatalog(), listPublicAddonsCatalog()]);
+  return <SyncVeteHomeLanding plans={plans} addons={addons} />;
 }

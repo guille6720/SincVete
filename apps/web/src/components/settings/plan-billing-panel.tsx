@@ -13,7 +13,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { canCheckoutPlan, formatArsAmount, formatBillingEventLabel, formatMeteredUsage, isQuotaNearLimit } from '@sincvete/shared';
+import { canCheckoutPlan, formatArsAmount, formatBillingEventLabel, formatMeteredUsage, isQuotaNearLimit, canCheckoutAddonOffer } from '@sincvete/shared';
 import { usePendingAction } from '@/lib/hooks/use-pending-action';
 
 function statusLabel(status: PlanBillingState['current']['status']) {
@@ -107,7 +107,7 @@ export function PlanBillingPanel({
     <div className="space-y-6">
       {checkoutBanner === 'success' ? (
         <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
-          Pago recibido. El plan se actualiza cuando el proveedor confirma el webhook.
+          Pago recibido. El plan o extra se actualiza cuando el proveedor confirma el webhook.
         </p>
       ) : null}
       {checkoutBanner === 'cancel' ? (
@@ -150,8 +150,8 @@ export function PlanBillingPanel({
           <CardHeader>
             <CardTitle>Extras</CardTitle>
             <CardDescription>
-              Módulos sueltos sobre el plan. Si tu plan ya los incluye, no hace falta comprarlos. Superadmin
-              también puede otorgarlos.
+              Módulos sueltos sobre el plan. Si tu plan ya los incluye, no hace falta comprarlos. El
+              extra es un pago por período: renovalo antes de que venza.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
@@ -172,11 +172,12 @@ export function PlanBillingPanel({
                     {monthly ? <span className="text-sm font-normal text-muted-foreground"> / mes</span> : null}
                   </p>
                   {addon.endsAt ? (
-                    <p className="text-muted-foreground">
+                    <p className={addon.endingSoon ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground'}>
                       Hasta {new Date(addon.endsAt).toLocaleDateString('es-AR')}
+                      {addon.endingSoon ? ' · vence pronto, renovalo para no perderlo' : ''}
                     </p>
                   ) : null}
-                  {addon.offerState === 'available' && canCheckoutPlan(addon.pricing) ? (
+                  {canCheckoutAddonOffer(addon.offerState) && canCheckoutPlan(addon.pricing) ? (
                     <div className="flex flex-wrap gap-2">
                       <Button
                         type="button"
@@ -184,7 +185,7 @@ export function PlanBillingPanel({
                         disabled={pending || !state.configured}
                         onClick={() => void checkoutAddon(addon.key, 'monthly')}
                       >
-                        Mensual
+                        {addon.offerState === 'active' ? 'Renovar mensual' : 'Mensual'}
                       </Button>
                       {addon.pricing.annualAmount ? (
                         <Button
@@ -194,7 +195,7 @@ export function PlanBillingPanel({
                           disabled={pending || !state.configured}
                           onClick={() => void checkoutAddon(addon.key, 'annual')}
                         >
-                          Anual
+                          {addon.offerState === 'active' ? 'Renovar anual' : 'Anual'}
                         </Button>
                       ) : null}
                     </div>

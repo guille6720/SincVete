@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache';
 import {
   buildPaginatedResult,
   canSuperadminAssignPlan,
+  COMMERCIAL_QUOTA_WARN_RATIO,
+  COMMERCIAL_TRIAL_REMIND_DAYS,
   isFeatureKey,
   resolveOrganizationEntitlements,
   type ActionResult,
@@ -588,12 +590,16 @@ export type SuperadminCommercialSummary = {
   pastDue: number;
   expired: number;
   cancelled: number;
+  addonsActive: number;
+  addonsEndingSoon: number;
 };
 
 export async function getSuperadminCommercialSummary(): Promise<SuperadminCommercialSummary> {
   await requireSuperadmin();
   const supabase = await createServerClient();
-  const { data, error } = await supabase.rpc('superadmin_commercial_summary');
+  const { data, error } = await supabase.rpc('superadmin_commercial_summary', {
+    p_remind_days: COMMERCIAL_TRIAL_REMIND_DAYS,
+  });
   if (error) throw new Error(error.message);
   const row = asObject(data);
   return {
@@ -603,6 +609,8 @@ export async function getSuperadminCommercialSummary(): Promise<SuperadminCommer
     pastDue: asNumber(row?.past_due) ?? 0,
     expired: asNumber(row?.expired) ?? 0,
     cancelled: asNumber(row?.cancelled) ?? 0,
+    addonsActive: asNumber(row?.addons_active) ?? 0,
+    addonsEndingSoon: asNumber(row?.addons_ending_soon) ?? 0,
   };
 }
 
@@ -612,7 +620,10 @@ export async function runSuperadminCommercialLifecycle(): Promise<
   try {
     await requireSuperadmin();
     const supabase = await createServerClient();
-    const { data, error } = await supabase.rpc('run_commercial_lifecycle');
+    const { data, error } = await supabase.rpc('run_commercial_lifecycle', {
+      p_trial_remind_days: COMMERCIAL_TRIAL_REMIND_DAYS,
+      p_quota_warn_ratio: COMMERCIAL_QUOTA_WARN_RATIO,
+    });
     if (error) return { success: false, error: error.message };
     const row = asObject(data);
     revalidatePath('/superadmin');

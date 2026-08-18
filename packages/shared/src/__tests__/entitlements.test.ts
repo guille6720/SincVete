@@ -28,9 +28,11 @@ import {
   utcMonthPeriod,
   isSubscriptionPeriodOpen,
   isTrialEndingSoon,
+  isPeriodEndingSoon,
   isQuotaNearLimit,
   canCancelOwnSubscription,
   canCancelOwnAddon,
+  canCheckoutAddonOffer,
   resolveAddonOfferState,
   authorizeCronSecret,
   type EntitlementResolutionInput,
@@ -708,6 +710,17 @@ describe('commercial lifecycle helpers', () => {
     ).toBe('blocked');
     expect(canCancelOwnAddon({ status: 'active' })).toBe(true);
     expect(canCancelOwnAddon({ status: 'cancelled' })).toBe(false);
+    expect(canCheckoutAddonOffer('available')).toBe(true);
+    expect(canCheckoutAddonOffer('active')).toBe(true);
+    expect(canCheckoutAddonOffer('included')).toBe(false);
+    expect(canCheckoutAddonOffer('blocked')).toBe(false);
+  });
+
+  it('reminds extras with ends_at in the lead window, not open-ended grants', () => {
+    expect(isPeriodEndingSoon({ endsAt: null, now })).toBe(false);
+    expect(isPeriodEndingSoon({ endsAt: '2026-08-20T12:00:00.000Z', now })).toBe(true);
+    expect(isPeriodEndingSoon({ endsAt: '2026-09-18T12:00:00.000Z', now })).toBe(false);
+    expect(isPeriodEndingSoon({ endsAt: '2026-08-18T11:00:00.000Z', now })).toBe(false);
   });
 
   it('authorizes cron bearer without leaking unset secrets', () => {

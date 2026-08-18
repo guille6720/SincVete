@@ -3396,7 +3396,9 @@ export interface Database {
         Returns: Json;
       };
       superadmin_commercial_summary: {
-        Args: Record<PropertyKey, never>;
+        Args: {
+          p_remind_days?: number;
+        };
         Returns: Json;
       };
       superadmin_list_billing_events: {

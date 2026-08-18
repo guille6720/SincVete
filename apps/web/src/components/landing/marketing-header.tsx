@@ -12,6 +12,7 @@ const NAV = [
   { href: '/#producto', label: 'Producto' },
   { href: '/#por-que', label: `Por qué ${APP_NAME}` },
   { href: '/#planes', label: 'Planes' },
+  { href: '/#extras', label: 'Extras' },
   { href: '/#faq', label: 'FAQ' },
 ] as const;
 

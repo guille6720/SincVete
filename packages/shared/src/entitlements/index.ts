@@ -41,11 +41,13 @@ export {
   COMMERCIAL_TRIAL_REMIND_DAYS,
   PLAN_BILLING_HREF,
   authorizeCronSecret,
-  canCancelOwnSubscription,
   canCancelOwnAddon,
-  resolveAddonOfferState,
+  canCancelOwnSubscription,
+  canCheckoutAddonOffer,
+  isPeriodEndingSoon,
   isQuotaNearLimit,
   isTrialEndingSoon,
+  resolveAddonOfferState,
 } from './lifecycle';
 
 export type { AddonOfferState } from './lifecycle';
