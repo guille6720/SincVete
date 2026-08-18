@@ -3,8 +3,10 @@ import { parseAddonCheckoutReference, parseCheckoutReference } from '@sincvete/s
 import {
   applyPaidAddon,
   applyPaidPlan,
+  claimBillingEvent,
   extendPaidPlanPeriod,
-  recordBillingEvent,
+  findOrganizationIdByStripeCustomer,
+  finishBillingEvent,
   setPaidSubscriptionStatus,
   upsertBillingCustomer,
 } from '@/lib/billing/apply';
@@ -81,14 +83,14 @@ export async function POST(request: Request) {
     object.client_reference_id ??
     null;
 
-  const recorded = await recordBillingEvent({
+  const recorded = await claimBillingEvent({
     provider: 'stripe',
     eventId,
     eventType: event.type,
     organizationId,
     payload: event as unknown as Record<string, unknown>,
   });
-  if (recorded.duplicate) {
+  if (recorded.alreadyApplied) {
     return NextResponse.json({ ok: true, duplicate: true });
   }
 
@@ -98,37 +100,36 @@ export async function POST(request: Request) {
       event.type === 'checkout.session.async_payment_succeeded'
     ) {
       if (!addonRef && !planRef) {
-        return NextResponse.json({ error: 'referencia inválida' }, { status: 400 });
+        throw new Error('referencia inválida');
       }
       const paid = object.status === 'complete' || object.payment_status === 'paid';
-      if (event.type === 'checkout.session.completed' && !paid) {
-        return NextResponse.json({ ok: true, skipped: true });
-      }
-      if (addonRef) {
-        await applyPaidAddon({
-          organizationId: addonRef.organizationId,
-          addonKey: addonRef.addonKey,
-          provider: 'stripe',
-          externalId: object.id ?? eventId,
-          interval: addonRef.interval,
-        });
-      } else if (planRef) {
-        await applyPaidPlan({
-          organizationId: planRef.organizationId,
-          planKey: planRef.planKey,
-          provider: 'stripe',
-          externalId: object.id ?? eventId,
-          interval: planRef.interval,
-        });
-      }
-      const customerId = stripeId(object.customer);
-      if (customerId) {
-        await upsertBillingCustomer({
-          organizationId: (addonRef ?? planRef)!.organizationId,
-          provider: 'stripe',
-          customerId,
-          email: object.customer_email ?? null,
-        });
+      if (event.type !== 'checkout.session.completed' || paid) {
+        if (addonRef) {
+          await applyPaidAddon({
+            organizationId: addonRef.organizationId,
+            addonKey: addonRef.addonKey,
+            provider: 'stripe',
+            externalId: object.id ?? eventId,
+            interval: addonRef.interval,
+          });
+        } else if (planRef) {
+          await applyPaidPlan({
+            organizationId: planRef.organizationId,
+            planKey: planRef.planKey,
+            provider: 'stripe',
+            externalId: object.id ?? eventId,
+            interval: planRef.interval,
+          });
+        }
+        const customerId = stripeId(object.customer);
+        if (customerId) {
+          await upsertBillingCustomer({
+            organizationId: (addonRef ?? planRef)!.organizationId,
+            provider: 'stripe',
+            customerId,
+            email: object.customer_email ?? null,
+          });
+        }
       }
     } else if (event.type === 'invoice.paid' || event.type === 'invoice.payment_succeeded') {
       const reason = object.billing_reason ?? '';
@@ -137,6 +138,17 @@ export async function POST(request: Request) {
           organizationId,
           stripeCustomerId: stripeId(object.customer),
           interval: metadata.interval === 'annual' ? 'annual' : 'monthly',
+          provider: 'stripe',
+          externalId: object.id ?? eventId,
+        });
+      }
+    } else if (event.type === 'invoice.payment_failed') {
+      const orgId =
+        organizationId ?? (await findOrganizationIdByStripeCustomer(stripeId(object.customer)));
+      if (orgId) {
+        await setPaidSubscriptionStatus({
+          organizationId: orgId,
+          status: 'past_due',
           provider: 'stripe',
           externalId: object.id ?? eventId,
         });
@@ -173,6 +185,7 @@ export async function POST(request: Request) {
         externalId: object.id,
       });
     }
+    await finishBillingEvent(recorded.id);
   } catch (error) {
     console.error('[stripe webhook]', error);
     return NextResponse.json({ error: 'no se pudo aplicar el evento' }, { status: 500 });

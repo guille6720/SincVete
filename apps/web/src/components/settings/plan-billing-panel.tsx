@@ -285,6 +285,9 @@ export function PlanBillingPanel({
                 <span>
                   {formatBillingEventLabel(event.eventType)}
                   <span className="text-muted-foreground"> · {event.provider}</span>
+                  {!event.appliedAt ? (
+                    <span className="text-amber-700 dark:text-amber-300"> · pendiente</span>
+                  ) : null}
                 </span>
                 <span className="text-muted-foreground">
                   {new Date(event.processedAt).toLocaleString('es-AR')}

@@ -18,24 +18,49 @@ function assertOrgId(organizationId: string) {
   }
 }
 
-export async function recordBillingEvent(params: {
+export async function claimBillingEvent(params: {
   provider: BillingProvider;
   eventId: string;
   eventType: string;
   organizationId?: string | null;
   payload: Record<string, unknown>;
-}): Promise<{ duplicate: boolean }> {
+}): Promise<{ id: string; alreadyApplied: boolean }> {
   const service = await createServiceClient();
-  const { error } = await service.from('billing_events').insert({
-    provider: params.provider,
-    event_id: params.eventId,
-    event_type: params.eventType,
-    organization_id: params.organizationId ?? null,
-    payload: params.payload as Json,
+  const { data, error } = await service.rpc('billing_begin_event', {
+    p_provider: params.provider,
+    p_event_id: params.eventId,
+    p_event_type: params.eventType,
+    p_organization_id: params.organizationId ?? null,
+    p_payload: params.payload as Json,
   });
-  if (error?.code === '23505') return { duplicate: true };
   if (error) throw new Error(error.message);
-  return { duplicate: false };
+  const row = data && typeof data === 'object' && !Array.isArray(data) ? data : null;
+  const id = typeof row?.id === 'string' ? row.id : null;
+  if (!id) throw new Error('no se pudo registrar el evento de pago');
+  return { id, alreadyApplied: row?.already_applied === true };
+}
+
+export async function finishBillingEvent(eventRowId: string): Promise<void> {
+  const service = await createServiceClient();
+  const { error } = await service.rpc('billing_finish_event', {
+    p_event_row_id: eventRowId,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function findOrganizationIdByStripeCustomer(
+  customerId: string | null | undefined
+): Promise<string | null> {
+  if (!customerId) return null;
+  const service = await createServiceClient();
+  const { data, error } = await service
+    .from('billing_customers')
+    .select('organization_id')
+    .eq('provider', 'stripe')
+    .eq('customer_id', customerId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.organization_id ?? null;
 }
 
 export async function upsertBillingCustomer(params: {
@@ -108,17 +133,8 @@ export async function extendPaidPlanPeriod(params: {
   externalId?: string;
 }): Promise<boolean> {
   const service = await createServiceClient();
-  let organizationId = params.organizationId ?? null;
-  if (!organizationId && params.stripeCustomerId) {
-    const { data, error } = await service
-      .from('billing_customers')
-      .select('organization_id')
-      .eq('provider', 'stripe')
-      .eq('customer_id', params.stripeCustomerId)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    organizationId = data?.organization_id ?? null;
-  }
+  const organizationId =
+    params.organizationId ?? (await findOrganizationIdByStripeCustomer(params.stripeCustomerId));
   if (!organizationId) return false;
   assertOrgId(organizationId);
   const { error } = await service.rpc('billing_extend_paid_plan', {

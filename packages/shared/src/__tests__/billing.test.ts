@@ -11,6 +11,7 @@ import {
   parseAddonCheckoutReference,
   parsePlanPricing,
   formatBillingEventLabel,
+  isBillingEventAlreadyApplied,
 } from '../index';
 
 describe('plan pricing catalog', () => {
@@ -78,5 +79,11 @@ describe('plan pricing catalog', () => {
     expect(formatBillingEventLabel('invoice.paid')).toBe('Pago acreditado');
     expect(formatBillingEventLabel('invoice.payment_failed')).toBe('Pago rechazado');
     expect(formatBillingEventLabel('customer.subscription.canceled')).toBe('Cancelación');
+  });
+
+  it('replays webhook apply only while applied_at is empty', () => {
+    expect(isBillingEventAlreadyApplied(null)).toBe(false);
+    expect(isBillingEventAlreadyApplied(undefined)).toBe(false);
+    expect(isBillingEventAlreadyApplied('2026-08-18T12:00:00.000Z')).toBe(true);
   });
 });

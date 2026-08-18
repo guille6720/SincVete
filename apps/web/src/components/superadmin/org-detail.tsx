@@ -494,6 +494,7 @@ export function SuperadminOrgDetail({
                 <tr>
                   <th className="py-2">Evento</th>
                   <th className="py-2">Proveedor</th>
+                  <th className="py-2">Estado</th>
                   <th className="py-2">Cuando</th>
                 </tr>
               </thead>
@@ -502,6 +503,13 @@ export function SuperadminOrgDetail({
                   <tr key={event.id} className="border-t">
                     <td className="py-2">{formatBillingEventLabel(event.eventType)}</td>
                     <td className="py-2">{event.provider}</td>
+                    <td className="py-2">
+                      {event.appliedAt ? (
+                        <Badge variant="success">aplicado</Badge>
+                      ) : (
+                        <Badge variant="warning">pendiente</Badge>
+                      )}
+                    </td>
                     <td className="py-2 text-muted-foreground">
                       {new Date(event.processedAt).toLocaleString('es-AR')}
                     </td>

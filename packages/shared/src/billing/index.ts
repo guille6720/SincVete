@@ -25,6 +25,10 @@ export {
   isBillingProvider,
 } from './pricing';
 
+export function isBillingEventAlreadyApplied(appliedAt: string | null | undefined): boolean {
+  return Boolean(appliedAt);
+}
+
 export function formatBillingEventLabel(eventType: string | null | undefined): string {
   const type = (eventType ?? '').toLowerCase();
   if (!type) return 'Evento de pago';

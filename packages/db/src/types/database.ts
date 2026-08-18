@@ -3159,6 +3159,7 @@ export interface Database {
           organization_id: string | null;
           payload: Json;
           processed_at: string;
+          applied_at: string | null;
         };
         Insert: {
           id?: string;
@@ -3168,6 +3169,7 @@ export interface Database {
           organization_id?: string | null;
           payload?: Json;
           processed_at?: string;
+          applied_at?: string | null;
         };
         Update: {
           id?: string;
@@ -3177,6 +3179,7 @@ export interface Database {
           organization_id?: string | null;
           payload?: Json;
           processed_at?: string;
+          applied_at?: string | null;
         };
         Relationships: [];
       };
@@ -3405,6 +3408,26 @@ export interface Database {
         };
         Returns: Json;
       };
+      billing_begin_event: {
+        Args: {
+          p_provider: string;
+          p_event_id: string;
+          p_event_type?: string | null;
+          p_organization_id?: string | null;
+          p_payload?: Json;
+        };
+        Returns: Json;
+      };
+      billing_finish_event: {
+        Args: {
+          p_event_row_id: string;
+        };
+        Returns: Json;
+      };
+      superadmin_pending_billing_events: {
+        Args: Record<PropertyKey, never>;
+        Returns: number;
+      };
       billing_set_subscription_status: {
         Args: {
           p_organization_id: string;
@@ -3466,6 +3489,7 @@ export interface Database {
           event_id: string;
           event_type: string | null;
           processed_at: string;
+          applied_at: string | null;
         }[];
       };
       list_own_billing_events: {
@@ -3477,6 +3501,7 @@ export interface Database {
           provider: string;
           event_type: string | null;
           processed_at: string;
+          applied_at: string | null;
         }[];
       };
       handle_new_user_signup: {

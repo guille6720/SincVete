@@ -688,16 +688,21 @@ export type SuperadminCommercialSummary = {
   addonsActive: number;
   addonsEndingSoon: number;
   orgsOverSeats: number;
+  billingEventsPending: number;
 };
 
 export async function getSuperadminCommercialSummary(): Promise<SuperadminCommercialSummary> {
   await requireSuperadmin();
   const supabase = await createServerClient();
-  const { data, error } = await supabase.rpc('superadmin_commercial_summary', {
-    p_remind_days: COMMERCIAL_TRIAL_REMIND_DAYS,
-  });
-  if (error) throw new Error(error.message);
-  const row = asObject(data);
+  const [summaryRes, pendingRes] = await Promise.all([
+    supabase.rpc('superadmin_commercial_summary', {
+      p_remind_days: COMMERCIAL_TRIAL_REMIND_DAYS,
+    }),
+    supabase.rpc('superadmin_pending_billing_events'),
+  ]);
+  if (summaryRes.error) throw new Error(summaryRes.error.message);
+  if (pendingRes.error) throw new Error(pendingRes.error.message);
+  const row = asObject(summaryRes.data);
   return {
     organizations: asNumber(row?.organizations) ?? 0,
     trialing: asNumber(row?.trialing) ?? 0,
@@ -709,6 +714,7 @@ export async function getSuperadminCommercialSummary(): Promise<SuperadminCommer
     addonsActive: asNumber(row?.addons_active) ?? 0,
     addonsEndingSoon: asNumber(row?.addons_ending_soon) ?? 0,
     orgsOverSeats: asNumber(row?.orgs_over_seats) ?? 0,
+    billingEventsPending: asNumber(pendingRes.data) ?? 0,
   };
 }
 
@@ -743,6 +749,7 @@ export type SuperadminBillingEvent = {
   eventId: string;
   eventType: string | null;
   processedAt: string;
+  appliedAt: string | null;
 };
 
 export async function listSuperadminBillingEvents(
@@ -761,5 +768,6 @@ export async function listSuperadminBillingEvents(
     eventId: row.event_id,
     eventType: row.event_type,
     processedAt: row.processed_at,
+    appliedAt: row.applied_at,
   }));
 }

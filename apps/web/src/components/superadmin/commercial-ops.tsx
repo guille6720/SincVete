@@ -40,6 +40,7 @@ export function SuperadminCommercialOps({ summary }: { summary: SuperadminCommer
     { label: 'Extras activos', value: summary.addonsActive },
     { label: 'Extras por vencer', value: summary.addonsEndingSoon },
     { label: 'Sobre cupos', value: summary.orgsOverSeats },
+    { label: 'Webhooks pendientes', value: summary.billingEventsPending },
   ];
 
   return (

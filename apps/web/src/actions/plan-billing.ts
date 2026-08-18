@@ -51,6 +51,7 @@ export type PlanBillingEvent = {
   provider: string;
   eventType: string | null;
   processedAt: string;
+  appliedAt: string | null;
 };
 
 export type ClinicAddonOffer = PublicAddonCatalogItem & {
@@ -172,6 +173,7 @@ export async function getPlanBillingState(): Promise<PlanBillingState> {
       provider: row.provider,
       eventType: row.event_type,
       processedAt: row.processed_at,
+      appliedAt: row.applied_at,
     })),
     addonOffers: addonCatalog.map((item) => {
       const ownedRow = owned.get(item.key);

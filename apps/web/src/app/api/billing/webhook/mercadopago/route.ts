@@ -3,7 +3,8 @@ import { parseAddonCheckoutReference, parseCheckoutReference } from '@sincvete/s
 import {
   applyPaidAddon,
   applyPaidPlan,
-  recordBillingEvent,
+  claimBillingEvent,
+  finishBillingEvent,
   upsertBillingCustomer,
 } from '@/lib/billing/apply';
 import { verifyMercadoPagoSignature } from '@/lib/billing/crypto';
@@ -75,7 +76,7 @@ async function handleMercadoPagoWebhook(request: Request) {
     return NextResponse.json({ error: 'pago no encontrado' }, { status: 404 });
   }
 
-  const recorded = await recordBillingEvent({
+  const recorded = await claimBillingEvent({
     provider: 'mercadopago',
     eventId: `payment:${payment.id}:${payment.status}`,
     eventType: type || 'payment',
@@ -85,18 +86,19 @@ async function handleMercadoPagoWebhook(request: Request) {
       null,
     payload: { paymentId, status: payment.status, type },
   });
-  if (recorded.duplicate) {
+  if (recorded.alreadyApplied) {
     return NextResponse.json({ ok: true, duplicate: true });
   }
 
   if (payment.status !== 'approved') {
+    await finishBillingEvent(recorded.id);
     return NextResponse.json({ ok: true, skipped: true });
   }
 
   const addonRef = parseAddonCheckoutReference(payment.externalReference);
   const planRef = addonRef ? null : parseCheckoutReference(payment.externalReference);
   if (!addonRef && !planRef) {
-    return NextResponse.json({ error: 'referencia inválida' }, { status: 400 });
+    return NextResponse.json({ error: 'referencia inválida' }, { status: 500 });
   }
 
   try {
@@ -133,6 +135,7 @@ async function handleMercadoPagoWebhook(request: Request) {
         });
       }
     }
+    await finishBillingEvent(recorded.id);
   } catch (error) {
     console.error('[mercadopago webhook]', error);
     return NextResponse.json({ error: 'no se pudo aplicar el pago' }, { status: 500 });
