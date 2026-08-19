@@ -6,6 +6,7 @@ import { ClinicSettingsForm } from '@/components/settings/clinic-settings-form';
 import { BranchesPanel } from '@/components/settings/branches-panel';
 import { TeamPanel } from '@/components/settings/team-panel';
 import { RolesPanel } from '@/components/settings/roles-panel';
+import { SettingsLegalPanel } from '@/components/settings/settings-legal-panel';
 import type {
   Branch,
   OrganizationInvitation,
@@ -43,7 +44,7 @@ export function SettingsPageClient({
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Configuración</h1>
         <p className="text-muted-foreground">
-          Administrá tu clínica, sucursales, equipo y permisos
+          Administrá tu clínica, sucursales, equipo, permisos y documentos legales
         </p>
       </div>
 
@@ -67,6 +68,7 @@ export function SettingsPageClient({
       )}
 
       {activeTab === 'roles' && <RolesPanel />}
+      {activeTab === 'legal' && <SettingsLegalPanel />}
     </div>
   );
 }

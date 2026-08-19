@@ -2,13 +2,14 @@
 
 import { cn } from '@/lib/utils';
 
-export type SettingsTab = 'clinica' | 'sucursales' | 'equipo' | 'roles';
+export type SettingsTab = 'clinica' | 'sucursales' | 'equipo' | 'roles' | 'legal';
 
 const TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'clinica', label: 'Clínica' },
   { id: 'sucursales', label: 'Sucursales' },
   { id: 'equipo', label: 'Equipo' },
   { id: 'roles', label: 'Roles' },
+  { id: 'legal', label: 'Legal' },
 ];
 
 interface SettingsTabsProps {
