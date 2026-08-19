@@ -22,7 +22,7 @@ export default async function ConfiguracionPage({ searchParams }: PageProps) {
   if (!session) redirect('/login');
 
   const params = await searchParams;
-  const availableTabs: SettingsTab[] = ['roles'];
+  const availableTabs: SettingsTab[] = ['roles', 'legal'];
   if (hasPermission(session.permissions, 'org:manage')) availableTabs.unshift('clinica', 'plan');
   if (hasPermission(session.permissions, 'branch:manage')) availableTabs.push('sucursales');
   if (hasPermission(session.permissions, 'users:manage')) availableTabs.push('equipo');

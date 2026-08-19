@@ -7,6 +7,7 @@ import { BranchesPanel } from '@/components/settings/branches-panel';
 import { TeamPanel } from '@/components/settings/team-panel';
 import { RolesPanel } from '@/components/settings/roles-panel';
 import { PlanBillingPanel } from '@/components/settings/plan-billing-panel';
+import { SettingsLegalPanel } from '@/components/settings/settings-legal-panel';
 import type { PlanBillingState } from '@/actions/plan-billing';
 import type {
   Branch,
@@ -52,7 +53,7 @@ export function SettingsPageClient({
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Configuración</h1>
         <p className="text-muted-foreground">
-          Administrá tu clínica, plan, sucursales, equipo y permisos
+          Administrá tu clínica, plan, sucursales, equipo, permisos y documentos legales
         </p>
       </div>
 
@@ -81,6 +82,7 @@ export function SettingsPageClient({
       )}
 
       {activeTab === 'roles' && <RolesPanel />}
+      {activeTab === 'legal' && <SettingsLegalPanel />}
       {activeTab === 'plan' && planBilling ? (
         <PlanBillingPanel state={planBilling} checkoutBanner={checkoutBanner} />
       ) : activeTab === 'plan' ? (
