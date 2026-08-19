@@ -4,6 +4,7 @@ import { Command } from 'cmdk';
 import {
   BedDouble,
   BarChart3,
+  BookOpen,
   Calendar,
   ClipboardList,
   FlaskConical,
@@ -53,6 +54,7 @@ const NAV_ITEMS = [
   { label: 'Notificaciones', href: '/notificaciones', icon: Inbox, keywords: 'avisos campana inbox laboratorio stock' },
   { label: 'IA clínica', href: '/ia-clinica', icon: Sparkles, keywords: 'inteligencia artificial resumen soap tutor' },
   { label: 'Configuración', href: '/configuracion', icon: Settings, keywords: 'ajustes settings' },
+  { label: 'Manual de uso', href: '/manual', icon: BookOpen, keywords: 'ayuda guia descargar pdf instrucciones' },
 ] as const;
 
 const QUICK_ACTIONS = [

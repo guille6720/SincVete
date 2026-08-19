@@ -11,6 +11,8 @@ const PUBLIC_ROUTES = [
   '/recuperar-contrasena',
   '/manifest.webmanifest',
   '/sw.js',
+  '/manual',
+  '/api/manual',
 ];
 
 export async function middleware(request: NextRequest) {

@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import { Moon, Palette, Settings, Sun } from 'lucide-react';
+import { BookOpen, Moon, Palette, Settings, Sun } from 'lucide-react';
+import { MANUAL_DOWNLOAD_HREF, MANUAL_FILENAME } from '@/components/manual/manual-constants';
 import {
   COLOR_PRESETS,
   DEFAULT_THEME,
@@ -78,7 +79,7 @@ export function ThemeControls() {
     <div
       className="flex shrink-0 items-center gap-1.5 rounded-lg bg-teal-600/10 p-1 dark:bg-teal-400/10"
       data-testid="theme-controls"
-      aria-label="Tema y configuración"
+      aria-label="Manual, tema y configuración"
     >
       <Link href="/configuracion" className={controlClass} title="Configuración">
         <Settings className="h-4 w-4" />
@@ -155,6 +156,17 @@ export function ThemeControls() {
         {mounted && mode === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         <span>{mounted && mode === 'dark' ? 'Claro' : 'Oscuro'}</span>
       </button>
+
+      <a
+        href={MANUAL_DOWNLOAD_HREF}
+        download={MANUAL_FILENAME}
+        className={controlClass}
+        aria-label="Descargar manual de uso"
+        title="Descargar manual de uso"
+      >
+        <BookOpen className="h-4 w-4" />
+        <span>Manual</span>
+      </a>
     </div>
   );
 }
