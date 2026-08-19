@@ -106,6 +106,31 @@ export function RegisterForm() {
 
           {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
 
+          <label className="flex items-start gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              name="acceptTerms"
+              value="on"
+              required
+              className="mt-1 h-4 w-4 shrink-0"
+            />
+            <span>
+              Acepto los{' '}
+              <Link href="/legal/terminos" className="font-medium text-primary hover:underline" target="_blank">
+                Términos del Servicio
+              </Link>
+              , la{' '}
+              <Link href="/legal/privacidad" className="font-medium text-primary hover:underline" target="_blank">
+                Política de Privacidad
+              </Link>{' '}
+              y el{' '}
+              <Link href="/legal/consentimiento" className="font-medium text-primary hover:underline" target="_blank">
+                consentimiento profesional
+              </Link>
+              .
+            </span>
+          </label>
+
           <Button type="submit" className="w-full" disabled={pending}>
             {pending ? 'Creando clínica...' : 'Crear clínica'}
           </Button>

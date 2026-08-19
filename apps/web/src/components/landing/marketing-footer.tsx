@@ -69,8 +69,26 @@ export function MarketingFooter() {
               Legal
             </p>
             <ul className="mt-3 space-y-2 text-sm text-white/70">
-              <li>Ley 25.326</li>
-              <li>Multi-tenant con RLS</li>
+              <li>
+                <Link href="/legal/terminos" className="hover:text-white">
+                  Términos del Servicio
+                </Link>
+              </li>
+              <li>
+                <Link href="/legal/privacidad" className="hover:text-white">
+                  Privacidad
+                </Link>
+              </li>
+              <li>
+                <Link href="/legal/seguridad" className="hover:text-white">
+                  Seguridad
+                </Link>
+              </li>
+              <li>
+                <Link href="/legal" className="hover:text-white">
+                  Todas las políticas
+                </Link>
+              </li>
             </ul>
           </div>
         </div>
@@ -81,7 +99,11 @@ export function MarketingFooter() {
           <p>
             © {new Date().getFullYear()} {APP_NAME}. Todos los derechos reservados.
           </p>
-          <p>Hecho para clínicas veterinarias de Argentina</p>
+          <p>
+            <Link href="/legal" className="hover:text-white/70">
+              Términos y políticas
+            </Link>
+          </p>
         </div>
       </div>
     </footer>

@@ -99,6 +99,13 @@ export async function signUp(
     branchName: formData.get('branchName') || 'Sucursal Principal',
   });
 
+  if (formData.get('acceptTerms') !== 'on') {
+    return {
+      success: false,
+      error: 'Tenés que aceptar los Términos del Servicio y la Política de Privacidad.',
+    };
+  }
+
   if (!parsed.success) {
     return {
       success: false,
