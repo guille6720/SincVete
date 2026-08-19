@@ -101,6 +101,6 @@ export const DEFAULT_PAGE_SIZE = 25;
 export const MAX_PAGE_SIZE = 100;
 export const SEARCH_DEBOUNCE_MS = 300;
 
-export const APP_NAME = 'SincVete';
+export const APP_NAME = 'SyncVete';
 export const APP_LOCALE = 'es-AR';
 export const APP_TIMEZONE = 'America/Argentina/Buenos_Aires';

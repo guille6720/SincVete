@@ -14,18 +14,18 @@ type BrandLogoProps = {
 };
 
 const SIZE_CLASS: Record<NonNullable<BrandLogoProps['size']>, string> = {
-  sm: 'h-10 w-auto',
-  md: 'h-12 w-auto',
-  lg: 'h-20 w-auto',
-  hero: 'h-32 w-auto sm:h-40 lg:h-48',
-  sidebar: 'h-auto w-full max-h-36',
+  sm: 'h-11 w-11',
+  md: 'h-14 w-14',
+  lg: 'h-32 w-32',
+  hero: 'h-40 w-40 sm:h-48 lg:h-56',
+  sidebar: 'h-auto w-full max-h-40',
 };
 
 const SIZE_PX: Record<NonNullable<BrandLogoProps['size']>, { width: number; height: number }> = {
   sm: { width: 140, height: 40 },
   md: { width: 168, height: 48 },
-  lg: { width: 240, height: 80 },
-  hero: { width: 420, height: 192 },
+  lg: { width: 256, height: 256 },
+  hero: { width: 512, height: 512 },
   sidebar: { width: 512, height: 512 },
 };
 
@@ -45,7 +45,7 @@ export function BrandLogo({
       width={dims.width}
       height={dims.height}
       priority={priority}
-      className={cn(SIZE_CLASS[size], 'object-contain object-left', className)}
+      className={cn(SIZE_CLASS[size], 'rounded-2xl bg-black object-contain', className)}
     />
   );
 
