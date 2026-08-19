@@ -65,6 +65,13 @@ export function planRestrictionResult<T = void>(error: unknown): ActionResult<T>
 
 type NestedFeature = { key: string } | { key: string }[] | null;
 
+function isMissingDbObject(message: string | undefined): boolean {
+  if (!message) return false;
+  return /schema cache|does not exist|Could not find the (table|function)|relation .* does not exist/i.test(
+    message
+  );
+}
+
 function featureKeyFromJoin(features: NestedFeature): string | null {
   if (!features) return null;
   if (Array.isArray(features)) return features[0]?.key ?? null;
@@ -105,16 +112,57 @@ export const loadOrganizationEntitlementInput = cache(async (organizationId: str
   ]);
 
   if (featuresRes.error) {
+    if (isMissingDbObject(featuresRes.error.message)) {
+      console.warn('[entitlements] catalog missing', featuresRes.error.message);
+      return {
+        schemaUnavailable: true,
+        features: [],
+        planFeatures: [],
+        addonFeatures: [],
+        overrides: [],
+        hasActiveSubscription: false,
+        planId: null,
+        subscriptionStatus: null,
+        planKey: null,
+        planName: null,
+        trialEndsAt: null,
+        endsAt: null,
+      };
+    }
     throw new Error(`No se pudieron cargar features: ${featuresRes.error.message}`);
   }
   if (subscriptionRes.error) {
+    if (isMissingDbObject(subscriptionRes.error.message)) {
+      console.warn('[entitlements] subscriptions missing', subscriptionRes.error.message);
+      return {
+        schemaUnavailable: true,
+        features: [],
+        planFeatures: [],
+        addonFeatures: [],
+        overrides: [],
+        hasActiveSubscription: false,
+        planId: null,
+        subscriptionStatus: null,
+        planKey: null,
+        planName: null,
+        trialEndsAt: null,
+        endsAt: null,
+      };
+    }
     throw new Error(`No se pudo cargar la suscripción: ${subscriptionRes.error.message}`);
   }
   if (overridesRes.error) {
-    throw new Error(`No se pudieron cargar overrides: ${overridesRes.error.message}`);
+    if (isMissingDbObject(overridesRes.error.message)) {
+      console.warn('[entitlements] overrides missing', overridesRes.error.message);
+    } else {
+      throw new Error(`No se pudieron cargar overrides: ${overridesRes.error.message}`);
+    }
   }
   if (addonFeaturesRes.error) {
-    throw new Error(`No se pudieron cargar add-ons: ${addonFeaturesRes.error.message}`);
+    if (!isMissingDbObject(addonFeaturesRes.error.message)) {
+      throw new Error(`No se pudieron cargar add-ons: ${addonFeaturesRes.error.message}`);
+    }
+    console.warn('[entitlements] add-ons missing', addonFeaturesRes.error.message);
   }
 
   const features: FeatureCatalogRow[] = (featuresRes.data ?? []).map((f) => ({
@@ -180,6 +228,7 @@ export const loadOrganizationEntitlementInput = cache(async (organizationId: str
   }));
 
   return {
+    schemaUnavailable: false,
     features,
     planFeatures,
     addonFeatures,
@@ -205,8 +254,9 @@ export async function canUseFeature(params: {
   organizationId: string;
   featureKey: FeatureKey | string;
 }): Promise<boolean> {
-  const entitlements = await getOrganizationEntitlements(params.organizationId);
-  return canUseResolvedFeature(entitlements, params.featureKey);
+  const input = await loadOrganizationEntitlementInput(params.organizationId);
+  if (input.schemaUnavailable) return true;
+  return canUseResolvedFeature(resolveOrganizationEntitlements(input), params.featureKey);
 }
 
 /**
@@ -219,8 +269,9 @@ export async function getFeatureLimit(params: {
   organizationId: string;
   featureKey: FeatureKey | string;
 }): Promise<number | null> {
-  const entitlements = await getOrganizationEntitlements(params.organizationId);
-  return getResolvedFeatureLimit(entitlements, params.featureKey);
+  const input = await loadOrganizationEntitlementInput(params.organizationId);
+  if (input.schemaUnavailable) return null;
+  return getResolvedFeatureLimit(resolveOrganizationEntitlements(input), params.featureKey);
 }
 
 export async function getMeteredUsageMeters(organizationId: string): Promise<MeteredUsageMeter[]> {
@@ -379,6 +430,9 @@ export const getClinicCommercialShell = cache(
   async (organizationId: string): Promise<ClinicCommercialShell> => {
     try {
       const input = await loadOrganizationEntitlementInput(organizationId);
+      if (input.schemaUnavailable) {
+        return { entitledHrefs: null, banner: null };
+      }
       const entitlements = resolveOrganizationEntitlements(input);
       const entitledHrefs = getEntitledClinicHrefs(entitlements);
       const supabase = await createServerClient();
