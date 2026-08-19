@@ -3,7 +3,8 @@
 import { useActionState } from 'react';
 import Link from 'next/link';
 import { signIn } from '@/actions/auth';
-import { BrandLogo } from '@/components/brand/sincvete-logo';
+import { APP_NAME } from '@sincvete/shared';
+import { BrandLogo } from '@/components/brand/syncvete-logo';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -68,7 +69,7 @@ export function LoginForm({ redirectTo, errorCode }: LoginFormProps) {
 
           {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
           {errorCode === 'portal_denied' && (
-            <p className="text-sm text-destructive">Esta cuenta no tiene acceso a SincVete.</p>
+            <p className="text-sm text-destructive">Esta cuenta no tiene acceso a {APP_NAME}.</p>
           )}
           {errorCode === 'incomplete_account' && (
             <p className="text-sm text-destructive">
@@ -80,6 +81,15 @@ export function LoginForm({ redirectTo, errorCode }: LoginFormProps) {
           <Button type="submit" className="w-full" disabled={pending}>
             {pending ? 'Ingresando…' : 'Ingresar'}
           </Button>
+
+          <p className="text-center text-sm">
+            <Link
+              href="/recuperar-contrasena"
+              className="font-medium text-teal-700 underline underline-offset-2 hover:text-teal-900"
+            >
+              ¿Olvidaste tu contraseña? Recuperarla
+            </Link>
+          </p>
         </form>
 
         <p className="mt-6 text-center text-sm text-muted-foreground">

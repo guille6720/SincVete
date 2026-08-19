@@ -19,11 +19,14 @@ import {
   ScrollText,
   Stethoscope,
 } from 'lucide-react';
-import { getCurrentMonthLabel, type DashboardSummary } from '@sincvete/shared';
+import { getCurrentMonthLabel, isClinicPathEntitled, type DashboardSummary } from '@sincvete/shared';
 import { cn } from '@/lib/utils';
 
 interface DashboardStatCardsProps {
   summary: DashboardSummary;
+  entitledHrefs?: string[] | null;
+  /** priority = ops del día; secondary = resto; all = legacy completo */
+  variant?: 'priority' | 'secondary' | 'all';
 }
 
 type StatTone = 'teal' | 'sky' | 'emerald' | 'amber' | 'rose' | 'cyan' | 'orange' | 'slate' | 'indigo' | 'lime';
@@ -94,7 +97,11 @@ const TONE_STYLES: Record<
   },
 };
 
-export function DashboardStatCards({ summary }: DashboardStatCardsProps) {
+export function DashboardStatCards({
+  summary,
+  entitledHrefs = null,
+  variant = 'all',
+}: DashboardStatCardsProps) {
   const monthLabel = getCurrentMonthLabel();
 
   const stats: Array<{
@@ -104,7 +111,26 @@ export function DashboardStatCards({ summary }: DashboardStatCardsProps) {
     icon: LucideIcon;
     href?: string;
     tone: StatTone;
+    group: 'priority' | 'secondary';
   }> = [
+    {
+      label: 'Citas hoy',
+      value: String(summary.appointmentsToday),
+      description: 'Agenda del día',
+      icon: Calendar,
+      href: '/agenda',
+      tone: 'indigo',
+      group: 'priority',
+    },
+    {
+      label: 'Consultas del mes',
+      value: String(summary.consultationsThisMonth),
+      description: `Sala / atención · ${monthLabel}`,
+      icon: Stethoscope,
+      href: '/consultas',
+      tone: 'cyan',
+      group: 'priority',
+    },
     {
       label: 'Pacientes activos',
       value: String(summary.activePatients),
@@ -112,37 +138,7 @@ export function DashboardStatCards({ summary }: DashboardStatCardsProps) {
       icon: PawPrint,
       href: '/pacientes',
       tone: 'teal',
-    },
-    {
-      label: 'Propietarios activos',
-      value: String(summary.activeOwners),
-      description: 'Tutores registrados',
-      icon: Users,
-      href: '/propietarios',
-      tone: 'sky',
-    },
-    {
-      label: 'Altas del mes',
-      value: String(summary.patientsThisMonth + summary.ownersThisMonth),
-      description: `${summary.patientsThisMonth} pacientes · ${summary.ownersThisMonth} propietarios · ${monthLabel}`,
-      icon: TrendingUp,
-      tone: 'emerald',
-    },
-    {
-      label: 'Citas hoy',
-      value: String(summary.appointmentsToday),
-      description: 'Programadas para hoy',
-      icon: Calendar,
-      href: '/agenda',
-      tone: 'indigo',
-    },
-    {
-      label: 'Consultas del mes',
-      value: String(summary.consultationsThisMonth),
-      description: `Completadas · ${monthLabel}`,
-      icon: Stethoscope,
-      href: '/consultas',
-      tone: 'cyan',
+      group: 'priority',
     },
     {
       label: 'Internados',
@@ -151,38 +147,7 @@ export function DashboardStatCards({ summary }: DashboardStatCardsProps) {
       icon: BedDouble,
       href: '/internacion',
       tone: 'rose',
-    },
-    {
-      label: 'Vacunas vencidas',
-      value: String(summary.vaccinationsOverdue),
-      description: 'Última dosis por vacuna',
-      icon: Syringe,
-      href: '/vacunacion',
-      tone: 'amber',
-    },
-    {
-      label: 'En quirófano',
-      value: String(summary.surgeriesActive),
-      description: 'En curso o recuperación',
-      icon: Scissors,
-      href: '/cirugias',
-      tone: 'orange',
-    },
-    {
-      label: 'Lab pendientes',
-      value: String(summary.labOrdersPending),
-      description: 'Solicitadas o en proceso',
-      icon: FlaskConical,
-      href: '/laboratorio',
-      tone: 'lime',
-    },
-    {
-      label: 'Stock bajo',
-      value: String(summary.inventoryLowStock),
-      description: 'En o bajo el mínimo',
-      icon: Package,
-      href: '/inventario',
-      tone: 'amber',
+      group: 'priority',
     },
     {
       label: 'Recetas activas',
@@ -191,6 +156,60 @@ export function DashboardStatCards({ summary }: DashboardStatCardsProps) {
       icon: Pill,
       href: '/farmacia',
       tone: 'sky',
+      group: 'priority',
+    },
+    {
+      label: 'Vacunas vencidas',
+      value: String(summary.vaccinationsOverdue),
+      description: 'Última dosis por vacuna',
+      icon: Syringe,
+      href: '/vacunacion',
+      tone: 'amber',
+      group: 'priority',
+    },
+    {
+      label: 'Propietarios activos',
+      value: String(summary.activeOwners),
+      description: 'Tutores registrados',
+      icon: Users,
+      href: '/propietarios',
+      tone: 'sky',
+      group: 'secondary',
+    },
+    {
+      label: 'Altas del mes',
+      value: String(summary.patientsThisMonth + summary.ownersThisMonth),
+      description: `${summary.patientsThisMonth} pacientes · ${summary.ownersThisMonth} propietarios · ${monthLabel}`,
+      icon: TrendingUp,
+      tone: 'emerald',
+      group: 'secondary',
+    },
+    {
+      label: 'En quirófano',
+      value: String(summary.surgeriesActive),
+      description: 'En curso o recuperación',
+      icon: Scissors,
+      href: '/cirugias',
+      tone: 'orange',
+      group: 'secondary',
+    },
+    {
+      label: 'Lab pendientes',
+      value: String(summary.labOrdersPending),
+      description: 'Solicitadas o en proceso',
+      icon: FlaskConical,
+      href: '/laboratorio',
+      tone: 'lime',
+      group: 'secondary',
+    },
+    {
+      label: 'Stock bajo',
+      value: String(summary.inventoryLowStock),
+      description: 'En o bajo el mínimo',
+      icon: Package,
+      href: '/inventario',
+      tone: 'amber',
+      group: 'secondary',
     },
     {
       label: 'Por cobrar',
@@ -199,6 +218,7 @@ export function DashboardStatCards({ summary }: DashboardStatCardsProps) {
       icon: Receipt,
       href: '/facturacion',
       tone: 'emerald',
+      group: 'secondary',
     },
     {
       label: 'Caja abierta',
@@ -207,6 +227,7 @@ export function DashboardStatCards({ summary }: DashboardStatCardsProps) {
       icon: Banknote,
       href: '/caja',
       tone: 'teal',
+      group: 'secondary',
     },
     {
       label: 'Imágenes del mes',
@@ -215,6 +236,7 @@ export function DashboardStatCards({ summary }: DashboardStatCardsProps) {
       icon: Images,
       href: '/imagenes',
       tone: 'indigo',
+      group: 'secondary',
     },
     {
       label: 'Sin leer',
@@ -223,6 +245,7 @@ export function DashboardStatCards({ summary }: DashboardStatCardsProps) {
       icon: Inbox,
       href: '/notificaciones',
       tone: 'rose',
+      group: 'secondary',
     },
     {
       label: 'Auditoría hoy',
@@ -231,6 +254,7 @@ export function DashboardStatCards({ summary }: DashboardStatCardsProps) {
       icon: ScrollText,
       href: '/auditoria',
       tone: 'slate',
+      group: 'secondary',
     },
     {
       label: 'Recordatorios',
@@ -239,12 +263,19 @@ export function DashboardStatCards({ summary }: DashboardStatCardsProps) {
       icon: Bell,
       href: '/recordatorios',
       tone: 'orange',
+      group: 'secondary',
     },
   ];
 
+  const visible = (variant === 'all' ? stats : stats.filter((stat) => stat.group === variant)).filter(
+    (stat) => !stat.href || isClinicPathEntitled(stat.href, entitledHrefs)
+  );
+
+  if (visible.length === 0) return null;
+
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-      {stats.map((stat) => {
+      {visible.map((stat) => {
         const tone = TONE_STYLES[stat.tone];
         const content = (
           <div

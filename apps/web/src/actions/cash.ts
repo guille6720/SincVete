@@ -14,8 +14,9 @@ import {
   type PaginatedResult,
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
-import { PermissionError, requirePermission } from '@/lib/permissions';
+import { PermissionError, requirePermission, requirePermissionAndFeature, canPermissionAndFeature } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
+import { FEATURES, planRestrictionResult } from '@/lib/entitlements';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -29,6 +30,8 @@ function isNextRedirect(error: unknown): boolean {
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (isNextRedirect(error)) throw error;
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
@@ -177,7 +180,7 @@ export async function openCashSessionAction(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const session = await requirePermission('billing:write');
+    const session = await requirePermissionAndFeature('billing:write', FEATURES.CASH_REGISTER);
     const parsed = cashSessionOpenSchema.safeParse({
       branchId: formData.get('branchId') || session.branchId,
       openingAmount: formData.get('openingAmount') || 0,
@@ -217,7 +220,7 @@ export async function addCashMovementAction(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    await requirePermission('billing:write');
+    await requirePermissionAndFeature('billing:write', FEATURES.CASH_REGISTER);
     const parsed = cashMovementSchema.safeParse({
       kind: formData.get('kind'),
       amount: formData.get('amount'),
@@ -261,7 +264,7 @@ export async function closeCashSessionAction(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    await requirePermission('billing:write');
+    await requirePermissionAndFeature('billing:write', FEATURES.CASH_REGISTER);
     const parsed = cashSessionCloseSchema.safeParse({
       countedCash: formData.get('countedCash'),
       notes: formData.get('notes'),
@@ -296,13 +299,9 @@ export async function closeCashSessionAction(
 }
 
 export async function canManageCash(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('billing:write');
+  return canPermissionAndFeature('billing:write', FEATURES.CASH_REGISTER);
 }
 
 export async function canReadCash(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('billing:read');
+  return canPermissionAndFeature('billing:read', FEATURES.CASH_REGISTER);
 }

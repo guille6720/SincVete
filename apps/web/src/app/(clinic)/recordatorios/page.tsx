@@ -1,14 +1,15 @@
 import { redirect } from 'next/navigation';
-import { canSendWhatsApp } from '@/actions/whatsapp';
+import { canSendWhatsAppReminders } from '@/actions/whatsapp';
 import { canReadReminders, listClinicReminders } from '@/actions/reminders';
 import { RemindersBoard } from '@/components/reminders/reminders-board';
+import { FeatureUnavailableNotice } from '@/components/entitlements/feature-gate';
 import { countPendingReminders } from '@sincvete/shared';
 
 export default async function RecordatoriosPage() {
   const canRead = await canReadReminders();
   if (!canRead) redirect('/dashboard');
 
-  const [board, canSend] = await Promise.all([listClinicReminders(), canSendWhatsApp()]);
+  const [board, canSend] = await Promise.all([listClinicReminders(), canSendWhatsAppReminders()]);
   const pending = countPendingReminders(board);
 
   return (
@@ -19,6 +20,12 @@ export default async function RecordatoriosPage() {
           Avisos de turnos, vacunas y saldos. {pending} pendiente{pending !== 1 ? 's' : ''}.
         </p>
       </div>
+      {!canSend ? (
+        <FeatureUnavailableNotice
+          title="Recordatorios WhatsApp no incluidos"
+          description="Podés ver la lista, pero el envío por WhatsApp requiere un plan superior."
+        />
+      ) : null}
       <RemindersBoard board={board} canSend={canSend} />
     </div>
   );

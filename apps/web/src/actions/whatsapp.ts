@@ -18,8 +18,17 @@ import { PermissionError, requirePermission } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
 import { getOwner } from '@/actions/owners';
 import { getPatient } from '@/actions/patients';
+import {
+  FEATURES,
+  canUseFeature,
+  consumeMeteredFeature,
+  planRestrictionResult,
+  requireFeature,
+} from '@/lib/entitlements';
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
@@ -43,8 +52,23 @@ function rpcMessage(error: { message?: string } | null): string {
 
 export async function canSendWhatsApp(): Promise<boolean> {
   const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('whatsapp:send');
+  if (!session || !session.permissions.includes('whatsapp:send')) return false;
+  return canUseFeature({ organizationId: session.organizationId, featureKey: FEATURES.WHATSAPP });
+}
+
+export async function canAccessWhatsApp(): Promise<boolean> {
+  const session = await getSessionContext();
+  return Boolean(session?.permissions.includes('whatsapp:send'));
+}
+
+export async function canSendWhatsAppReminders(): Promise<boolean> {
+  const session = await getSessionContext();
+  if (!session || !session.permissions.includes('whatsapp:send')) return false;
+  const [whatsapp, reminders] = await Promise.all([
+    canUseFeature({ organizationId: session.organizationId, featureKey: FEATURES.WHATSAPP }),
+    canUseFeature({ organizationId: session.organizationId, featureKey: FEATURES.WHATSAPP_REMINDERS }),
+  ]);
+  return whatsapp && reminders;
 }
 
 export async function getWhatsAppRecipient(ownerId: string): Promise<WhatsAppRecipient | null> {
@@ -121,6 +145,12 @@ export async function logWhatsAppMessage(formData: FormData): Promise<ActionResu
         return { success: false, error: 'Paciente no encontrado' };
       }
     }
+
+    await requireFeature(session.organizationId, FEATURES.WHATSAPP);
+    await consumeMeteredFeature({
+      organizationId: session.organizationId,
+      featureKey: FEATURES.WHATSAPP_MONTHLY_MESSAGES,
+    });
 
     const supabase = await createServerClient();
     const { data, error } = await supabase.rpc('log_whatsapp_message', {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
+import { APP_NAME } from '@sincvete/shared';
 
 const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID || 'local';
 const POLL_MS = 45_000;
@@ -43,7 +44,7 @@ export function AppUpdateBanner() {
     <div className="fixed inset-x-0 top-0 z-[70] flex justify-center p-3 pointer-events-none">
       <div className="pointer-events-auto flex max-w-lg items-center gap-3 rounded-xl border border-[color-mix(in_oklab,var(--clinic)_30%,transparent)] bg-card px-4 py-3 text-sm shadow-lg">
         <p className="text-foreground">
-          Hay una <span className="font-semibold">actualización</span> de SincVete disponible.
+          Hay una <span className="font-semibold">actualización</span> de {APP_NAME} disponible.
         </p>
         <button
           type="button"

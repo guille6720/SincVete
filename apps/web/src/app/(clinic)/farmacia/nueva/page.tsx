@@ -1,33 +1,26 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { canManagePharmacy } from '@/actions/pharmacy';
-import { getSessionContext } from '@/actions/auth';
 import { getOwner } from '@/actions/owners';
 import { getPatient } from '@/actions/patients';
 import { getUserBranches } from '@/actions/settings';
 import { PrescriptionForm } from '@/components/pharmacy/prescription-form';
 import { Button } from '@/components/ui/button';
+import { getSessionContext } from '@/lib/session';
 
 interface NuevaRecetaPageProps {
   searchParams: Promise<{ patientId?: string; consultationId?: string }>;
 }
 
 export default async function NuevaRecetaPage({ searchParams }: NuevaRecetaPageProps) {
-  const canWrite = await canManagePharmacy();
-  if (!canWrite) redirect('/farmacia');
+  const [session, params] = await Promise.all([getSessionContext(), searchParams]);
+  if (!session?.permissions.includes('clinical:write')) redirect('/farmacia');
 
-  const params = await searchParams;
-  const session = await getSessionContext();
-
-  let patient = null;
-  let owner = null;
-  if (params.patientId) {
-    patient = await getPatient(params.patientId);
-    if (patient) owner = await getOwner(patient.owner_id);
-  }
-
-  const branches = await getUserBranches();
+  const [branches, patient] = await Promise.all([
+    getUserBranches(),
+    params.patientId ? getPatient(params.patientId) : Promise.resolve(null),
+  ]);
+  const owner = patient ? await getOwner(patient.owner_id) : null;
 
   return (
     <div className="space-y-4">
@@ -39,7 +32,7 @@ export default async function NuevaRecetaPage({ searchParams }: NuevaRecetaPageP
       </Button>
       <PrescriptionForm
         branches={branches}
-        defaultBranchId={session?.branchId}
+        defaultBranchId={session.branchId}
         defaultPatientId={patient?.id}
         defaultPatientName={patient?.name}
         defaultOwnerId={patient?.owner_id}

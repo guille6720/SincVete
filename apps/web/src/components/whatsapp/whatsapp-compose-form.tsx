@@ -11,7 +11,10 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   WHATSAPP_TEMPLATES,
   WHATSAPP_TEMPLATE_LABELS,
+  formatMeteredUsage,
+  isQuotaNearLimit,
   renderWhatsAppTemplate,
+  type MeteredUsageMeter,
   type WhatsAppRelatedType,
   type WhatsAppTemplateKey,
   type WhatsAppTemplateVars,
@@ -28,6 +31,7 @@ interface WhatsAppComposeFormProps {
   relatedType?: WhatsAppRelatedType;
   relatedId?: string;
   vars?: WhatsAppTemplateVars;
+  usage?: MeteredUsageMeter | null;
 }
 
 export function WhatsAppComposeForm({
@@ -41,6 +45,7 @@ export function WhatsAppComposeForm({
   relatedType = 'none',
   relatedId,
   vars = {},
+  usage = null,
 }: WhatsAppComposeFormProps) {
   const [templateKey, setTemplateKey] = useState<WhatsAppTemplateKey>(defaultTemplate);
   const [ownerId, setOwnerId] = useState(defaultOwnerId);
@@ -149,6 +154,11 @@ export function WhatsAppComposeForm({
             Teléfono: {phone || 'Seleccioná un propietario con WhatsApp o teléfono'}
           </p>
 
+          {usage ? (
+            <p className={isQuotaNearLimit(usage) ? 'text-sm text-amber-700' : 'text-sm text-muted-foreground'}>
+              Uso del mes: {formatMeteredUsage(usage)}
+            </p>
+          ) : null}
           {error && <p className="text-sm text-destructive">{error}</p>}
 
           <Button type="submit" disabled={pending || !phone || !ownerId}>

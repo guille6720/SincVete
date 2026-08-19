@@ -1,4 +1,5 @@
-export const THEME_STORAGE_KEY = 'sincvete-theme';
+export const THEME_STORAGE_KEY = 'syncvete-theme';
+const THEME_STORAGE_KEY_LEGACY = 'sincvete-theme';
 
 export const COLOR_PRESETS = [
   { id: 'teal', label: 'Verde teal', swatch: '#0d9488' },
@@ -44,4 +45,14 @@ export function applyThemePreferences(prefs: ThemePreferences) {
   root.classList.toggle('dark', prefs.mode === 'dark');
   root.setAttribute('data-accent', prefs.accent);
   root.style.colorScheme = prefs.mode;
+}
+
+export function readStoredThemeRaw(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(THEME_STORAGE_KEY) ?? localStorage.getItem(THEME_STORAGE_KEY_LEGACY);
+}
+
+export function writeStoredTheme(prefs: ThemePreferences) {
+  localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(prefs));
+  localStorage.removeItem(THEME_STORAGE_KEY_LEGACY);
 }

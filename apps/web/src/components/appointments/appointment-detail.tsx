@@ -3,13 +3,13 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
 import { ArrowLeft, MessageCircle, Pencil, Stethoscope, Trash2 } from 'lucide-react';
 import { deleteAppointment, updateAppointmentStatus } from '@/actions/appointments';
 import { startConsultationFromAppointment } from '@/actions/consultations';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { usePendingAction } from '@/lib/hooks/use-pending-action';
 import {
   APPOINTMENT_STATUS_LABELS,
   APPOINTMENT_STATUS_VARIANT,
@@ -52,40 +52,42 @@ export function AppointmentDetail({
   consultationId = null,
 }: AppointmentDetailProps) {
   const router = useRouter();
-  const [pending, setPending] = useState(false);
+  const [pending, runPending] = usePendingAction();
   const actions = STATUS_ACTIONS[appointment.status] ?? [];
 
-  const handleStatusChange = async (status: AppointmentStatus) => {
+  const handleStatusChange = (status: AppointmentStatus) => {
     if (status === 'cancelada') {
       const reason = prompt('Motivo de cancelación (opcional)');
       if (reason === null) return;
-      setPending(true);
-      await updateAppointmentStatus(appointment.id, status, reason || undefined);
-      setPending(false);
-      router.refresh();
+      void runPending(async () => {
+        await updateAppointmentStatus(appointment.id, status, reason || undefined);
+        router.refresh();
+      });
       return;
     }
 
     if (!confirm(`¿Cambiar estado a "${APPOINTMENT_STATUS_LABELS[status]}"?`)) return;
-    setPending(true);
-    await updateAppointmentStatus(appointment.id, status);
-    setPending(false);
-    router.refresh();
+    void runPending(async () => {
+      await updateAppointmentStatus(appointment.id, status);
+      router.refresh();
+    });
   };
 
-  const handleStartConsultation = async () => {
-    setPending(true);
-    const result = await startConsultationFromAppointment(appointment.id);
-    setPending(false);
-    if (result && !result.success) {
-      alert(result.error ?? 'No se pudo iniciar la consulta');
-    }
+  const handleStartConsultation = () => {
+    void runPending(async () => {
+      const result = await startConsultationFromAppointment(appointment.id);
+      if (result && !result.success) {
+        alert(result.error ?? 'No se pudo iniciar la consulta');
+      }
+    });
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!confirm('¿Eliminar esta cita?')) return;
-    const result = await deleteAppointment(appointment.id);
-    if (result.success) router.push('/agenda');
+    void runPending(async () => {
+      const result = await deleteAppointment(appointment.id);
+      if (result.success) router.push('/agenda');
+    });
   };
 
   return (
@@ -124,8 +126,8 @@ export function AppointmentDetail({
             canStartConsultation &&
             appointment.status !== 'cancelada' &&
             appointment.status !== 'ausente' && (
-              <Button size="sm" disabled={pending} onClick={handleStartConsultation}>
-                <Stethoscope className="mr-2 h-4 w-4" />
+              <Button size="sm" isPending={pending} onClick={handleStartConsultation}>
+                <Stethoscope className="h-4 w-4" />
                 {pending ? 'Iniciando...' : 'Atender'}
               </Button>
             )
@@ -149,10 +151,10 @@ export function AppointmentDetail({
                   key={action.next}
                   variant={action.next === 'cancelada' ? 'destructive' : 'outline'}
                   size="sm"
-                  disabled={pending}
+                  isPending={pending}
                   onClick={() => handleStatusChange(action.next)}
                 >
-                  {action.label}
+                  {pending ? 'Guardando...' : action.label}
                 </Button>
               ))}
               <Button variant="outline" size="sm" asChild>
@@ -161,9 +163,20 @@ export function AppointmentDetail({
                   Editar
                 </Link>
               </Button>
-              <Button variant="destructive" size="sm" onClick={handleDelete}>
-                <Trash2 className="mr-2 h-4 w-4" />
-                Eliminar
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleDelete}
+                isPending={pending}
+              >
+                {pending ? (
+                  'Eliminando...'
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4" />
+                    Eliminar
+                  </>
+                )}
               </Button>
             </>
           )}

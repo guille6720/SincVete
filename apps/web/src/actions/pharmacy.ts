@@ -1,6 +1,5 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
   buildPaginatedResult,
@@ -13,8 +12,15 @@ import {
   type PrescriptionListRow,
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
-import { PermissionError, requirePermission } from '@/lib/permissions';
+import { PermissionError, requirePermission, requirePermissionAndFeature, canPermissionAndFeature } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
+import {
+  revalidatePrescription,
+  revalidatePrescriptionBoard,
+} from '@/lib/cache-revalidate';
+import { PRESCRIPTION_COLUMNS, PRESCRIPTION_ITEM_COLUMNS } from '@/lib/db-columns';
+import { FEATURES, planRestrictionResult } from '@/lib/entitlements';
+import { revalidatePath } from 'next/cache';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -28,6 +34,8 @@ function isNextRedirect(error: unknown): boolean {
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (isNextRedirect(error)) throw error;
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
@@ -70,12 +78,11 @@ function parseItemsFromForm(formData: FormData) {
 }
 
 export async function listActivePrescriptions(): Promise<PrescriptionListRow[]> {
-  await requirePermission('clinical:read');
-  const session = await getSessionContext();
+  const session = await requirePermission('clinical:read');
   const supabase = await createServerClient();
 
   const { data, error } = await supabase.rpc('list_active_prescriptions', {
-    p_branch_id: session?.branchId ?? null,
+    p_branch_id: session.branchId ?? null,
   });
 
   if (error) throw error;
@@ -126,7 +133,7 @@ export async function getPrescription(id: string): Promise<{
 
   const { data: prescription, error } = await supabase
     .from('prescriptions')
-    .select('*')
+    .select(PRESCRIPTION_COLUMNS)
     .eq('id', id)
     .is('deleted_at', null)
     .single();
@@ -141,7 +148,7 @@ export async function getPrescription(id: string): Promise<{
       : Promise.resolve({ data: null }),
     supabase
       .from('prescription_items')
-      .select('*')
+      .select(PRESCRIPTION_ITEM_COLUMNS)
       .eq('prescription_id', id)
       .is('deleted_at', null)
       .order('sort_order', { ascending: true }),
@@ -170,7 +177,7 @@ export async function createPrescription(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const session = await requirePermission('clinical:write');
+    const session = await requirePermissionAndFeature('clinical:write', FEATURES.PHARMACY);
     const parsed = prescriptionCreateSchema.safeParse({
       patientId: formData.get('patientId'),
       ownerId: formData.get('ownerId'),
@@ -224,9 +231,7 @@ export async function createPrescription(
       return { success: false, error: 'No se pudo crear la receta' };
     }
 
-    revalidatePath('/farmacia');
-    revalidatePath('/dashboard');
-    revalidatePath(`/pacientes/${parsed.data.patientId}`);
+    revalidatePrescriptionBoard(parsed.data.patientId);
     redirect(`/farmacia/${result.prescription_id}`);
   } catch (error) {
     return actionError(error);
@@ -235,7 +240,7 @@ export async function createPrescription(
 
 export async function dispensePrescription(prescriptionId: string): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.PHARMACY);
     const supabase = await createServerClient();
 
     const { error } = await supabase.rpc('dispense_prescription', {
@@ -246,9 +251,7 @@ export async function dispensePrescription(prescriptionId: string): Promise<Acti
       return { success: false, error: rpcErrorMessage(error, 'No se pudo dispensar la receta') };
     }
 
-    revalidatePath('/farmacia');
-    revalidatePath(`/farmacia/${prescriptionId}`);
-    revalidatePath('/dashboard');
+    revalidatePrescription(prescriptionId);
     revalidatePath('/inventario');
     return { success: true };
   } catch (error) {
@@ -261,7 +264,7 @@ export async function voidPrescription(
   reason?: string
 ): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.PHARMACY);
     const supabase = await createServerClient();
 
     const { error } = await supabase.rpc('void_prescription', {
@@ -273,9 +276,7 @@ export async function voidPrescription(
       return { success: false, error: rpcErrorMessage(error, 'No se pudo anular la receta') };
     }
 
-    revalidatePath('/farmacia');
-    revalidatePath(`/farmacia/${prescriptionId}`);
-    revalidatePath('/dashboard');
+    revalidatePrescription(prescriptionId);
     return { success: true };
   } catch (error) {
     return actionError(error);
@@ -315,13 +316,9 @@ export async function searchPharmacyProducts(search: string): Promise<
 }
 
 export async function canManagePharmacy(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:write');
+  return canPermissionAndFeature('clinical:write', FEATURES.PHARMACY);
 }
 
 export async function canReadPharmacy(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:read');
+  return canPermissionAndFeature('clinical:read', FEATURES.PHARMACY);
 }

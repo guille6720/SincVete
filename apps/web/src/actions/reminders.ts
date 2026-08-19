@@ -30,6 +30,12 @@ import { getInvoice } from '@/actions/billing';
 import { getOwner } from '@/actions/owners';
 import { getOrganization } from '@/actions/settings';
 import { getVaccination } from '@/actions/vaccinations';
+import {
+  FEATURES,
+  consumeMeteredFeature,
+  planRestrictionResult,
+  requireFeature,
+} from '@/lib/entitlements';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -43,6 +49,8 @@ function isNextRedirect(error: unknown): boolean {
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (isNextRedirect(error)) throw error;
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
@@ -67,7 +75,6 @@ function rpcMessage(error: { message?: string } | null): string {
 function revalidateReminderPaths() {
   revalidatePath('/recordatorios');
   revalidatePath('/whatsapp');
-  revalidatePath('/dashboard');
 }
 
 export async function canReadReminders(): Promise<boolean> {
@@ -205,6 +212,13 @@ export async function sendReminder(input: {
 
     const templateKey = reminderTemplateForType(parsed.data.reminderType);
     const body = renderWhatsAppTemplate(templateKey, vars);
+
+    await requireFeature(session.organizationId, FEATURES.WHATSAPP);
+    await requireFeature(session.organizationId, FEATURES.WHATSAPP_REMINDERS);
+    await consumeMeteredFeature({
+      organizationId: session.organizationId,
+      featureKey: FEATURES.WHATSAPP_MONTHLY_MESSAGES,
+    });
 
     const supabase = await createServerClient();
     const { data, error } = await supabase.rpc('log_whatsapp_message', {

@@ -14,10 +14,17 @@ interface OwnerDetailProps {
   owner: Owner;
   canWrite: boolean;
   canSendWhatsApp?: boolean;
+  portalEnabled?: boolean;
   portalStatus: OwnerPortalStatus | null;
 }
 
-export function OwnerDetail({ owner, canWrite, canSendWhatsApp = false, portalStatus }: OwnerDetailProps) {
+export function OwnerDetail({
+  owner,
+  canWrite,
+  canSendWhatsApp = false,
+  portalEnabled = true,
+  portalStatus,
+}: OwnerDetailProps) {
   const router = useRouter();
 
   const handleDelete = async () => {
@@ -100,6 +107,7 @@ export function OwnerDetail({ owner, canWrite, canSendWhatsApp = false, portalSt
         ownerId={owner.id}
         ownerEmail={owner.email}
         canWrite={canWrite}
+        portalEnabled={portalEnabled}
         status={portalStatus}
       />
     </div>

@@ -11,8 +11,10 @@ import {
   type DashboardSummary,
   type PatientSpecies,
 } from '@sincvete/shared';
-import { getSessionContext } from '@/actions/auth';
+import { getSessionContext } from '@/lib/session';
 import { createServerClient } from '@/lib/supabase/server';
+import { getOrganization, getUserBranches } from '@/actions/settings';
+import { cache } from 'react';
 
 interface DashboardSummaryRow {
   active_patients?: number;
@@ -71,9 +73,9 @@ function parseSummary(data: DashboardSummaryRow | null): DashboardSummary {
   };
 }
 
-export async function getDashboardSummary(
+export const getDashboardSummary = cache(async (
   branchId?: string | null
-): Promise<DashboardSummary> {
+): Promise<DashboardSummary> => {
   const session = await getSessionContext();
   if (!session || !session.permissions.includes('patients:read')) {
     return EMPTY_DASHBOARD_SUMMARY;
@@ -86,9 +88,11 @@ export async function getDashboardSummary(
 
   if (error) throw error;
   return parseSummary(data as DashboardSummaryRow | null);
-}
+});
 
-export async function getDashboardActivity(limit = 10): Promise<DashboardActivityItem[]> {
+export const getDashboardActivity = cache(async (
+  limit = 10
+): Promise<DashboardActivityItem[]> => {
   const session = await getSessionContext();
   if (!session || !hasPermission(session.permissions, 'audit:read')) {
     return [];
@@ -110,28 +114,22 @@ export async function getDashboardActivity(limit = 10): Promise<DashboardActivit
     summary: row.summary,
     createdAt: row.created_at,
   }));
-}
+});
 
-export async function getDashboardContext(): Promise<DashboardContext | null> {
+/** Clinic metadata only — reuses request-cached org + branches (no extra PHI queries). */
+export const getDashboardContext = cache(async (): Promise<DashboardContext | null> => {
   const session = await getSessionContext();
   if (!session) return null;
 
-  const supabase = await createServerClient();
-
-  const [{ data: org }, branchResult] = await Promise.all([
-    supabase.from('organizations').select('name').eq('id', session.organizationId).single(),
-    session.branchId
-      ? supabase.from('branches').select('name').eq('id', session.branchId).single()
-      : Promise.resolve({ data: null }),
-  ]);
+  const [organization, branches] = await Promise.all([getOrganization(), getUserBranches()]);
 
   return {
-    organizationName: org?.name ?? 'Clínica',
-    branchName: branchResult.data?.name ?? null,
+    organizationName: organization?.name ?? 'Clínica',
+    branchName: branches.find((b) => b.id === session.branchId)?.name ?? null,
     canWritePatients: session.permissions.includes('patients:write'),
     canViewActivity: session.permissions.includes('audit:read'),
   };
-}
+});
 
 export async function getDashboardData() {
   const session = await getSessionContext();

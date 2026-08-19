@@ -1,6 +1,5 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
   buildPaginatedResult,
@@ -13,8 +12,15 @@ import {
   type PaginatedResult,
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
-import { PermissionError, requirePermission } from '@/lib/permissions';
+import { PermissionError, requirePermission, requirePermissionAndFeature, canPermissionAndFeature } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
+import { FEATURES, planRestrictionResult } from '@/lib/entitlements';
+import {
+  revalidateClinicalEntry,
+  revalidateClinicalEntryList,
+  revalidatePatientHistoria,
+} from '@/lib/cache-revalidate';
+import { CLINICAL_ENTRY_COLUMNS } from '@/lib/db-columns';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -28,6 +34,8 @@ function isNextRedirect(error: unknown): boolean {
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (isNextRedirect(error)) throw error;
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
@@ -117,7 +125,7 @@ export async function getClinicalEntry(id: string): Promise<ClinicalEntryListRow
 
   const { data: entry, error } = await supabase
     .from('clinical_entries')
-    .select('*')
+    .select(CLINICAL_ENTRY_COLUMNS)
     .eq('id', id)
     .is('deleted_at', null)
     .single();
@@ -150,7 +158,7 @@ export async function createClinicalEntry(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const session = await requirePermission('clinical:write');
+    const session = await requirePermissionAndFeature('clinical:write', FEATURES.CLINICAL_HISTORY);
     const parsed = parseClinicalEntryForm(formData);
 
     if (!parsed.success) {
@@ -195,9 +203,8 @@ export async function createClinicalEntry(
       return { success: false, error: 'No se pudo crear la entrada clínica' };
     }
 
-    revalidatePath('/historia-clinica');
-    revalidatePath(`/pacientes/${parsed.data.patientId}`);
-    revalidatePath(`/pacientes/${parsed.data.patientId}/historia`);
+    revalidateClinicalEntryList();
+    revalidatePatientHistoria(parsed.data.patientId);
     redirect(`/historia-clinica/${data.id}`);
   } catch (error) {
     return actionError(error);
@@ -210,7 +217,7 @@ export async function updateClinicalEntry(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.CLINICAL_HISTORY);
     const parsed = parseClinicalEntryForm(formData);
 
     if (!parsed.success) {
@@ -247,10 +254,7 @@ export async function updateClinicalEntry(
       return { success: false, error: 'No se pudo actualizar la entrada clínica' };
     }
 
-    revalidatePath('/historia-clinica');
-    revalidatePath(`/historia-clinica/${entryId}`);
-    revalidatePath(`/pacientes/${parsed.data.patientId}`);
-    revalidatePath(`/pacientes/${parsed.data.patientId}/historia`);
+    revalidateClinicalEntry(entryId, parsed.data.patientId);
     return { success: true };
   } catch (error) {
     return actionError(error);
@@ -259,7 +263,7 @@ export async function updateClinicalEntry(
 
 export async function deleteClinicalEntry(entryId: string): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.CLINICAL_HISTORY);
     const supabase = await createServerClient();
 
     const { data: entry } = await supabase
@@ -277,10 +281,9 @@ export async function deleteClinicalEntry(entryId: string): Promise<ActionResult
       return { success: false, error: 'No se pudo eliminar la entrada clínica' };
     }
 
-    revalidatePath('/historia-clinica');
+    revalidateClinicalEntryList();
     if (entry?.patient_id) {
-      revalidatePath(`/pacientes/${entry.patient_id}`);
-      revalidatePath(`/pacientes/${entry.patient_id}/historia`);
+      revalidatePatientHistoria(entry.patient_id);
     }
     return { success: true };
   } catch (error) {
@@ -289,15 +292,11 @@ export async function deleteClinicalEntry(entryId: string): Promise<ActionResult
 }
 
 export async function canManageClinical(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:write');
+  return canPermissionAndFeature('clinical:write', FEATURES.CLINICAL_HISTORY);
 }
 
 export async function canReadClinical(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:read');
+  return canPermissionAndFeature('clinical:read', FEATURES.CLINICAL_HISTORY);
 }
 
 export async function countPatientClinicalEntries(patientId: string): Promise<number> {

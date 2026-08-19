@@ -1,6 +1,5 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
   buildPaginatedResult,
@@ -14,8 +13,17 @@ import {
   type PaginatedResult,
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
-import { PermissionError, requirePermission } from '@/lib/permissions';
+import { PermissionError, requirePermission, requirePermissionAndFeature, canPermissionAndFeature } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
+import { FEATURES, planRestrictionResult, canUseFeature } from '@/lib/entitlements';
+import {
+  revalidateAgenda,
+  revalidateClinicalEntry,
+  revalidateConsultation,
+  revalidateConsultationDetail,
+  revalidatePatientHistoria,
+} from '@/lib/cache-revalidate';
+import { CONSULTATION_COLUMNS } from '@/lib/db-columns';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -29,6 +37,8 @@ function isNextRedirect(error: unknown): boolean {
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (isNextRedirect(error)) throw error;
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
@@ -123,7 +133,7 @@ export async function getConsultation(id: string): Promise<ConsultationListRow |
 
   const { data: consultation, error } = await supabase
     .from('consultations')
-    .select('*')
+    .select(CONSULTATION_COLUMNS)
     .eq('id', id)
     .is('deleted_at', null)
     .single();
@@ -174,7 +184,7 @@ export async function startWalkInConsultation(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const session = await requirePermission('clinical:write');
+    const session = await requirePermissionAndFeature('clinical:write', FEATURES.CONSULTATIONS);
     const parsed = consultationStartSchema.safeParse({
       patientId: formData.get('patientId'),
       ownerId: formData.get('ownerId'),
@@ -216,8 +226,7 @@ export async function startWalkInConsultation(
       return { success: false, error: 'No se pudo iniciar la consulta' };
     }
 
-    revalidatePath('/consultas');
-    revalidatePath('/dashboard');
+    revalidateConsultation(data.id);
     redirect(`/consultas/${data.id}`);
   } catch (error) {
     return actionError(error);
@@ -228,7 +237,7 @@ export async function startConsultationFromAppointment(
   appointmentId: string
 ): Promise<ActionResult<{ id: string }>> {
   try {
-    const session = await requirePermission('clinical:write');
+    const session = await requirePermissionAndFeature('clinical:write', FEATURES.CONSULTATIONS);
     const supabase = await createServerClient();
 
     const { data: existing } = await supabase
@@ -284,9 +293,8 @@ export async function startConsultationFromAppointment(
         .eq('id', appointment.id);
     }
 
-    revalidatePath('/consultas');
-    revalidatePath('/agenda');
-    revalidatePath(`/agenda/${appointmentId}`);
+    revalidateConsultation(data.id);
+    revalidateAgenda(appointmentId);
     redirect(`/consultas/${data.id}`);
   } catch (error) {
     return actionError(error);
@@ -299,7 +307,7 @@ export async function saveConsultationDraft(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.CONSULTATIONS);
     const parsed = parseSoapForm(formData);
 
     if (!parsed.success) {
@@ -331,8 +339,7 @@ export async function saveConsultationDraft(
       return { success: false, error: 'No se pudo guardar el borrador' };
     }
 
-    revalidatePath('/consultas');
-    revalidatePath(`/consultas/${consultationId}`);
+    revalidateConsultationDetail(consultationId);
     return { success: true };
   } catch (error) {
     return actionError(error);
@@ -345,7 +352,7 @@ export async function completeConsultationAction(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.CONSULTATIONS);
     const parsed = parseSoapForm(formData);
 
     if (!parsed.success) {
@@ -377,6 +384,12 @@ export async function completeConsultationAction(
       return { success: false, error: 'No se pudo guardar la consulta' };
     }
 
+    const { data: consultationMeta } = await supabase
+      .from('consultations')
+      .select('patient_id, appointment_id')
+      .eq('id', consultationId)
+      .single();
+
     const { data, error } = await supabase.rpc('complete_consultation', {
       p_consultation_id: consultationId,
     });
@@ -387,14 +400,13 @@ export async function completeConsultationAction(
 
     const result = data as { consultation_id?: string; clinical_entry_id?: string } | null;
 
-    revalidatePath('/consultas');
-    revalidatePath(`/consultas/${consultationId}`);
-    revalidatePath('/historia-clinica');
-    revalidatePath('/agenda');
-    revalidatePath('/dashboard');
+    revalidateConsultation(consultationId);
+    revalidateAgenda(consultationMeta?.appointment_id);
 
     if (result?.clinical_entry_id) {
-      revalidatePath(`/historia-clinica/${result.clinical_entry_id}`);
+      revalidateClinicalEntry(result.clinical_entry_id, consultationMeta?.patient_id);
+    } else if (consultationMeta?.patient_id) {
+      revalidatePatientHistoria(consultationMeta.patient_id);
     }
 
     redirect(`/consultas/${consultationId}`);
@@ -405,8 +417,14 @@ export async function completeConsultationAction(
 
 export async function cancelConsultation(consultationId: string): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.CONSULTATIONS);
     const supabase = await createServerClient();
+
+    const { data: consultationMeta } = await supabase
+      .from('consultations')
+      .select('appointment_id')
+      .eq('id', consultationId)
+      .single();
 
     const { error } = await supabase
       .from('consultations')
@@ -418,9 +436,8 @@ export async function cancelConsultation(consultationId: string): Promise<Action
       return { success: false, error: 'No se pudo cancelar la consulta' };
     }
 
-    revalidatePath('/consultas');
-    revalidatePath(`/consultas/${consultationId}`);
-    revalidatePath('/agenda');
+    revalidateConsultation(consultationId);
+    revalidateAgenda(consultationMeta?.appointment_id);
     return { success: true };
   } catch (error) {
     return actionError(error);
@@ -428,22 +445,24 @@ export async function cancelConsultation(consultationId: string): Promise<Action
 }
 
 export async function canManageConsultations(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:write');
+  return canPermissionAndFeature('clinical:write', FEATURES.CONSULTATIONS);
 }
 
 export async function canReadConsultations(): Promise<boolean> {
   const session = await getSessionContext();
   if (!session) return false;
-  return (
-    session.permissions.includes('clinical:read') ||
-    session.permissions.includes('appointments:read')
-  );
+  if (
+    !session.permissions.includes('clinical:read') &&
+    !session.permissions.includes('appointments:read')
+  ) {
+    return false;
+  }
+  return canUseFeature({
+    organizationId: session.organizationId,
+    featureKey: FEATURES.CONSULTATIONS,
+  });
 }
 
 export async function canReadConsultationHistory(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:read');
+  return canPermissionAndFeature('clinical:read', FEATURES.CONSULTATIONS);
 }

@@ -89,6 +89,8 @@ export interface SessionContext {
   permissions: Permission[];
   profile: Profile;
   ownerId: string | null;
+  /** Platform Superadmin (commercial entitlements). Never grant via clinic roles. */
+  isPlatformAdmin: boolean;
 }
 
 export interface PaginatedResult<T> {

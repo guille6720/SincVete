@@ -1,9 +1,10 @@
 import { redirect } from 'next/navigation';
-import { getSessionContext } from '@/actions/auth';
+import { getSessionContext } from '@/lib/session';
 import { countUnreadNotifications } from '@/actions/notifications';
 import { getUserBranches } from '@/actions/settings';
 import { AppShell } from '@/components/layout/app-shell';
-import { createServerClient } from '@/lib/supabase/server';
+import { EntitlementRouteGate } from '@/components/entitlements/entitlement-route-gate';
+import { getClinicCommercialShell } from '@/lib/entitlements';
 
 export default async function ClinicLayout({ children }: { children: React.ReactNode }) {
   const session = await getSessionContext();
@@ -17,17 +18,17 @@ export default async function ClinicLayout({ children }: { children: React.React
     redirect(session.kind === 'portal' ? '/portal' : '/login');
   }
 
-  const branches = await getUserBranches();
-  const activeBranchId = session.branchId;
-  const unreadNotifications = await countUnreadNotifications();
+  // Session, branches, notifications and entitlements are React.cache'd per request.
+  const [branches, unreadNotifications, commercial] = await Promise.all([
+    getUserBranches(),
+    countUnreadNotifications(),
+    getClinicCommercialShell(session.organizationId),
+  ]);
 
-  let branchName = branches.find((b) => b.id === activeBranchId)?.name;
-  if (!branchName && activeBranchId) {
-    const supabase = await createServerClient();
-    const { data } = await supabase.from('branches').select('name').eq('id', activeBranchId).single();
-    branchName = data?.name;
-  }
-  branchName ??= branches.find((b) => b.is_main)?.name ?? branches[0]?.name;
+  const branchName =
+    branches.find((b) => b.id === session.branchId)?.name ??
+    branches.find((b) => b.is_main)?.name ??
+    branches[0]?.name;
 
   return (
     <AppShell
@@ -35,10 +36,13 @@ export default async function ClinicLayout({ children }: { children: React.React
       role={staffRole}
       branchName={branchName}
       branches={branches}
-      activeBranchId={activeBranchId}
+      activeBranchId={session.branchId}
       unreadNotifications={unreadNotifications}
+      isPlatformAdmin={session.isPlatformAdmin}
+      entitledHrefs={commercial.entitledHrefs}
+      billingBanner={commercial.banner}
     >
-      {children}
+      <EntitlementRouteGate entitledHrefs={commercial.entitledHrefs}>{children}</EntitlementRouteGate>
     </AppShell>
   );
 }

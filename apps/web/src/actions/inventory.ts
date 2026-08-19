@@ -15,8 +15,9 @@ import {
   type PaginatedResult,
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
-import { PermissionError, requirePermission } from '@/lib/permissions';
+import { PermissionError, requirePermission, requirePermissionAndFeature, canPermissionAndFeature } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
+import { FEATURES, planRestrictionResult } from '@/lib/entitlements';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -30,6 +31,8 @@ function isNextRedirect(error: unknown): boolean {
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (isNextRedirect(error)) throw error;
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
@@ -168,7 +171,7 @@ export async function createInventoryProduct(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const session = await requirePermission('inventory:write');
+    const session = await requirePermissionAndFeature('inventory:write', FEATURES.INVENTORY);
     const parsed = inventoryProductSchema.safeParse({
       name: formData.get('name'),
       sku: formData.get('sku'),
@@ -248,7 +251,7 @@ export async function updateInventoryProduct(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    await requirePermission('inventory:write');
+    await requirePermissionAndFeature('inventory:write', FEATURES.INVENTORY);
     const parsed = inventoryProductUpdateSchema.safeParse({
       name: formData.get('name'),
       sku: formData.get('sku'),
@@ -307,7 +310,7 @@ export async function recordInventoryMovementAction(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    await requirePermission('inventory:write');
+    await requirePermissionAndFeature('inventory:write', FEATURES.INVENTORY);
     const parsed = inventoryMovementSchema.safeParse({
       movementType: formData.get('movementType'),
       quantity: formData.get('quantity'),
@@ -349,7 +352,7 @@ export async function recordInventoryMovementAction(
 
 export async function softDeleteInventoryProduct(productId: string): Promise<ActionResult> {
   try {
-    await requirePermission('inventory:write');
+    await requirePermissionAndFeature('inventory:write', FEATURES.INVENTORY);
     const supabase = await createServerClient();
 
     const { error } = await supabase
@@ -370,13 +373,9 @@ export async function softDeleteInventoryProduct(productId: string): Promise<Act
 }
 
 export async function canManageInventory(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('inventory:write');
+  return canPermissionAndFeature('inventory:write', FEATURES.INVENTORY);
 }
 
 export async function canReadInventory(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('inventory:read');
+  return canPermissionAndFeature('inventory:read', FEATURES.INVENTORY);
 }

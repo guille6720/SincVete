@@ -32,7 +32,6 @@ export function ConsultationSoapForm({
   const [saveState, saveFormAction, savePending] = useActionState(saveAction, null);
   const [completeState, completeFormAction, completePending] = useActionState(completeAction, null);
 
-  const pending = savePending || completePending;
   const state = completeState ?? saveState;
 
   return (
@@ -131,10 +130,10 @@ export function ConsultationSoapForm({
           )}
 
           <div className="flex flex-wrap gap-2">
-            <Button formAction={saveFormAction} variant="outline" disabled={pending}>
+            <Button formAction={saveFormAction} variant="outline" isPending={savePending} disabled={completePending}>
               {savePending ? 'Guardando...' : 'Guardar borrador'}
             </Button>
-            <Button formAction={completeFormAction} disabled={pending}>
+            <Button formAction={completeFormAction} isPending={completePending} disabled={savePending}>
               {completePending ? 'Completando...' : 'Completar consulta'}
             </Button>
             <Button variant="ghost" asChild>

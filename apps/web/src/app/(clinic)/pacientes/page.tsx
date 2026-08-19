@@ -1,18 +1,18 @@
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
-import { listPatients, canManagePatients, canReadPatients } from '@/actions/patients';
+import { listPatients } from '@/actions/patients';
 import { PatientsList } from '@/components/patients/patients-list';
-import { PATIENT_SPECIES } from '@sincvete/shared';
+import { getSessionContext } from '@/lib/session';
+import { PATIENT_LIST_PAGE_SIZE, PATIENT_SPECIES } from '@sincvete/shared';
 
 interface PacientesPageProps {
   searchParams: Promise<{ page?: string; search?: string; species?: string }>;
 }
 
 export default async function PacientesPage({ searchParams }: PacientesPageProps) {
-  const canRead = await canReadPatients();
-  if (!canRead) redirect('/dashboard');
+  const [session, params] = await Promise.all([getSessionContext(), searchParams]);
+  if (!session?.permissions.includes('patients:read')) redirect('/dashboard');
 
-  const params = await searchParams;
   const page = Math.max(1, Number(params.page) || 1);
   const search = params.search?.trim() ?? '';
   const speciesParam = params.species?.trim() ?? '';
@@ -20,10 +20,12 @@ export default async function PacientesPage({ searchParams }: PacientesPageProps
     ? (speciesParam as (typeof PATIENT_SPECIES)[number])
     : undefined;
 
-  const [data, canWrite] = await Promise.all([
-    listPatients({ page, pageSize: 25, search: search || undefined, species }),
-    canManagePatients(),
-  ]);
+  const data = await listPatients({
+    page,
+    pageSize: PATIENT_LIST_PAGE_SIZE,
+    search: search || undefined,
+    species,
+  });
 
   return (
     <div className="space-y-6">
@@ -35,7 +37,7 @@ export default async function PacientesPage({ searchParams }: PacientesPageProps
       <Suspense fallback={<div className="text-sm text-muted-foreground">Cargando...</div>}>
         <PatientsList
           data={data}
-          canWrite={canWrite}
+          canWrite={session.permissions.includes('patients:write')}
           initialSearch={search}
           initialSpecies={species ?? ''}
         />

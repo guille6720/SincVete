@@ -194,6 +194,15 @@
   }
 }
 
+@keyframes nav-progress {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
 @utility animate-landing-rise {
   animation: landing-rise 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
 }

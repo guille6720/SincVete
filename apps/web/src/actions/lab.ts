@@ -14,8 +14,10 @@ import {
   type PaginatedResult,
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
-import { PermissionError, requirePermission } from '@/lib/permissions';
+import { PermissionError, requirePermission, requirePermissionAndFeature, canPermissionAndFeature } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
+import { LAB_ORDER_COLUMNS, LAB_ORDER_ITEM_COLUMNS } from '@/lib/db-columns';
+import { FEATURES, planRestrictionResult } from '@/lib/entitlements';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -29,6 +31,8 @@ function isNextRedirect(error: unknown): boolean {
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (isNextRedirect(error)) throw error;
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
@@ -105,7 +109,7 @@ export async function getLabOrder(id: string): Promise<{
 
   const { data: order, error } = await supabase
     .from('lab_orders')
-    .select('*')
+    .select(LAB_ORDER_COLUMNS)
     .eq('id', id)
     .is('deleted_at', null)
     .single();
@@ -120,7 +124,7 @@ export async function getLabOrder(id: string): Promise<{
       : Promise.resolve({ data: null }),
     supabase
       .from('lab_order_items')
-      .select('*')
+      .select(LAB_ORDER_ITEM_COLUMNS)
       .eq('lab_order_id', id)
       .is('deleted_at', null)
       .order('sort_order', { ascending: true }),
@@ -146,7 +150,7 @@ export async function createLabOrder(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const session = await requirePermission('clinical:write');
+    const session = await requirePermissionAndFeature('clinical:write', FEATURES.LABORATORY);
     const testsRaw = formData.getAll('tests').map(String).filter(Boolean);
     const customTests = String(formData.get('customTests') ?? '')
       .split('\n')
@@ -217,7 +221,6 @@ export async function createLabOrder(
     }
 
     revalidatePath('/laboratorio');
-    revalidatePath('/dashboard');
     revalidatePath(`/pacientes/${parsed.data.patientId}`);
     redirect(`/laboratorio/${order.id}`);
   } catch (error) {
@@ -227,7 +230,7 @@ export async function createLabOrder(
 
 export async function startLabOrder(orderId: string): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.LABORATORY);
     const supabase = await createServerClient();
 
     const { error } = await supabase
@@ -245,7 +248,6 @@ export async function startLabOrder(orderId: string): Promise<ActionResult> {
 
     revalidatePath('/laboratorio');
     revalidatePath(`/laboratorio/${orderId}`);
-    revalidatePath('/dashboard');
     return { success: true };
   } catch (error) {
     return actionError(error);
@@ -258,7 +260,7 @@ export async function saveLabResults(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.LABORATORY);
 
     const itemIds = formData.getAll('itemId').map(String);
     const items = itemIds.map((id, index) => ({
@@ -347,11 +349,10 @@ export async function completeLabOrderAction(
 
     revalidatePath('/laboratorio');
     revalidatePath(`/laboratorio/${orderId}`);
-    revalidatePath('/historia-clinica');
-    revalidatePath('/dashboard');
 
     if (result?.clinical_entry_id) {
       revalidatePath(`/historia-clinica/${result.clinical_entry_id}`);
+      revalidatePath('/historia-clinica');
     }
 
     redirect(`/laboratorio/${orderId}`);
@@ -362,7 +363,7 @@ export async function completeLabOrderAction(
 
 export async function cancelLabOrder(orderId: string): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.LABORATORY);
     const supabase = await createServerClient();
 
     const { error } = await supabase
@@ -377,7 +378,6 @@ export async function cancelLabOrder(orderId: string): Promise<ActionResult> {
 
     revalidatePath('/laboratorio');
     revalidatePath(`/laboratorio/${orderId}`);
-    revalidatePath('/dashboard');
     return { success: true };
   } catch (error) {
     return actionError(error);
@@ -385,13 +385,9 @@ export async function cancelLabOrder(orderId: string): Promise<ActionResult> {
 }
 
 export async function canManageLab(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:write');
+  return canPermissionAndFeature('clinical:write', FEATURES.LABORATORY);
 }
 
 export async function canReadLab(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:read');
+  return canPermissionAndFeature('clinical:read', FEATURES.LABORATORY);
 }

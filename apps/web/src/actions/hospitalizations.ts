@@ -16,8 +16,10 @@ import {
   type PaginatedResult,
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
-import { PermissionError, requirePermission } from '@/lib/permissions';
+import { PermissionError, requirePermission, requirePermissionAndFeature, canPermissionAndFeature } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
+import { HOSPITALIZATION_COLUMNS, HOSPITALIZATION_NOTE_COLUMNS } from '@/lib/db-columns';
+import { FEATURES, planRestrictionResult } from '@/lib/entitlements';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -31,6 +33,8 @@ function isNextRedirect(error: unknown): boolean {
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (isNextRedirect(error)) throw error;
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
@@ -120,7 +124,7 @@ export async function getHospitalization(id: string): Promise<{
 
   const { data: stay, error } = await supabase
     .from('hospitalizations')
-    .select('*')
+    .select(HOSPITALIZATION_COLUMNS)
     .eq('id', id)
     .is('deleted_at', null)
     .single();
@@ -135,7 +139,7 @@ export async function getHospitalization(id: string): Promise<{
       : Promise.resolve({ data: null }),
     supabase
       .from('hospitalization_notes')
-      .select('*')
+      .select(HOSPITALIZATION_NOTE_COLUMNS)
       .eq('hospitalization_id', id)
       .is('deleted_at', null)
       .order('recorded_at', { ascending: false }),
@@ -196,7 +200,7 @@ export async function admitHospitalization(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const session = await requirePermission('clinical:write');
+    const session = await requirePermissionAndFeature('clinical:write', FEATURES.HOSPITALIZATION);
     const parsed = hospitalizationAdmitSchema.safeParse({
       patientId: formData.get('patientId'),
       ownerId: formData.get('ownerId'),
@@ -251,7 +255,6 @@ export async function admitHospitalization(
     }
 
     revalidatePath('/internacion');
-    revalidatePath('/dashboard');
     revalidatePath(`/pacientes/${parsed.data.patientId}`);
     redirect(`/internacion/${data.id}`);
   } catch (error) {
@@ -265,7 +268,7 @@ export async function updateHospitalization(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.HOSPITALIZATION);
     const parsed = hospitalizationUpdateSchema.safeParse({
       status: formData.get('status'),
       cage: formData.get('cage'),
@@ -303,7 +306,6 @@ export async function updateHospitalization(
 
     revalidatePath('/internacion');
     revalidatePath(`/internacion/${hospitalizationId}`);
-    revalidatePath('/dashboard');
     return { success: true };
   } catch (error) {
     return actionError(error);
@@ -316,7 +318,7 @@ export async function addHospitalizationNote(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const session = await requirePermission('clinical:write');
+    const session = await requirePermissionAndFeature('clinical:write', FEATURES.HOSPITALIZATION);
     const parsed = hospitalizationNoteSchema.safeParse({
       noteType: formData.get('noteType') || 'evolucion',
       content: formData.get('content'),
@@ -372,7 +374,7 @@ export async function dischargeHospitalizationAction(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    await requirePermission('clinical:write');
+    await requirePermissionAndFeature('clinical:write', FEATURES.HOSPITALIZATION);
     const parsed = hospitalizationDischargeSchema.safeParse({
       outcome: formData.get('outcome'),
       summary: formData.get('summary'),
@@ -387,6 +389,12 @@ export async function dischargeHospitalizationAction(
     }
 
     const supabase = await createServerClient();
+    const { data: stay } = await supabase
+      .from('hospitalizations')
+      .select('patient_id')
+      .eq('id', hospitalizationId)
+      .single();
+
     const { data, error } = await supabase.rpc('discharge_hospitalization', {
       p_hospitalization_id: hospitalizationId,
       p_outcome: parsed.data.outcome,
@@ -401,12 +409,14 @@ export async function dischargeHospitalizationAction(
 
     revalidatePath('/internacion');
     revalidatePath(`/internacion/${hospitalizationId}`);
-    revalidatePath('/historia-clinica');
-    revalidatePath('/dashboard');
-    revalidatePath('/pacientes');
+    if (stay?.patient_id) {
+      revalidatePath(`/pacientes/${stay.patient_id}`);
+      revalidatePath(`/pacientes/${stay.patient_id}/historia`);
+    }
 
     if (result?.clinical_entry_id) {
       revalidatePath(`/historia-clinica/${result.clinical_entry_id}`);
+      revalidatePath('/historia-clinica');
     }
 
     redirect(`/internacion/${hospitalizationId}`);
@@ -416,13 +426,9 @@ export async function dischargeHospitalizationAction(
 }
 
 export async function canManageHospitalizations(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:write');
+  return canPermissionAndFeature('clinical:write', FEATURES.HOSPITALIZATION);
 }
 
 export async function canReadHospitalizations(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:read');
+  return canPermissionAndFeature('clinical:read', FEATURES.HOSPITALIZATION);
 }

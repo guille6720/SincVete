@@ -10,8 +10,9 @@ import {
   type PaginatedResult,
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
-import { PermissionError, requirePermission } from '@/lib/permissions';
-import { getSessionContext } from '@/actions/auth';
+import { PermissionError, requirePermission, requirePermissionAndFeature, canPermissionAndFeature } from '@/lib/permissions';
+import { OWNER_COLUMNS } from '@/lib/db-columns';
+import { FEATURES, planRestrictionResult } from '@/lib/entitlements';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -25,6 +26,8 @@ function isNextRedirect(error: unknown): boolean {
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (isNextRedirect(error)) throw error;
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
@@ -87,7 +90,7 @@ export async function getOwner(id: string): Promise<Owner | null> {
 
   const { data, error } = await supabase
     .from('owners')
-    .select('*')
+    .select(OWNER_COLUMNS)
     .eq('id', id)
     .is('deleted_at', null)
     .single();
@@ -101,7 +104,7 @@ export async function createOwner(
   formData: FormData
 ): Promise<ActionResult<{ id: string }>> {
   try {
-    const session = await requirePermission('patients:write');
+    const session = await requirePermissionAndFeature('patients:write', FEATURES.OWNERS);
     const parsed = parseOwnerForm(formData);
 
     if (!parsed.success) {
@@ -152,7 +155,7 @@ export async function updateOwner(
   formData: FormData
 ): Promise<ActionResult<{ id: string }>> {
   try {
-    await requirePermission('patients:write');
+    await requirePermissionAndFeature('patients:write', FEATURES.OWNERS);
     const parsed = parseOwnerForm(formData);
 
     if (!parsed.success) {
@@ -197,7 +200,7 @@ export async function updateOwner(
 
 export async function deleteOwner(ownerId: string): Promise<ActionResult> {
   try {
-    await requirePermission('patients:write');
+    await requirePermissionAndFeature('patients:write', FEATURES.OWNERS);
     const supabase = await createServerClient();
 
     const { error } = await supabase
@@ -217,15 +220,11 @@ export async function deleteOwner(ownerId: string): Promise<ActionResult> {
 }
 
 export async function canManageOwners(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('patients:write');
+  return canPermissionAndFeature('patients:write', FEATURES.OWNERS);
 }
 
 export async function canReadOwners(): Promise<boolean> {
-  const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('patients:read');
+  return canPermissionAndFeature('patients:read', FEATURES.OWNERS);
 }
 
 export async function searchOwnersForSelect(

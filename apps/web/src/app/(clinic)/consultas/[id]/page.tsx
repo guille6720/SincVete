@@ -43,11 +43,13 @@ export default async function ConsultaDetailPage({ params }: ConsultaPageProps) 
           </Link>
         </Button>
         <ConsultationSoapForm consultation={consultation} canWriteBilling={canWriteBilling} />
-        <ClinicalAiSoapPanel
-          consultationId={consultation.id}
-          patientId={consultation.patient_id}
-          configured={aiStatus.configured && aiStatus.canGenerate}
-        />
+        {aiStatus.soapEntitled ? (
+          <ClinicalAiSoapPanel
+            consultationId={consultation.id}
+            patientId={consultation.patient_id}
+            configured={aiStatus.configured && aiStatus.canGenerate}
+          />
+        ) : null}
       </div>
     );
   }

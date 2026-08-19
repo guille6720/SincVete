@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { APP_NAME } from '@sincvete/shared';
-import { BrandLogo } from '@/components/brand/sincvete-logo';
+import { BrandLogo } from '@/components/brand/syncvete-logo';
 
 export function MarketingFooter() {
   return (
@@ -28,6 +28,11 @@ export function MarketingFooter() {
               <li>
                 <Link href="/#planes" className="hover:text-white">
                   Planes
+                </Link>
+              </li>
+              <li>
+                <Link href="/#extras" className="hover:text-white">
+                  Extras
                 </Link>
               </li>
               <li>

@@ -15,6 +15,7 @@ import {
   Scissors,
   Search,
   Settings,
+  Shield,
   Stethoscope,
   Syringe,
   Users,
@@ -28,8 +29,9 @@ import {
   ScrollText,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useTransition } from 'react';
 import { cn } from '@/lib/utils';
+import { isClinicPathEntitled } from '@sincvete/shared';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, keywords: 'inicio home' },
@@ -80,16 +82,39 @@ const QUICK_ACTIONS = [
   { label: 'IA clínica', href: '/ia-clinica', keywords: 'resumen soap indicaciones inteligencia' },
 ] as const;
 
-export function CommandPalette() {
+const PREFETCH_ON_OPEN = [
+  '/dashboard',
+  '/agenda',
+  '/pacientes',
+  '/historia-clinica',
+  '/consultas',
+  '/farmacia',
+  '/pacientes/nuevo',
+  '/agenda/nueva',
+  '/farmacia/nueva',
+  '/consultas/nueva',
+  '/historia-clinica/nuevo',
+] as const;
+
+export function CommandPalette({
+  entitledHrefs = null,
+  isPlatformAdmin = false,
+}: {
+  entitledHrefs?: string[] | null;
+  isPlatformAdmin?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
+  const [, startTransition] = useTransition();
 
   const navigate = useCallback(
     (href: string) => {
       setOpen(false);
-      router.push(href);
+      startTransition(() => {
+        router.push(href);
+      });
     },
-    [router]
+    [router, startTransition]
   );
 
   useEffect(() => {
@@ -103,6 +128,13 @@ export function CommandPalette() {
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    for (const href of PREFETCH_ON_OPEN) {
+      router.prefetch(href);
+    }
+  }, [open, router]);
 
   if (!open) return null;
 
@@ -134,7 +166,7 @@ export function CommandPalette() {
             </Command.Empty>
 
             <Command.Group heading="Navegación" className="px-1 py-1.5 text-xs font-medium text-muted-foreground">
-              {NAV_ITEMS.map((item) => (
+              {NAV_ITEMS.filter((item) => isClinicPathEntitled(item.href, entitledHrefs)).map((item) => (
                 <Command.Item
                   key={item.href}
                   value={`${item.label} ${item.keywords}`}
@@ -148,10 +180,23 @@ export function CommandPalette() {
                   {item.label}
                 </Command.Item>
               ))}
+              {isPlatformAdmin ? (
+                <Command.Item
+                  value="Guía Superadmin manual permisos habilitar clinica"
+                  onSelect={() => navigate('/configuracion?tab=guia-superadmin')}
+                  className={cn(
+                    'flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm',
+                    'aria-selected:bg-accent aria-selected:text-accent-foreground'
+                  )}
+                >
+                  <Shield className="h-4 w-4" />
+                  Guía Superadmin
+                </Command.Item>
+              ) : null}
             </Command.Group>
 
             <Command.Group heading="Acciones rápidas" className="px-1 py-1.5 text-xs font-medium text-muted-foreground">
-              {QUICK_ACTIONS.map((item) => (
+              {QUICK_ACTIONS.filter((item) => isClinicPathEntitled(item.href, entitledHrefs)).map((item) => (
                 <Command.Item
                   key={item.href}
                   value={`${item.label} ${item.keywords}`}

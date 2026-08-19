@@ -24,9 +24,11 @@ import {
   Zap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { isClinicPathEntitled } from '@sincvete/shared';
 
 interface DashboardQuickActionsProps {
   canWritePatients: boolean;
+  entitledHrefs?: string[] | null;
 }
 
 const ACTIONS: Array<{
@@ -37,6 +39,20 @@ const ACTIONS: Array<{
   tone: string;
 }> = [
   {
+    label: 'Ver agenda',
+    href: '/agenda',
+    icon: Calendar,
+    requiresWrite: false,
+    tone: 'bg-indigo-100 text-indigo-800 ring-indigo-200 hover:bg-indigo-200/80',
+  },
+  {
+    label: 'Nueva consulta',
+    href: '/consultas/nueva',
+    icon: Stethoscope,
+    requiresWrite: false,
+    tone: 'bg-emerald-100 text-emerald-800 ring-emerald-200 hover:bg-emerald-200/80',
+  },
+  {
     label: 'Nuevo paciente',
     href: '/pacientes/nuevo',
     icon: PawPrint,
@@ -44,18 +60,11 @@ const ACTIONS: Array<{
     tone: 'bg-teal-100 text-teal-800 ring-teal-200 hover:bg-teal-200/80',
   },
   {
-    label: 'Nuevo propietario',
-    href: '/propietarios/nuevo',
-    icon: UserPlus,
-    requiresWrite: true,
-    tone: 'bg-sky-100 text-sky-800 ring-sky-200 hover:bg-sky-200/80',
-  },
-  {
-    label: 'Ver agenda',
-    href: '/agenda',
-    icon: Calendar,
+    label: 'Nueva receta',
+    href: '/farmacia/nueva',
+    icon: Pill,
     requiresWrite: false,
-    tone: 'bg-indigo-100 text-indigo-800 ring-indigo-200 hover:bg-indigo-200/80',
+    tone: 'bg-sky-100 text-sky-800 ring-sky-200 hover:bg-sky-200/80',
   },
   {
     label: 'Nueva entrada clínica',
@@ -65,11 +74,11 @@ const ACTIONS: Array<{
     tone: 'bg-cyan-100 text-cyan-800 ring-cyan-200 hover:bg-cyan-200/80',
   },
   {
-    label: 'Nueva consulta',
-    href: '/consultas/nueva',
-    icon: Stethoscope,
-    requiresWrite: false,
-    tone: 'bg-emerald-100 text-emerald-800 ring-emerald-200 hover:bg-emerald-200/80',
+    label: 'Nuevo propietario',
+    href: '/propietarios/nuevo',
+    icon: UserPlus,
+    requiresWrite: true,
+    tone: 'bg-sky-100 text-sky-800 ring-sky-200 hover:bg-sky-200/80',
   },
   {
     label: 'Admitir internación',
@@ -105,13 +114,6 @@ const ACTIONS: Array<{
     icon: Package,
     requiresWrite: false,
     tone: 'bg-slate-100 text-slate-800 ring-slate-200 hover:bg-slate-200/80',
-  },
-  {
-    label: 'Nueva receta',
-    href: '/farmacia/nueva',
-    icon: Pill,
-    requiresWrite: false,
-    tone: 'bg-sky-100 text-sky-800 ring-sky-200 hover:bg-sky-200/80',
   },
   {
     label: 'Subir imagen',
@@ -185,9 +187,14 @@ const ACTIONS: Array<{
   },
 ];
 
-export function DashboardQuickActions({ canWritePatients }: DashboardQuickActionsProps) {
+export function DashboardQuickActions({
+  canWritePatients,
+  entitledHrefs = null,
+}: DashboardQuickActionsProps) {
   const visibleActions = ACTIONS.filter(
-    (action) => !action.requiresWrite || canWritePatients
+    (action) =>
+      (!action.requiresWrite || canWritePatients) &&
+      isClinicPathEntitled(action.href, entitledHrefs)
   );
 
   return (

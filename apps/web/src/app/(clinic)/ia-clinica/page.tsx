@@ -7,8 +7,12 @@ import {
 } from '@/actions/clinical-ai';
 import { ClinicalAiGenerateForm } from '@/components/clinical-ai/clinical-ai-generate-form';
 import { ClinicalAiHistory } from '@/components/clinical-ai/clinical-ai-history';
+import { FeatureUnavailableNotice } from '@/components/entitlements/feature-gate';
+import { getMeteredUsageMeters } from '@/lib/entitlements';
+import { getSessionContext } from '@/lib/session';
 import {
   CLINICAL_AI_KINDS,
+  FEATURES,
   type ClinicalAiKind,
 } from '@sincvete/shared';
 
@@ -34,7 +38,7 @@ export default async function IaClinicaPage({ searchParams }: IaClinicaPageProps
     : undefined;
   const patientId = params.patientId?.trim() || undefined;
 
-  const [status, history, patient] = await Promise.all([
+  const [status, history, patient, session] = await Promise.all([
     getClinicalAiStatus(),
     listClinicalAiSuggestions({
       page,
@@ -43,7 +47,13 @@ export default async function IaClinicaPage({ searchParams }: IaClinicaPageProps
       kind,
     }),
     patientId ? getPatient(patientId).catch(() => null) : Promise.resolve(null),
+    getSessionContext(),
   ]);
+  const usage = session
+    ? (await getMeteredUsageMeters(session.organizationId)).find(
+        (meter) => meter.featureKey === FEATURES.AI_MONTHLY_REQUESTS
+      )
+    : null;
 
   return (
     <div className="space-y-8">
@@ -54,16 +64,24 @@ export default async function IaClinicaPage({ searchParams }: IaClinicaPageProps
         </p>
       </div>
 
-      <ClinicalAiGenerateForm
-        defaultPatientId={patient?.id}
-        defaultPatientName={patient?.name}
-        defaultOwnerId={patient?.owner_id}
-        defaultKind={kind ?? 'patient_summary'}
-        consultationId={params.consultationId?.trim() || undefined}
-        clinicalEntryId={params.clinicalEntryId?.trim() || undefined}
-        configured={status.configured}
-        canGenerate={status.canGenerate}
-      />
+      {!status.entitled ? (
+        <FeatureUnavailableNotice
+          title="IA clínica no incluida"
+          description="Esta función forma parte de planes superiores. Contactá a SyncVete para habilitarla."
+        />
+      ) : (
+        <ClinicalAiGenerateForm
+          defaultPatientId={patient?.id}
+          defaultPatientName={patient?.name}
+          defaultOwnerId={patient?.owner_id}
+          defaultKind={kind ?? 'patient_summary'}
+          consultationId={params.consultationId?.trim() || undefined}
+          clinicalEntryId={params.clinicalEntryId?.trim() || undefined}
+          configured={status.configured}
+          canGenerate={status.canGenerate}
+          usage={usage}
+        />
+      )}
 
       <ClinicalAiHistory data={history} />
     </div>

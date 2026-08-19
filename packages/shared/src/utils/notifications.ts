@@ -10,6 +10,7 @@ const KIND_HREF: Record<NotificationKind, (id: string) => string> = {
   internacion: (id) => `/internacion/${id}`,
   factura: (id) => `/facturacion/${id}`,
   receta: (id) => `/farmacia/${id}`,
+  plan: () => '/configuracion?tab=plan',
 };
 
 export function isNotificationKind(value: string): value is NotificationKind {

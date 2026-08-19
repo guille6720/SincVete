@@ -13,7 +13,10 @@ import {
   CLINICAL_AI_DISCLAIMER,
   CLINICAL_AI_KINDS,
   CLINICAL_AI_KIND_LABELS,
+  formatMeteredUsage,
+  isQuotaNearLimit,
   type ClinicalAiKind,
+  type MeteredUsageMeter,
 } from '@sincvete/shared';
 
 interface ClinicalAiGenerateFormProps {
@@ -26,6 +29,7 @@ interface ClinicalAiGenerateFormProps {
   clinicalEntryId?: string;
   configured: boolean;
   canGenerate: boolean;
+  usage?: MeteredUsageMeter | null;
 }
 
 export function ClinicalAiGenerateForm({
@@ -38,6 +42,7 @@ export function ClinicalAiGenerateForm({
   clinicalEntryId,
   configured,
   canGenerate,
+  usage = null,
 }: ClinicalAiGenerateFormProps) {
   const [state, formAction, pending] = useActionState(generateClinicalAi, null);
 
@@ -86,6 +91,11 @@ export function ClinicalAiGenerateForm({
               placeholder="Hallazgos extra, duda clínica, tono para el tutor..."
             />
           </div>
+          {usage ? (
+            <p className={isQuotaNearLimit(usage) ? 'text-sm text-amber-700' : 'text-sm text-muted-foreground'}>
+              Uso del mes: {formatMeteredUsage(usage)}
+            </p>
+          ) : null}
           {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
           <Button type="submit" disabled={pending || !canGenerate || !configured}>
             {pending ? 'Generando...' : 'Generar sugerencia'}

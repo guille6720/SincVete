@@ -184,7 +184,7 @@ export function ClinicalEntryForm({
           )}
 
           <div className="flex gap-2">
-            <Button type="submit" disabled={pending}>
+            <Button type="submit" isPending={pending}>
               {pending ? 'Guardando...' : entry ? 'Guardar cambios' : 'Registrar entrada'}
             </Button>
             <Button variant="outline" asChild>

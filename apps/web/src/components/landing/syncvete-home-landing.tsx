@@ -1,10 +1,11 @@
 import { ArrowRight, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
-import { APP_NAME } from '@sincvete/shared';
+import { APP_NAME, type PublicAddonCatalogItem, type PublicPlanCatalogItem } from '@sincvete/shared';
 import { Button } from '@/components/ui/button';
-import { BrandLogo } from '@/components/brand/sincvete-logo';
+import { BrandLogo } from '@/components/brand/syncvete-logo';
 import { MarketingFooter } from '@/components/landing/marketing-footer';
 import { MarketingHeader } from '@/components/landing/marketing-header';
+import { AddonsPricingSection } from '@/components/landing/addons-pricing-section';
 import { PlansPricingSection } from '@/components/landing/plans-pricing-section';
 import { MarketingHeroVisual, LandingPhotoStrip, LandingClinicScene, LandingCtaBackdrop } from '@/components/landing/marketing-ui-mocks';
 
@@ -53,11 +54,15 @@ const MODULES = [
 const FAQ = [
   {
     q: '¿Puedo probar antes de suscribirme?',
-    a: 'Sí. Al registrarte tenés 10 días gratis con la clínica completa. Sin tarjeta.',
+    a: 'Sí. Al registrarte tu clínica arranca en trial, sin tarjeta. Después elegís Basic, Pro, Premium o Enterprise desde Configuración.',
   },
   {
-    q: '¿Qué incluye el plan Clínica?',
-    a: 'Hasta 10 profesionales, farmacia, inventario, facturación, caja, laboratorio, internación, cirugías, IA clínica y multi-sucursal.',
+    q: '¿Qué incluye cada plan?',
+    a: 'Basic cubre la operación diaria. Pro suma internación, laboratorio, farmacia, facturación y portal. Premium agrega IA, WhatsApp e imágenes. Enterprise es a medida.',
+  },
+  {
+    q: '¿Puedo sumar IA o WhatsApp sin cambiar de plan?',
+    a: 'Sí. Después de registrar la clínica, desde Configuración → Plan podés comprar extras sobre Basic o Pro. Premium ya los incluye.',
   },
   {
     q: '¿Los tutores ven datos de otros pacientes?',
@@ -69,7 +74,13 @@ const FAQ = [
   },
 ] as const;
 
-export function SincVeteHomeLanding() {
+export function SyncVeteHomeLanding({
+  plans,
+  addons,
+}: {
+  plans?: PublicPlanCatalogItem[];
+  addons?: PublicAddonCatalogItem[];
+}) {
   return (
     <div className="landing-root min-h-screen bg-[var(--land-bg)] text-[var(--land-ink)]">
       <MarketingHeader />
@@ -95,7 +106,7 @@ export function SincVeteHomeLanding() {
                 asChild
               >
                 <Link href="/register">
-                  Empezar 10 días gratis
+                  Empezar trial gratis
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </Button>
@@ -126,7 +137,7 @@ export function SincVeteHomeLanding() {
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <div className="max-w-2xl">
             <p className="text-sm font-medium tracking-wide text-[var(--land-accent)]">
-              Por qué SincVete
+              Por qué {APP_NAME}
             </p>
             <h2 className="mt-3 font-display text-3xl font-semibold tracking-tight md:text-4xl">
               Menos herramientas. Más clínica.
@@ -193,7 +204,8 @@ export function SincVeteHomeLanding() {
         </div>
       </section>
 
-      <PlansPricingSection />
+      <PlansPricingSection plans={plans} />
+      <AddonsPricingSection addons={addons} />
 
       {/* FAQ */}
       <section id="faq" className="scroll-mt-24 border-t border-[var(--land-line)] py-20 md:py-28">
@@ -228,7 +240,7 @@ export function SincVeteHomeLanding() {
             Empezá a operar con {APP_NAME} hoy
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-white/75">
-            Creá tu clínica en minutos. 10 días gratis. Después elegís Esencial o Clínica.
+            Creá tu clínica en minutos, sin tarjeta. Después elegís Basic, Pro, Premium o Enterprise.
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Button

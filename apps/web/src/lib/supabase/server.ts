@@ -1,8 +1,10 @@
 import { createServerClient as createSupabaseServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { cache } from 'react';
 import type { Database } from '@sincvete/db';
 
-export async function createServerClient() {
+/** One Supabase server client per request (cookies are request-scoped). */
+export const createServerClient = cache(async () => {
   const cookieStore = await cookies();
 
   return createSupabaseServerClient<Database>(
@@ -25,7 +27,7 @@ export async function createServerClient() {
       },
     }
   );
-}
+});
 
 export async function createServiceClient() {
   const { createClient } = await import('@supabase/supabase-js');

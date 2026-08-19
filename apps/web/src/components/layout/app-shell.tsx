@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   BedDouble,
   BarChart3,
@@ -28,18 +28,20 @@ import {
   Images,
   Inbox,
   ScrollText,
+  Shield,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { signOut } from '@/actions/auth';
 import { BranchSelector } from '@/components/layout/branch-selector';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { APP_NAME, ROLE_LABELS, type Role } from '@sincvete/shared';
-import { BrandLogo } from '@/components/brand/sincvete-logo';
+import { APP_NAME, ROLE_LABELS, formatMeteredUsage, isClinicPathEntitled, type Role } from '@sincvete/shared';
+import { BrandLogo } from '@/components/brand/syncvete-logo';
 import { ThemeControls } from '@/components/theme/theme-controls';
 import { AppUpdateBanner } from '@/components/layout/app-update-banner';
 import { CommandPalette, CommandPaletteTrigger } from './command-palette';
 import { NotificationBell } from '@/components/notifications/notification-bell';
+import type { ClinicCommercialBanner } from '@/lib/entitlements';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -66,6 +68,26 @@ const NAV_ITEMS = [
   { label: 'Configuración', href: '/configuracion', icon: Settings },
 ] as const;
 
+/** Critical clinical modules — prefetch on shell mount for snappier sidebar nav. */
+const PREFETCH_HREFS = [
+  '/dashboard',
+  '/agenda',
+  '/pacientes',
+  '/historia-clinica',
+  '/consultas',
+  '/farmacia',
+] as const;
+
+function quotaUsageText(banner: ClinicCommercialBanner): string {
+  if (banner.quotaUsed == null || banner.quotaLimit == null) return '';
+  return ` (${formatMeteredUsage({
+    featureKey: banner.quotaFeatureKey ?? '',
+    label: banner.quotaLabel ?? '',
+    used: banner.quotaUsed,
+    limit: banner.quotaLimit,
+  })})`;
+}
+
 interface AppShellProps {
   children: React.ReactNode;
   userName: string;
@@ -74,6 +96,9 @@ interface AppShellProps {
   branches?: Array<{ id: string; name: string; is_active: boolean }>;
   activeBranchId?: string | null;
   unreadNotifications?: number;
+  isPlatformAdmin?: boolean;
+  entitledHrefs?: string[] | null;
+  billingBanner?: ClinicCommercialBanner | null;
 }
 
 export function AppShell({
@@ -84,14 +109,44 @@ export function AppShell({
   branches = [],
   activeBranchId,
   unreadNotifications = 0,
+  isPlatformAdmin = false,
+  entitledHrefs = null,
+  billingBanner = null,
 }: AppShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPendingHref(null);
+  }, [pathname]);
+
+  useEffect(() => {
+    for (const href of PREFETCH_HREFS) {
+      if (isClinicPathEntitled(href, entitledHrefs)) {
+        router.prefetch(href);
+      }
+    }
+  }, [router, entitledHrefs]);
 
   return (
     <div className="flex min-h-screen" style={{ background: 'var(--shell-bg)' }}>
       <AppUpdateBanner />
-      <CommandPalette />
+      <CommandPalette entitledHrefs={entitledHrefs} isPlatformAdmin={isPlatformAdmin} />
+
+      {pendingHref ? (
+        <div
+          className="pointer-events-none fixed inset-x-0 top-0 z-[60] h-0.5 overflow-hidden"
+          style={{ backgroundColor: 'var(--clinic-muted)' }}
+          aria-hidden
+        >
+          <div
+            className="h-full w-1/3 animate-[nav-progress_1s_ease-in-out_infinite]"
+            style={{ backgroundColor: 'var(--clinic)' }}
+          />
+        </div>
+      ) : null}
 
       {/* Mobile overlay */}
       {sidebarOpen && (
@@ -163,18 +218,26 @@ export function AppShell({
         )}
 
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.filter((item) => isClinicPathEntitled(item.href, entitledHrefs)).map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const isPending = pendingHref === item.href;
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                onClick={() => setSidebarOpen(false)}
+                prefetch
+                onClick={() => {
+                  if (!isActive) setPendingHref(item.href);
+                  setSidebarOpen(false);
+                }}
+                aria-current={isActive ? 'page' : undefined}
+                aria-busy={isPending || undefined}
                 className={cn(
                   'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
                   isActive
                     ? 'bg-[var(--clinic)] text-white shadow-sm shadow-[color-mix(in_oklab,var(--clinic)_25%,transparent)]'
-                    : 'text-[var(--shell-text)] hover:bg-[var(--clinic-soft)] hover:text-[var(--clinic)]'
+                    : 'text-[var(--shell-text)] hover:bg-[var(--clinic-soft)] hover:text-[var(--clinic)]',
+                  isPending && !isActive && 'bg-[var(--clinic-soft)] text-[var(--clinic)]'
                 )}
               >
                 <span
@@ -191,6 +254,24 @@ export function AppShell({
               </Link>
             );
           })}
+          {isPlatformAdmin ? (
+            <Link
+              href="/superadmin"
+              prefetch
+              onClick={() => setSidebarOpen(false)}
+              className={cn(
+                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+                pathname.startsWith('/superadmin')
+                  ? 'bg-[var(--clinic)] text-white shadow-sm'
+                  : 'text-[var(--shell-text)] hover:bg-[var(--clinic-soft)] hover:text-[var(--clinic)]'
+              )}
+            >
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[var(--clinic-soft)] text-[var(--clinic)]">
+                <Shield className="h-4 w-4" />
+              </span>
+              Superadmin
+            </Link>
+          ) : null}
         </nav>
 
         <div className="border-t p-3" style={{ borderColor: 'var(--shell-border)' }}>
@@ -236,7 +317,88 @@ export function AppShell({
           </div>
         </header>
 
-        <main className="flex-1 p-4 md:p-6">{children}</main>
+        <main className="flex-1 p-4 md:p-6">
+          {billingBanner ? (
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-50">
+              {billingBanner.kind === 'trial' ? (
+                <p>
+                  Estás en trial{billingBanner.planName ? ` (${billingBanner.planName})` : ''}.
+                  {billingBanner.trialEndsAt
+                    ? ` Vence el ${new Date(billingBanner.trialEndsAt).toLocaleDateString('es-AR')}.`
+                    : ''}{' '}
+                  <Link href="/configuracion?tab=plan" className="font-medium underline underline-offset-4">
+                    Elegí un plan
+                  </Link>
+                </p>
+              ) : billingBanner.kind === 'past_due' ? (
+                <p>
+                  Hay un pago pendiente{billingBanner.planName ? ` de ${billingBanner.planName}` : ''}. La
+                  clínica sigue operativa.{' '}
+                  <Link href="/configuracion?tab=plan" className="font-medium underline underline-offset-4">
+                    Actualizar plan
+                  </Link>
+                </p>
+              ) : billingBanner.kind === 'checkout_pending' ? (
+                <p>
+                  Estamos confirmando tu pago. No inicies otro hasta que se acredite.{' '}
+                  <Link href="/configuracion?tab=plan" className="font-medium underline underline-offset-4">
+                    Ver plan
+                  </Link>
+                </p>
+              ) : billingBanner.kind === 'plan_ending' ? (
+                <p>
+                  Tu plan{billingBanner.planName ? ` ${billingBanner.planName}` : ''} vence
+                  {billingBanner.endsAt
+                    ? ` el ${new Date(billingBanner.endsAt).toLocaleDateString('es-AR')}`
+                    : ' pronto'}
+                  . Renovalo para no perder el acceso.{' '}
+                  <Link href="/configuracion?tab=plan" className="font-medium underline underline-offset-4">
+                    Renovar plan
+                  </Link>
+                </p>
+              ) : billingBanner.kind === 'addon_ending' ? (
+                <p>
+                  El extra{billingBanner.addonName ? ` ${billingBanner.addonName}` : ''} vence
+                  {billingBanner.endsAt
+                    ? ` el ${new Date(billingBanner.endsAt).toLocaleDateString('es-AR')}`
+                    : ' pronto'}
+                  . Renovalo para no perder el módulo.{' '}
+                  <Link href="/configuracion?tab=plan" className="font-medium underline underline-offset-4">
+                    Renovar extra
+                  </Link>
+                </p>
+              ) : billingBanner.kind === 'quota_over' ? (
+                <p>
+                  Superaste el cupo
+                  {billingBanner.quotaLabel ? ` de ${billingBanner.quotaLabel}` : ''}
+                  {quotaUsageText(billingBanner)}. Subí de plan o reducí el uso.{' '}
+                  <Link href="/configuracion?tab=plan" className="font-medium underline underline-offset-4">
+                    Ver plan
+                  </Link>
+                </p>
+              ) : billingBanner.kind === 'quota_near' ? (
+                <p>
+                  El cupo
+                  {billingBanner.quotaLabel ? ` de ${billingBanner.quotaLabel}` : ''} está cerca del
+                  límite
+                  {quotaUsageText(billingBanner)}.{' '}
+                  <Link href="/configuracion?tab=plan" className="font-medium underline underline-offset-4">
+                    Ver plan
+                  </Link>
+                </p>
+              ) : (
+                <p>
+                  Tu plan venció{billingBanner.planName ? ` (${billingBanner.planName})` : ''}. Elegí uno
+                  para seguir usando los módulos.{' '}
+                  <Link href="/configuracion?tab=plan" className="font-medium underline underline-offset-4">
+                    Ver planes
+                  </Link>
+                </p>
+              )}
+            </div>
+          ) : null}
+          {children}
+        </main>
       </div>
     </div>
   );

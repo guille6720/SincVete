@@ -19,6 +19,7 @@ import {
 import { createServerClient, createServiceClient } from '@/lib/supabase/server';
 import { PermissionError, requirePermission, requirePortalSession } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
+import { FEATURES, planRestrictionResult, requireFeature, canUseFeature } from '@/lib/entitlements';
 
 function isNextRedirect(error: unknown): boolean {
   return (
@@ -32,6 +33,8 @@ function isNextRedirect(error: unknown): boolean {
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (isNextRedirect(error)) throw error;
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
@@ -73,7 +76,8 @@ export async function getOwnerPortalStatus(ownerId: string): Promise<OwnerPortal
 
 export async function inviteOwnerToPortal(ownerId: string): Promise<ActionResult<PortalInviteCreated>> {
   try {
-    await requirePermission('patients:write');
+    const session = await requirePermission('patients:write');
+    await requireFeature(session.organizationId, FEATURES.OWNER_PORTAL);
     const supabase = await createServerClient();
     const { data, error } = await supabase.rpc('create_owner_portal_invite', {
       p_owner_id: ownerId,
@@ -110,7 +114,12 @@ export async function revokeOwnerPortalAccess(ownerId: string): Promise<ActionRe
 }
 
 export async function getOwnerPortalHome(): Promise<OwnerPortalHome | null> {
-  await requirePortalSession();
+  const session = await requirePortalSession();
+  const allowed = await canUseFeature({
+    organizationId: session.organizationId,
+    featureKey: FEATURES.OWNER_PORTAL,
+  });
+  if (!allowed) return null;
   const supabase = await createServerClient();
   const { data, error } = await supabase.rpc('get_owner_portal_home');
   if (error) return null;
@@ -118,7 +127,12 @@ export async function getOwnerPortalHome(): Promise<OwnerPortalHome | null> {
 }
 
 export async function getOwnerPortalPatient(patientId: string): Promise<OwnerPortalPatient | null> {
-  await requirePortalSession();
+  const session = await requirePortalSession();
+  const allowed = await canUseFeature({
+    organizationId: session.organizationId,
+    featureKey: FEATURES.OWNER_PORTAL,
+  });
+  if (!allowed) return null;
   const supabase = await createServerClient();
   const { data, error } = await supabase.rpc('get_owner_portal_patient', {
     p_patient_id: patientId,

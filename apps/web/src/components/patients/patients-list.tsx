@@ -34,7 +34,7 @@ export function PatientsList({
   const searchParams = useSearchParams();
   const [search, setSearch] = useState(initialSearch);
   const debouncedSearch = useDebouncedValue(search);
-  const [, startTransition] = useTransition();
+  const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     const current = searchParams.get('search') ?? '';
@@ -56,7 +56,9 @@ export function PatientsList({
   const goToPage = (page: number) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set('page', String(page));
-    router.push(`${pathname}?${params.toString()}`);
+    startTransition(() => {
+      router.push(`${pathname}?${params.toString()}`);
+    });
   };
 
   const setSpecies = (species: string) => {
@@ -67,7 +69,9 @@ export function PatientsList({
       params.delete('species');
     }
     params.delete('page');
-    router.push(`${pathname}?${params.toString()}`);
+    startTransition(() => {
+      router.push(`${pathname}?${params.toString()}`);
+    });
   };
 
   return (
@@ -121,7 +125,10 @@ export function PatientsList({
         </div>
       ) : (
         <>
-          <div className="overflow-hidden rounded-lg border">
+          <div
+            className={`overflow-hidden rounded-lg border transition-opacity ${isPending ? 'opacity-60' : ''}`}
+            aria-busy={isPending || undefined}
+          >
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40">
                 <tr>
@@ -190,12 +197,14 @@ export function PatientsList({
             </table>
           </div>
 
-          {data.totalPages > 1 && (
-            <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
-                {data.total} paciente{data.total !== 1 ? 's' : ''} · Página {data.page} de{' '}
-                {data.totalPages}
+                {data.total} paciente{data.total !== 1 ? 's' : ''}
+                {data.totalPages > 1
+                  ? ` · Página ${data.page} de ${data.totalPages}`
+                  : ` · ${data.pageSize} por página`}
               </p>
+              {data.totalPages > 1 && (
               <div className="flex gap-2">
                 <Button
                   variant="outline"
@@ -214,8 +223,8 @@ export function PatientsList({
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
+              )}
             </div>
-          )}
         </>
       )}
     </div>

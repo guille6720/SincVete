@@ -25,3 +25,9 @@ export const SPECIES_EMOJI: Record<PatientSpecies, string> = {
   Bovino: '🐄',
   Otro: '🐾',
 };
+
+/** Default /pacientes page size (server-side RPC). */
+export const PATIENT_LIST_PAGE_SIZE = 25;
+
+/** Max page size accepted by search_patients. */
+export const PATIENT_LIST_PAGE_SIZE_MAX = 50;

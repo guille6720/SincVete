@@ -8,6 +8,7 @@ import {
   clinicalImageCreateSchema,
   clinicalImageListSchema,
   CLINICAL_IMAGE_MAX_BYTES,
+  bytesToStorageMb,
   isAllowedClinicalImageMime,
   type ActionResult,
   type ClinicalImage,
@@ -17,6 +18,13 @@ import {
 import { createServerClient } from '@/lib/supabase/server';
 import { PermissionError, requirePermission } from '@/lib/permissions';
 import { getSessionContext } from '@/actions/auth';
+import {
+  FEATURES,
+  canUseFeature,
+  consumeMeteredFeature,
+  planRestrictionResult,
+  requireFeature,
+} from '@/lib/entitlements';
 
 const SIGNED_URL_TTL = 60 * 60;
 
@@ -32,6 +40,8 @@ function isNextRedirect(error: unknown): boolean {
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (isNextRedirect(error)) throw error;
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
@@ -181,6 +191,13 @@ export async function uploadClinicalImage(
       return { success: false, error: 'El archivo no puede superar 10 MB' };
     }
 
+    await requireFeature(session.organizationId, FEATURES.CLINICAL_IMAGES);
+    await consumeMeteredFeature({
+      organizationId: session.organizationId,
+      featureKey: FEATURES.STORAGE_MAX_MB,
+      amount: bytesToStorageMb(file.size),
+    });
+
     const branchId = parsed.data.branchId ?? session.branchId;
     const imageId = crypto.randomUUID();
     const storagePath = buildClinicalImageStoragePath(
@@ -240,7 +257,6 @@ export async function uploadClinicalImage(
     }
 
     revalidatePath('/imagenes');
-    revalidatePath('/dashboard');
     revalidatePath(`/pacientes/${parsed.data.patientId}`);
     if (parsed.data.consultationId) {
       revalidatePath(`/consultas/${parsed.data.consultationId}`);
@@ -283,7 +299,6 @@ export async function deleteClinicalImage(id: string): Promise<ActionResult> {
 
     revalidatePath('/imagenes');
     revalidatePath(`/imagenes/${id}`);
-    revalidatePath('/dashboard');
     revalidatePath(`/pacientes/${image.patient_id}`);
     return { success: true };
   } catch (error) {
@@ -293,12 +308,18 @@ export async function deleteClinicalImage(id: string): Promise<ActionResult> {
 
 export async function canManageImages(): Promise<boolean> {
   const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:write');
+  if (!session || !session.permissions.includes('clinical:write')) return false;
+  return canUseFeature({
+    organizationId: session.organizationId,
+    featureKey: FEATURES.CLINICAL_IMAGES,
+  });
 }
 
 export async function canReadImages(): Promise<boolean> {
   const session = await getSessionContext();
-  if (!session) return false;
-  return session.permissions.includes('clinical:read');
+  if (!session || !session.permissions.includes('clinical:read')) return false;
+  return canUseFeature({
+    organizationId: session.organizationId,
+    featureKey: FEATURES.CLINICAL_IMAGES,
+  });
 }

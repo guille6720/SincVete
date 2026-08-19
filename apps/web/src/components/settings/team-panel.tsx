@@ -11,9 +11,12 @@ import { Badge } from '@/components/ui/badge';
 import {
   ROLES,
   ROLE_LABELS,
+  formatMeteredUsage,
+  isQuotaNearLimit,
   type Branch,
   type OrganizationInvitation,
   type PaginatedResult,
+  type SeatUsageMeter,
   type TeamMemberRow,
 } from '@sincvete/shared';
 
@@ -21,13 +24,26 @@ interface TeamPanelProps {
   members: PaginatedResult<TeamMemberRow>;
   invitations: OrganizationInvitation[];
   branches: Branch[];
+  seatMeters?: SeatUsageMeter[];
 }
 
-export function TeamPanel({ members, invitations, branches }: TeamPanelProps) {
+export function TeamPanel({ members, invitations, branches, seatMeters = [] }: TeamPanelProps) {
   const [inviteState, inviteAction, invitePending] = useActionState(inviteTeamMember, null);
 
   return (
     <div className="space-y-4">
+      {seatMeters.length > 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {seatMeters.map((meter, index) => (
+            <span key={meter.featureKey}>
+              {index > 0 ? ' · ' : ''}
+              <span className={isQuotaNearLimit(meter) ? 'text-amber-700 dark:text-amber-300' : undefined}>
+                {meter.label}: {formatMeteredUsage(meter)}
+              </span>
+            </span>
+          ))}
+        </p>
+      ) : null}
       <Card>
         <CardHeader>
           <CardTitle>Invitar miembro</CardTitle>

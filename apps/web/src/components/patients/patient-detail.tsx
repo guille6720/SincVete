@@ -20,14 +20,18 @@ import {
 } from 'lucide-react';
 import { deletePatient } from '@/actions/patients';
 import { PatientVaccineStatus } from '@/components/vaccinations/patient-vaccine-status';
+import { PatientClinicalRecent } from '@/components/patients/patient-clinical-recent';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { usePendingAction } from '@/lib/hooks/use-pending-action';
 import {
   HOSPITALIZATION_STATUS_LABELS,
   SPECIES_EMOJI,
   buildClinicalAiPath,
   buildWhatsAppComposePath,
+  isClinicPathEntitled,
+  type ClinicalEntryListRow,
   type HospitalizationStatus,
   type Owner,
   type Patient,
@@ -44,9 +48,11 @@ interface PatientDetailProps {
   canWriteBilling?: boolean;
   canSendWhatsApp?: boolean;
   clinicalEntryCount?: number;
+  recentClinicalEntries?: ClinicalEntryListRow[];
   activeHospitalization?: { id: string; status: HospitalizationStatus } | null;
   activeSurgery?: { id: string; status: SurgeryStatus } | null;
   vaccineStatus?: VaccinationDueRow[];
+  entitledHrefs?: string[] | null;
 }
 
 function formatAge(birthDate: string | null): string | null {
@@ -78,21 +84,27 @@ export function PatientDetail({
   canWriteBilling = false,
   canSendWhatsApp = false,
   clinicalEntryCount = 0,
+  recentClinicalEntries = [],
   activeHospitalization = null,
   activeSurgery = null,
   vaccineStatus = [],
+  entitledHrefs = null,
 }: PatientDetailProps) {
   const router = useRouter();
+  const [pending, runPending] = usePendingAction();
   const age = formatAge(patient.birth_date);
+  const entitled = (href: string) => isClinicPathEntitled(href, entitledHrefs);
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!confirm('¿Eliminar este paciente? Esta acción no se puede deshacer.')) return;
-    const result = await deletePatient(patient.id);
-    if (result.success) {
-      router.push('/pacientes');
-      return;
-    }
-    window.alert(result.error ?? 'No se pudo eliminar el paciente');
+    void runPending(async () => {
+      const result = await deletePatient(patient.id);
+      if (result.success) {
+        router.push('/pacientes');
+        return;
+      }
+      window.alert(result.error ?? 'No se pudo eliminar el paciente');
+    });
   };
 
   return (
@@ -106,7 +118,7 @@ export function PatientDetail({
         </Button>
         {(canWrite || canReadClinical || canWriteClinical || canSendWhatsApp) && (
           <div className="flex flex-wrap gap-2">
-            {canReadClinical && (
+            {canReadClinical && entitled('/historia-clinica') && (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/pacientes/${patient.id}/historia`}>
                   <ClipboardList className="mr-2 h-4 w-4" />
@@ -114,7 +126,8 @@ export function PatientDetail({
                 </Link>
               </Button>
             )}
-            {activeHospitalization && canReadClinical ? (
+            {entitled('/internacion') &&
+              (activeHospitalization && canReadClinical ? (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/internacion/${activeHospitalization.id}`}>
                   <BedDouble className="mr-2 h-4 w-4" />
@@ -131,8 +144,8 @@ export function PatientDetail({
                   </Link>
                 </Button>
               )
-            )}
-            {canWriteClinical && !patient.is_deceased && (
+            ))}
+            {canWriteClinical && !patient.is_deceased && entitled('/vacunacion') && (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/vacunacion/nueva?patientId=${patient.id}`}>
                   <Syringe className="mr-2 h-4 w-4" />
@@ -140,7 +153,8 @@ export function PatientDetail({
                 </Link>
               </Button>
             )}
-            {activeSurgery && canReadClinical ? (
+            {entitled('/cirugias') &&
+              (activeSurgery && canReadClinical ? (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/cirugias/${activeSurgery.id}`}>
                   <Scissors className="mr-2 h-4 w-4" />
@@ -157,8 +171,8 @@ export function PatientDetail({
                   </Link>
                 </Button>
               )
-            )}
-            {canWriteClinical && !patient.is_deceased && (
+            ))}
+            {canWriteClinical && !patient.is_deceased && entitled('/laboratorio') && (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/laboratorio/nueva?patientId=${patient.id}`}>
                   <FlaskConical className="mr-2 h-4 w-4" />
@@ -166,7 +180,7 @@ export function PatientDetail({
                 </Link>
               </Button>
             )}
-            {canWriteClinical && !patient.is_deceased && (
+            {canWriteClinical && !patient.is_deceased && entitled('/farmacia') && (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/farmacia/nueva?patientId=${patient.id}`}>
                   <Pill className="mr-2 h-4 w-4" />
@@ -174,7 +188,7 @@ export function PatientDetail({
                 </Link>
               </Button>
             )}
-            {canReadClinical && (
+            {canReadClinical && entitled('/imagenes') && (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/imagenes?patientId=${patient.id}`}>
                   <Images className="mr-2 h-4 w-4" />
@@ -182,7 +196,7 @@ export function PatientDetail({
                 </Link>
               </Button>
             )}
-            {canWriteClinical && !patient.is_deceased && (
+            {canWriteClinical && !patient.is_deceased && entitled('/imagenes') && (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/imagenes/nueva?patientId=${patient.id}`}>
                   <Images className="mr-2 h-4 w-4" />
@@ -190,7 +204,7 @@ export function PatientDetail({
                 </Link>
               </Button>
             )}
-            {canWriteBilling && (
+            {canWriteBilling && entitled('/facturacion') && (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/facturacion/nueva?patientId=${patient.id}`}>
                   <Receipt className="mr-2 h-4 w-4" />
@@ -198,7 +212,7 @@ export function PatientDetail({
                 </Link>
               </Button>
             )}
-            {canReadClinical && (
+            {canReadClinical && entitled('/ia-clinica') && (
               <Button variant="outline" size="sm" asChild>
                 <Link
                   href={buildClinicalAiPath({
@@ -211,7 +225,7 @@ export function PatientDetail({
                 </Link>
               </Button>
             )}
-            {canSendWhatsApp && (
+            {canSendWhatsApp && entitled('/whatsapp') && (
               <Button variant="outline" size="sm" asChild>
                 <Link
                   href={buildWhatsAppComposePath({
@@ -232,9 +246,20 @@ export function PatientDetail({
                     Editar
                   </Link>
                 </Button>
-                <Button variant="destructive" size="sm" onClick={handleDelete}>
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Eliminar
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDelete}
+                  isPending={pending}
+                >
+                  {pending ? (
+                    'Eliminando...'
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4" />
+                      Eliminar
+                    </>
+                  )}
                 </Button>
               </>
             )}
@@ -242,44 +267,64 @@ export function PatientDetail({
         )}
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-center gap-3">
+      <Card className="overflow-hidden border-teal-300/50 bg-[linear-gradient(165deg,#f7fbf8_0%,#eef8f3_42%,#f4faf7_100%)] shadow-sm dark:border-teal-800/70 dark:bg-[linear-gradient(165deg,#14241f_0%,#1a2e28_45%,#15231f_100%)]">
+        <CardHeader className="border-b border-teal-900/5 bg-[radial-gradient(ellipse_at_top_left,rgba(13,148,136,0.12),transparent_55%)] pb-5 dark:border-teal-400/10 dark:bg-[radial-gradient(ellipse_at_top_left,rgba(45,212,191,0.12),transparent_55%)]">
+          <div className="flex flex-wrap items-center gap-4">
             {patient.photo_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={patient.photo_url}
                 alt={patient.name}
-                className="h-16 w-16 rounded-full object-cover ring-2 ring-border"
+                className="h-20 w-20 rounded-full object-cover ring-4 ring-teal-600/15 dark:ring-teal-300/20"
               />
-            ) : null}
-            <div className="flex flex-wrap items-center gap-2">
-              <CardTitle>
-                {SPECIES_EMOJI[patient.species]} {patient.name}
-              </CardTitle>
-              {patient.is_deceased ? (
-                <Badge variant="destructive">Fallecido</Badge>
-              ) : (
-                <Badge variant={patient.is_active ? 'success' : 'destructive'}>
-                  {patient.is_active ? 'Activo' : 'Inactivo'}
-                </Badge>
-              )}
-              {activeHospitalization && (
-                <Badge variant="warning">
-                  {HOSPITALIZATION_STATUS_LABELS[activeHospitalization.status]}
-                </Badge>
-              )}
+            ) : (
+              <div
+                className="flex h-20 w-20 items-center justify-center rounded-full bg-teal-100 text-3xl ring-4 ring-teal-600/15 dark:bg-teal-900/60 dark:ring-teal-300/20"
+                aria-hidden
+              >
+                {SPECIES_EMOJI[patient.species]}
+              </div>
+            )}
+            <div className="min-w-0 space-y-2">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <CardTitle className="text-2xl font-semibold tracking-tight text-teal-950 sm:text-3xl dark:text-teal-50">
+                  {patient.photo_url ? `${SPECIES_EMOJI[patient.species]} ` : null}
+                  {patient.name}
+                </CardTitle>
+                {patient.is_deceased ? (
+                  <Badge variant="destructive" className="text-sm">
+                    Fallecido
+                  </Badge>
+                ) : (
+                  <Badge
+                    variant={patient.is_active ? 'success' : 'destructive'}
+                    className="text-sm"
+                  >
+                    {patient.is_active ? 'Activo' : 'Inactivo'}
+                  </Badge>
+                )}
+                {activeHospitalization && entitled('/internacion') && (
+                  <Badge variant="warning" className="text-sm">
+                    {HOSPITALIZATION_STATUS_LABELS[activeHospitalization.status]}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-base text-teal-800/80 dark:text-teal-100/75">
+                Ficha del paciente
+                {patient.species ? ` · ${patient.species}` : ''}
+                {patient.breed ? ` · ${patient.breed}` : ''}
+              </p>
             </div>
           </div>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
+        <CardContent className="grid gap-5 p-6 sm:grid-cols-2 sm:gap-x-8 sm:gap-y-5">
           <DetailField
             label="Propietario"
             value={
               owner ? (
                 <Link
                   href={`/propietarios/${owner.id}`}
-                  className="text-primary hover:underline"
+                  className="font-medium text-teal-800 underline-offset-2 hover:underline dark:text-teal-200"
                 >
                   {owner.full_name}
                 </Link>
@@ -316,7 +361,16 @@ export function PatientDetail({
         </CardContent>
       </Card>
 
-      {canReadClinical && (
+      {canReadClinical && entitled('/historia-clinica') && (
+        <PatientClinicalRecent
+          patientId={patient.id}
+          entries={recentClinicalEntries}
+          total={clinicalEntryCount}
+          canWrite={canWriteClinical}
+        />
+      )}
+
+      {canReadClinical && entitled('/vacunacion') && (
         <PatientVaccineStatus
           patientId={patient.id}
           items={vaccineStatus}
@@ -339,8 +393,10 @@ function DetailField({
 }) {
   return (
     <div className={className}>
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <div className="mt-0.5 text-sm">{value || '—'}</div>
+      <p className="text-sm font-medium text-teal-800/70 dark:text-teal-200/70">{label}</p>
+      <div className="mt-1 text-base leading-relaxed text-teal-950 dark:text-teal-50">
+        {value || '—'}
+      </div>
     </div>
   );
 }

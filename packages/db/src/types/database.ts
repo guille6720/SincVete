@@ -18,6 +18,17 @@ export type UserRole =
 
 export type OrgPlan = 'trial' | 'basic' | 'professional' | 'enterprise';
 
+export type SubscriptionStatus =
+  | 'trialing'
+  | 'active'
+  | 'past_due'
+  | 'cancelled'
+  | 'expired';
+
+export type FeatureValueType = 'boolean' | 'limit';
+
+export type CommercialPlanKey = 'legacy' | 'trial' | 'basic' | 'pro' | 'premium' | 'enterprise';
+
 export type PatientSpecies =
   | 'Canino'
   | 'Felino'
@@ -157,7 +168,8 @@ export type NotificationKind =
   | 'stock'
   | 'internacion'
   | 'factura'
-  | 'receta';
+  | 'receta'
+  | 'plan';
 
 export interface Database {
   public: {
@@ -2631,6 +2643,588 @@ export interface Database {
           },
         ];
       };
+      plans: {
+        Row: {
+          id: string;
+          key: string;
+          name: string;
+          description: string | null;
+          is_active: boolean;
+          is_public: boolean;
+          is_internal: boolean;
+          display_order: number;
+          metadata: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          key: string;
+          name: string;
+          description?: string | null;
+          is_active?: boolean;
+          is_public?: boolean;
+          is_internal?: boolean;
+          display_order?: number;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          key?: string;
+          name?: string;
+          description?: string | null;
+          is_active?: boolean;
+          is_public?: boolean;
+          is_internal?: boolean;
+          display_order?: number;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      features: {
+        Row: {
+          id: string;
+          key: string;
+          name: string;
+          description: string | null;
+          feature_type: FeatureValueType;
+          default_enabled: boolean;
+          default_limit: number | null;
+          is_active: boolean;
+          usage_metered: boolean;
+          metadata: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          key: string;
+          name: string;
+          description?: string | null;
+          feature_type?: FeatureValueType;
+          default_enabled?: boolean;
+          default_limit?: number | null;
+          is_active?: boolean;
+          usage_metered?: boolean;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          key?: string;
+          name?: string;
+          description?: string | null;
+          feature_type?: FeatureValueType;
+          default_enabled?: boolean;
+          default_limit?: number | null;
+          is_active?: boolean;
+          usage_metered?: boolean;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      plan_features: {
+        Row: {
+          id: string;
+          plan_id: string;
+          feature_id: string;
+          enabled: boolean;
+          limit_value: number | null;
+          value: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          plan_id: string;
+          feature_id: string;
+          enabled?: boolean;
+          limit_value?: number | null;
+          value?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          plan_id?: string;
+          feature_id?: string;
+          enabled?: boolean;
+          limit_value?: number | null;
+          value?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'plan_features_plan_id_fkey';
+            columns: ['plan_id'];
+            isOneToOne: false;
+            referencedRelation: 'plans';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'plan_features_feature_id_fkey';
+            columns: ['feature_id'];
+            isOneToOne: false;
+            referencedRelation: 'features';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      organization_subscriptions: {
+        Row: {
+          id: string;
+          organization_id: string;
+          plan_id: string;
+          status: SubscriptionStatus;
+          starts_at: string;
+          ends_at: string | null;
+          trial_ends_at: string | null;
+          cancelled_at: string | null;
+          metadata: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          plan_id: string;
+          status?: SubscriptionStatus;
+          starts_at?: string;
+          ends_at?: string | null;
+          trial_ends_at?: string | null;
+          cancelled_at?: string | null;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          plan_id?: string;
+          status?: SubscriptionStatus;
+          starts_at?: string;
+          ends_at?: string | null;
+          trial_ends_at?: string | null;
+          cancelled_at?: string | null;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'organization_subscriptions_organization_id_fkey';
+            columns: ['organization_id'];
+            isOneToOne: false;
+            referencedRelation: 'organizations';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'organization_subscriptions_plan_id_fkey';
+            columns: ['plan_id'];
+            isOneToOne: false;
+            referencedRelation: 'plans';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      organization_feature_overrides: {
+        Row: {
+          id: string;
+          organization_id: string;
+          feature_id: string;
+          enabled: boolean | null;
+          limit_value: number | null;
+          value: Json;
+          reason: string | null;
+          starts_at: string | null;
+          ends_at: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          feature_id: string;
+          enabled?: boolean | null;
+          limit_value?: number | null;
+          value?: Json;
+          reason?: string | null;
+          starts_at?: string | null;
+          ends_at?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          feature_id?: string;
+          enabled?: boolean | null;
+          limit_value?: number | null;
+          value?: Json;
+          reason?: string | null;
+          starts_at?: string | null;
+          ends_at?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'organization_feature_overrides_organization_id_fkey';
+            columns: ['organization_id'];
+            isOneToOne: false;
+            referencedRelation: 'organizations';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'organization_feature_overrides_feature_id_fkey';
+            columns: ['feature_id'];
+            isOneToOne: false;
+            referencedRelation: 'features';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      addons: {
+        Row: {
+          id: string;
+          key: string;
+          name: string;
+          description: string | null;
+          is_active: boolean;
+          is_public: boolean;
+          display_order: number;
+          metadata: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          key: string;
+          name: string;
+          description?: string | null;
+          is_active?: boolean;
+          is_public?: boolean;
+          display_order?: number;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          key?: string;
+          name?: string;
+          description?: string | null;
+          is_active?: boolean;
+          is_public?: boolean;
+          display_order?: number;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      addon_features: {
+        Row: {
+          id: string;
+          addon_id: string;
+          feature_id: string;
+          enabled: boolean;
+          limit_value: number | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          addon_id: string;
+          feature_id: string;
+          enabled?: boolean;
+          limit_value?: number | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          addon_id?: string;
+          feature_id?: string;
+          enabled?: boolean;
+          limit_value?: number | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'addon_features_addon_id_fkey';
+            columns: ['addon_id'];
+            isOneToOne: false;
+            referencedRelation: 'addons';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'addon_features_feature_id_fkey';
+            columns: ['feature_id'];
+            isOneToOne: false;
+            referencedRelation: 'features';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      organization_addons: {
+        Row: {
+          id: string;
+          organization_id: string;
+          addon_id: string;
+          status: SubscriptionStatus;
+          starts_at: string;
+          ends_at: string | null;
+          cancelled_at: string | null;
+          reason: string | null;
+          granted_by: string | null;
+          metadata: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          addon_id: string;
+          status?: SubscriptionStatus;
+          starts_at?: string;
+          ends_at?: string | null;
+          cancelled_at?: string | null;
+          reason?: string | null;
+          granted_by?: string | null;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          addon_id?: string;
+          status?: SubscriptionStatus;
+          starts_at?: string;
+          ends_at?: string | null;
+          cancelled_at?: string | null;
+          reason?: string | null;
+          granted_by?: string | null;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'organization_addons_organization_id_fkey';
+            columns: ['organization_id'];
+            isOneToOne: false;
+            referencedRelation: 'organizations';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'organization_addons_addon_id_fkey';
+            columns: ['addon_id'];
+            isOneToOne: false;
+            referencedRelation: 'addons';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      feature_usage: {
+        Row: {
+          id: string;
+          organization_id: string;
+          feature_id: string;
+          period_start: string;
+          period_end: string;
+          usage_count: number;
+          metadata: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          feature_id: string;
+          period_start: string;
+          period_end: string;
+          usage_count?: number;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          feature_id?: string;
+          period_start?: string;
+          period_end?: string;
+          usage_count?: number;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'feature_usage_organization_id_fkey';
+            columns: ['organization_id'];
+            isOneToOne: false;
+            referencedRelation: 'organizations';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'feature_usage_feature_id_fkey';
+            columns: ['feature_id'];
+            isOneToOne: false;
+            referencedRelation: 'features';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      platform_admins: {
+        Row: {
+          user_id: string;
+          email: string;
+          is_active: boolean;
+          notes: string | null;
+          created_at: string;
+          created_by: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          email: string;
+          is_active?: boolean;
+          notes?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          email?: string;
+          is_active?: boolean;
+          notes?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      billing_customers: {
+        Row: {
+          organization_id: string;
+          provider: string;
+          customer_id: string;
+          email: string | null;
+          metadata: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          organization_id: string;
+          provider: string;
+          customer_id: string;
+          email?: string | null;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          organization_id?: string;
+          provider?: string;
+          customer_id?: string;
+          email?: string | null;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      billing_events: {
+        Row: {
+          id: string;
+          provider: string;
+          event_id: string;
+          event_type: string | null;
+          organization_id: string | null;
+          payload: Json;
+          processed_at: string;
+          applied_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          provider: string;
+          event_id: string;
+          event_type?: string | null;
+          organization_id?: string | null;
+          payload?: Json;
+          processed_at?: string;
+          applied_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          provider?: string;
+          event_id?: string;
+          event_type?: string | null;
+          organization_id?: string | null;
+          payload?: Json;
+          processed_at?: string;
+          applied_at?: string | null;
+        };
+        Relationships: [];
+      };
+      billing_checkout_intents: {
+        Row: {
+          id: string;
+          organization_id: string;
+          kind: string;
+          target_key: string;
+          billing_interval: string;
+          provider: string;
+          checkout_url: string | null;
+          created_at: string;
+          expires_at: string;
+          consumed_at: string | null;
+          cancelled_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          kind: string;
+          target_key: string;
+          billing_interval: string;
+          provider: string;
+          checkout_url?: string | null;
+          created_at?: string;
+          expires_at: string;
+          consumed_at?: string | null;
+          cancelled_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          kind?: string;
+          target_key?: string;
+          billing_interval?: string;
+          provider?: string;
+          checkout_url?: string | null;
+          created_at?: string;
+          expires_at?: string;
+          consumed_at?: string | null;
+          cancelled_at?: string | null;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -2641,6 +3235,525 @@ export interface Database {
       has_permission: {
         Args: { required_permission: string };
         Returns: boolean;
+      };
+      increment_feature_usage: {
+        Args: {
+          p_feature_key: string;
+          p_amount?: number;
+        };
+        Returns: number;
+      };
+      try_consume_feature_usage: {
+        Args: {
+          p_feature_key: string;
+          p_amount: number;
+          p_limit: number | null;
+        };
+        Returns: number | null;
+      };
+      is_platform_admin: {
+        Args: Record<PropertyKey, never>;
+        Returns: boolean;
+      };
+      require_platform_admin: {
+        Args: Record<PropertyKey, never>;
+        Returns: string;
+      };
+      superadmin_list_organizations: {
+        Args: {
+          p_search?: string | null;
+          p_page?: number;
+          p_page_size?: number;
+          p_plan_key?: string | null;
+          p_status?: string | null;
+        };
+        Returns: {
+          id: string;
+          name: string;
+          slug: string;
+          plan_key: string | null;
+          plan_name: string | null;
+          status: SubscriptionStatus | null;
+          trial_ends_at: string | null;
+          starts_at: string | null;
+          created_at: string;
+          total_count: number;
+        }[];
+      };
+      superadmin_get_org_commercial: {
+        Args: { p_organization_id: string };
+        Returns: Json;
+      };
+      superadmin_change_plan: {
+        Args: {
+          p_organization_id: string;
+          p_plan_key: string;
+          p_reason?: string | null;
+          p_allow_legacy?: boolean;
+          p_trial_days?: number | null;
+        };
+        Returns: Json;
+      };
+      superadmin_start_trial: {
+        Args: {
+          p_organization_id: string;
+          p_trial_days?: number | null;
+          p_reason?: string | null;
+        };
+        Returns: Json;
+      };
+      superadmin_end_trial: {
+        Args: {
+          p_organization_id: string;
+          p_plan_key?: string | null;
+          p_reason?: string | null;
+        };
+        Returns: Json;
+      };
+      superadmin_set_feature_override: {
+        Args: {
+          p_organization_id: string;
+          p_feature_key: string;
+          p_enabled?: boolean;
+          p_limit_value?: number | null;
+          p_reason?: string | null;
+          p_starts_at?: string | null;
+          p_ends_at?: string | null;
+        };
+        Returns: Json;
+      };
+      superadmin_clear_feature_override: {
+        Args: {
+          p_organization_id: string;
+          p_feature_key: string;
+          p_reason?: string | null;
+        };
+        Returns: Json;
+      };
+      superadmin_grant_addon: {
+        Args: {
+          p_organization_id: string;
+          p_addon_key: string;
+          p_reason?: string | null;
+          p_starts_at?: string | null;
+          p_ends_at?: string | null;
+        };
+        Returns: Json;
+      };
+      superadmin_revoke_addon: {
+        Args: {
+          p_organization_id: string;
+          p_addon_key: string;
+          p_reason?: string | null;
+        };
+        Returns: Json;
+      };
+      list_own_addons: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          addon_key: string;
+          addon_name: string;
+          description: string | null;
+          status: SubscriptionStatus;
+          starts_at: string;
+          ends_at: string | null;
+        }[];
+      };
+      list_own_addon_features: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          feature_key: string;
+          enabled: boolean;
+          limit_value: number | null;
+        }[];
+      };
+      list_public_plans: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      list_public_addons: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      list_own_seat_usage: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          feature_key: string;
+          used: number;
+        }[];
+      };
+      list_public_plan_limits: {
+        Args: {
+          p_plan_key: string;
+        };
+        Returns: {
+          feature_key: string;
+          enabled: boolean;
+          limit_value: number | null;
+        }[];
+      };
+      organization_seat_usage: {
+        Args: {
+          p_organization_id: string;
+        };
+        Returns: {
+          feature_key: string;
+          used: number;
+        }[];
+      };
+      organization_metered_overages: {
+        Args: {
+          p_organization_id: string;
+        };
+        Returns: {
+          feature_key: string;
+          used: number;
+          limit_value: number;
+        }[];
+      };
+      superadmin_list_org_seat_usage: {
+        Args: {
+          p_organization_id: string;
+        };
+        Returns: {
+          feature_key: string;
+          used: number;
+        }[];
+      };
+      list_plan_seat_limits: {
+        Args: {
+          p_plan_key: string;
+        };
+        Returns: {
+          feature_key: string;
+          enabled: boolean;
+          limit_value: number | null;
+        }[];
+      };
+      billing_apply_paid_plan: {
+        Args: {
+          p_organization_id: string;
+          p_plan_key: string;
+          p_provider: string;
+          p_external_id: string;
+          p_interval?: string;
+          p_status?: SubscriptionStatus;
+        };
+        Returns: Json;
+      };
+      billing_apply_paid_addon: {
+        Args: {
+          p_organization_id: string;
+          p_addon_key: string;
+          p_provider: string;
+          p_external_id: string;
+          p_interval?: string;
+        };
+        Returns: Json;
+      };
+      billing_extend_paid_plan: {
+        Args: {
+          p_organization_id: string;
+          p_interval?: string;
+          p_provider?: string | null;
+          p_external_id?: string | null;
+        };
+        Returns: Json;
+      };
+      billing_begin_event: {
+        Args: {
+          p_provider: string;
+          p_event_id: string;
+          p_event_type?: string | null;
+          p_organization_id?: string | null;
+          p_payload?: Json;
+        };
+        Returns: Json;
+      };
+      billing_finish_event: {
+        Args: {
+          p_event_row_id: string;
+        };
+        Returns: Json;
+      };
+      superadmin_pending_billing_events: {
+        Args: Record<PropertyKey, never>;
+        Returns: number;
+      };
+      billing_set_subscription_status: {
+        Args: {
+          p_organization_id: string;
+          p_status: SubscriptionStatus;
+          p_provider?: string | null;
+          p_external_id?: string | null;
+        };
+        Returns: Json;
+      };
+      expire_due_subscriptions: {
+        Args: {
+          p_organization_id?: string | null;
+        };
+        Returns: number;
+      };
+      emit_plan_notification: {
+        Args: {
+          p_organization_id: string;
+          p_related_type: string;
+          p_related_id?: string | null;
+          p_title: string;
+          p_body?: string | null;
+          p_dedupe_hours?: number;
+        };
+        Returns: string;
+      };
+      run_commercial_lifecycle: {
+        Args: {
+          p_trial_remind_days?: number;
+          p_quota_warn_ratio?: number;
+          p_dedupe_hours?: number;
+        };
+        Returns: Json;
+      };
+      billing_cancel_own_subscription: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      billing_cancel_own_addon: {
+        Args: {
+          p_addon_key: string;
+        };
+        Returns: Json;
+      };
+      superadmin_commercial_summary: {
+        Args: {
+          p_remind_days?: number;
+        };
+        Returns: Json;
+      };
+      superadmin_list_billing_events: {
+        Args: {
+          p_organization_id: string;
+          p_limit?: number;
+        };
+        Returns: {
+          id: string;
+          provider: string;
+          event_id: string;
+          event_type: string | null;
+          processed_at: string;
+          applied_at: string | null;
+        }[];
+      };
+      list_own_billing_events: {
+        Args: {
+          p_limit?: number;
+        };
+        Returns: {
+          id: string;
+          provider: string;
+          event_type: string | null;
+          processed_at: string;
+          applied_at: string | null;
+        }[];
+      };
+      list_own_open_checkout_intents: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          id: string;
+          kind: string;
+          target_key: string;
+          billing_interval: string;
+          provider: string;
+          checkout_url: string | null;
+          expires_at: string;
+        }[];
+      };
+      billing_begin_own_checkout_intent: {
+        Args: {
+          p_kind: string;
+          p_target_key: string;
+          p_interval: string;
+          p_provider: string;
+          p_ttl_hours?: number;
+        };
+        Returns: Json;
+      };
+      billing_set_own_checkout_intent_url: {
+        Args: {
+          p_id: string;
+          p_checkout_url: string;
+        };
+        Returns: Json;
+      };
+      billing_cancel_own_checkout_intents: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      billing_consume_checkout_intents: {
+        Args: {
+          p_organization_id: string;
+          p_kind: string;
+          p_target_key?: string | null;
+        };
+        Returns: Json;
+      };
+      billing_release_checkout_intents: {
+        Args: {
+          p_organization_id: string;
+          p_kind?: string | null;
+          p_target_key?: string | null;
+        };
+        Returns: Json;
+      };
+      billing_reverse_paid_grant: {
+        Args: {
+          p_organization_id: string;
+          p_kind: string;
+          p_target_key?: string | null;
+          p_provider?: string | null;
+          p_external_id?: string | null;
+          p_reason?: string | null;
+          p_provider_ids?: string[] | null;
+        };
+        Returns: Json;
+      };
+      billing_lookup_paid_grant_from_provider_ids: {
+        Args: {
+          p_provider: string;
+          p_ids: string[];
+        };
+        Returns: Json;
+      };
+      billing_attach_paid_grant_ids: {
+        Args: {
+          p_organization_id: string;
+          p_kind: string;
+          p_target_key: string;
+          p_ids: Json;
+        };
+        Returns: Json;
+      };
+      superadmin_open_checkout_intents: {
+        Args: Record<PropertyKey, never>;
+        Returns: number;
+      };
+      superadmin_list_checkout_intents: {
+        Args: {
+          p_organization_id: string;
+        };
+        Returns: {
+          id: string;
+          kind: string;
+          target_key: string;
+          billing_interval: string;
+          provider: string;
+          expires_at: string;
+          created_at: string;
+        }[];
+      };
+      superadmin_list_open_checkout_intents: {
+        Args: {
+          p_limit?: number;
+        };
+        Returns: {
+          id: string;
+          organization_id: string;
+          organization_name: string;
+          organization_slug: string;
+          kind: string;
+          target_key: string;
+          billing_interval: string;
+          provider: string;
+          expires_at: string;
+          created_at: string;
+        }[];
+      };
+      superadmin_list_unapplied_billing_events: {
+        Args: {
+          p_limit?: number;
+        };
+        Returns: {
+          id: string;
+          organization_id: string | null;
+          organization_name: string | null;
+          organization_slug: string | null;
+          provider: string;
+          event_id: string;
+          event_type: string | null;
+          processed_at: string;
+        }[];
+      };
+      superadmin_list_plans_ending_soon: {
+        Args: {
+          p_remind_days?: number;
+          p_limit?: number;
+        };
+        Returns: {
+          organization_id: string;
+          organization_name: string;
+          organization_slug: string;
+          plan_key: string;
+          plan_name: string;
+          status: string;
+          ends_at: string;
+        }[];
+      };
+      superadmin_list_addons_ending_soon: {
+        Args: {
+          p_remind_days?: number;
+          p_limit?: number;
+        };
+        Returns: {
+          organization_id: string;
+          organization_name: string;
+          organization_slug: string;
+          addon_key: string;
+          addon_name: string;
+          ends_at: string;
+        }[];
+      };
+      superadmin_list_orgs_over_seats: {
+        Args: {
+          p_limit?: number;
+        };
+        Returns: {
+          organization_id: string;
+          organization_name: string;
+          organization_slug: string;
+          plan_key: string;
+          plan_name: string;
+          feature_key: string;
+          used: number;
+          limit_value: number;
+        }[];
+      };
+      superadmin_cancel_checkout_intents: {
+        Args: {
+          p_organization_id: string;
+        };
+        Returns: Json;
+      };
+      superadmin_get_unapplied_billing_event: {
+        Args: {
+          p_event_id: string;
+        };
+        Returns: {
+          id: string;
+          organization_id: string | null;
+          provider: string;
+          event_id: string;
+          event_type: string | null;
+          payload: Json;
+          processed_at: string;
+        }[];
+      };
+      superadmin_skip_billing_event: {
+        Args: {
+          p_event_id: string;
+          p_kind?: string | null;
+          p_target_key?: string | null;
+        };
+        Returns: Json;
       };
       handle_new_user_signup: {
         Args: {
@@ -3932,6 +5045,8 @@ export interface Database {
       cash_movement_kind: CashMovementKind;
       clinical_image_kind: ClinicalImageKind;
       notification_kind: NotificationKind;
+      subscription_status: SubscriptionStatus;
+      feature_value_type: FeatureValueType;
     };
     CompositeTypes: Record<string, never>;
   };

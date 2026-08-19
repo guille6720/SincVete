@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { cache } from 'react';
 import {
   buildPaginatedResult,
   isSafeNotificationHref,
@@ -55,7 +56,6 @@ function toNotificationRow(
 
 function revalidateNotificationPaths() {
   revalidatePath('/notificaciones');
-  revalidatePath('/dashboard');
 }
 
 export async function canReadNotifications(): Promise<boolean> {
@@ -63,7 +63,7 @@ export async function canReadNotifications(): Promise<boolean> {
   return session?.kind === 'staff';
 }
 
-export async function countUnreadNotifications(): Promise<number> {
+const loadUnreadNotificationsCount = cache(async (): Promise<number> => {
   const session = await getSessionContext();
   if (!session || session.kind !== 'staff') return 0;
 
@@ -74,6 +74,10 @@ export async function countUnreadNotifications(): Promise<number> {
     return 0;
   }
   return Number(data ?? 0);
+});
+
+export async function countUnreadNotifications(): Promise<number> {
+  return loadUnreadNotificationsCount();
 }
 
 export async function listNotifications(

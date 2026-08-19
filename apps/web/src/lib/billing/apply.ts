@@ -1,0 +1,298 @@
+import {
+  isBillingProvider,
+  isPurchasableAddonKey,
+  isPurchasablePlanKey,
+  type BillingInterval,
+  type BillingProvider,
+  type SubscriptionStatus,
+} from '@sincvete/shared';
+import type { Json } from '@sincvete/db';
+import { createServiceClient } from '@/lib/supabase/server';
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function assertOrgId(organizationId: string) {
+  if (!UUID_RE.test(organizationId)) {
+    throw new Error('organización inválida');
+  }
+}
+
+async function consumeCheckoutIntents(params: {
+  organizationId: string;
+  kind: 'plan' | 'addon';
+  targetKey?: string;
+}): Promise<void> {
+  const service = await createServiceClient();
+  const { error } = await service.rpc('billing_consume_checkout_intents', {
+    p_organization_id: params.organizationId,
+    p_kind: params.kind,
+    p_target_key: params.targetKey ?? null,
+  });
+  if (error) {
+    console.error('[billing] consume checkout intents', error.message);
+  }
+}
+
+export async function releaseCheckoutIntents(params: {
+  organizationId: string;
+  kind?: 'plan' | 'addon' | null;
+  targetKey?: string | null;
+}): Promise<void> {
+  assertOrgId(params.organizationId);
+  const service = await createServiceClient();
+  const { error } = await service.rpc('billing_release_checkout_intents', {
+    p_organization_id: params.organizationId,
+    p_kind: params.kind ?? null,
+    p_target_key: params.targetKey ?? null,
+  });
+  if (error) {
+    console.error('[billing] release checkout intents', error.message);
+  }
+}
+
+export async function claimBillingEvent(params: {
+  provider: BillingProvider;
+  eventId: string;
+  eventType: string;
+  organizationId?: string | null;
+  payload: Record<string, unknown>;
+}): Promise<{ id: string; alreadyApplied: boolean }> {
+  const service = await createServiceClient();
+  const { data, error } = await service.rpc('billing_begin_event', {
+    p_provider: params.provider,
+    p_event_id: params.eventId,
+    p_event_type: params.eventType,
+    p_organization_id: params.organizationId ?? null,
+    p_payload: params.payload as Json,
+  });
+  if (error) throw new Error(error.message);
+  const row = data && typeof data === 'object' && !Array.isArray(data) ? data : null;
+  const id = typeof row?.id === 'string' ? row.id : null;
+  if (!id) throw new Error('no se pudo registrar el evento de pago');
+  return { id, alreadyApplied: row?.already_applied === true };
+}
+
+export async function finishBillingEvent(eventRowId: string): Promise<void> {
+  const service = await createServiceClient();
+  const { error } = await service.rpc('billing_finish_event', {
+    p_event_row_id: eventRowId,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function findOrganizationIdByStripeCustomer(
+  customerId: string | null | undefined
+): Promise<string | null> {
+  if (!customerId) return null;
+  const service = await createServiceClient();
+  const { data, error } = await service
+    .from('billing_customers')
+    .select('organization_id')
+    .eq('provider', 'stripe')
+    .eq('customer_id', customerId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.organization_id ?? null;
+}
+
+export async function upsertBillingCustomer(params: {
+  organizationId: string;
+  provider: BillingProvider;
+  customerId: string;
+  email?: string | null;
+}): Promise<void> {
+  const service = await createServiceClient();
+  const { error } = await service.from('billing_customers').upsert({
+    organization_id: params.organizationId,
+    provider: params.provider,
+    customer_id: params.customerId,
+    email: params.email ?? null,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function applyPaidPlan(params: {
+  organizationId: string;
+  planKey: string;
+  provider: BillingProvider;
+  externalId: string;
+  interval: BillingInterval;
+  status?: Extract<SubscriptionStatus, 'active' | 'past_due'>;
+}): Promise<void> {
+  if (!isPurchasablePlanKey(params.planKey) || !isBillingProvider(params.provider)) {
+    throw new Error('Checkout inválido');
+  }
+  assertOrgId(params.organizationId);
+  const service = await createServiceClient();
+  const { error } = await service.rpc('billing_apply_paid_plan', {
+    p_organization_id: params.organizationId,
+    p_plan_key: params.planKey,
+    p_provider: params.provider,
+    p_external_id: params.externalId,
+    p_interval: params.interval,
+    p_status: params.status ?? 'active',
+  });
+  if (error) throw new Error(error.message);
+  await consumeCheckoutIntents({
+    organizationId: params.organizationId,
+    kind: 'plan',
+  });
+}
+
+export async function applyPaidAddon(params: {
+  organizationId: string;
+  addonKey: string;
+  provider: BillingProvider;
+  externalId: string;
+  interval: BillingInterval;
+}): Promise<void> {
+  if (!isPurchasableAddonKey(params.addonKey) || !isBillingProvider(params.provider)) {
+    throw new Error('Checkout de extra inválido');
+  }
+  assertOrgId(params.organizationId);
+  const service = await createServiceClient();
+  const { error } = await service.rpc('billing_apply_paid_addon', {
+    p_organization_id: params.organizationId,
+    p_addon_key: params.addonKey,
+    p_provider: params.provider,
+    p_external_id: params.externalId,
+    p_interval: params.interval,
+  });
+  if (error) throw new Error(error.message);
+  await consumeCheckoutIntents({
+    organizationId: params.organizationId,
+    kind: 'addon',
+    targetKey: params.addonKey,
+  });
+}
+
+export async function extendPaidPlanPeriod(params: {
+  organizationId?: string | null;
+  stripeCustomerId?: string | null;
+  interval?: BillingInterval;
+  provider?: BillingProvider;
+  externalId?: string;
+}): Promise<boolean> {
+  const service = await createServiceClient();
+  const organizationId =
+    params.organizationId ?? (await findOrganizationIdByStripeCustomer(params.stripeCustomerId));
+  if (!organizationId) return false;
+  assertOrgId(organizationId);
+  const { error } = await service.rpc('billing_extend_paid_plan', {
+    p_organization_id: organizationId,
+    p_interval: params.interval ?? 'monthly',
+    p_provider: params.provider ?? 'stripe',
+    p_external_id: params.externalId ?? null,
+  });
+  if (error) throw new Error(error.message);
+  await consumeCheckoutIntents({
+    organizationId,
+    kind: 'plan',
+  });
+  return true;
+}
+
+export async function attachPaidGrantProviderIds(params: {
+  organizationId: string;
+  kind: 'plan' | 'addon';
+  targetKey: string;
+  ids: {
+    checkoutSessionId?: string | null;
+    paymentIntentId?: string | null;
+    chargeId?: string | null;
+    invoiceId?: string | null;
+    stripeSubscriptionId?: string | null;
+  };
+}): Promise<void> {
+  assertOrgId(params.organizationId);
+  const patch: Record<string, string> = {};
+  if (params.ids.checkoutSessionId) patch.checkout_session_id = params.ids.checkoutSessionId;
+  if (params.ids.paymentIntentId) patch.payment_intent_id = params.ids.paymentIntentId;
+  if (params.ids.chargeId) patch.charge_id = params.ids.chargeId;
+  if (params.ids.invoiceId) patch.invoice_id = params.ids.invoiceId;
+  if (params.ids.stripeSubscriptionId) {
+    patch.stripe_subscription_id = params.ids.stripeSubscriptionId;
+  }
+  if (Object.keys(patch).length === 0) return;
+  const service = await createServiceClient();
+  const { error } = await service.rpc('billing_attach_paid_grant_ids', {
+    p_organization_id: params.organizationId,
+    p_kind: params.kind,
+    p_target_key: params.targetKey,
+    p_ids: patch as Json,
+  });
+  if (error) {
+    console.error('[billing] attach grant ids', error.message);
+  }
+}
+
+export async function lookupPaidGrantFromProviderIds(params: {
+  provider: BillingProvider;
+  ids: string[];
+}): Promise<{
+  organizationId: string;
+  kind: 'plan' | 'addon';
+  targetKey: string | null;
+  matchedExternalId: string | null;
+} | null> {
+  if (params.ids.length === 0) return null;
+  const service = await createServiceClient();
+  const { data, error } = await service.rpc('billing_lookup_paid_grant_from_provider_ids', {
+    p_provider: params.provider,
+    p_ids: params.ids,
+  });
+  if (error) throw new Error(error.message);
+  const row = data && typeof data === 'object' && !Array.isArray(data) ? data : null;
+  if (row?.found !== 1 && row?.found !== '1') return null;
+  const organizationId = typeof row.organization_id === 'string' ? row.organization_id : null;
+  const kind = row.kind === 'addon' || row.kind === 'plan' ? row.kind : null;
+  if (!organizationId || !kind) return null;
+  return {
+    organizationId,
+    kind,
+    targetKey: typeof row.target_key === 'string' ? row.target_key : null,
+    matchedExternalId: typeof row.matched_external_id === 'string' ? row.matched_external_id : null,
+  };
+}
+
+export async function reversePaidGrant(params: {
+  organizationId: string;
+  kind: 'plan' | 'addon';
+  targetKey?: string | null;
+  provider?: BillingProvider | null;
+  externalId?: string | null;
+  providerIds?: string[] | null;
+  reason?: string | null;
+}): Promise<{ reversed: number }> {
+  assertOrgId(params.organizationId);
+  const service = await createServiceClient();
+  const { data, error } = await service.rpc('billing_reverse_paid_grant', {
+    p_organization_id: params.organizationId,
+    p_kind: params.kind,
+    p_target_key: params.targetKey ?? null,
+    p_provider: params.provider ?? null,
+    p_external_id: params.externalId ?? null,
+    p_reason: params.reason ?? 'refunded',
+    p_provider_ids: params.providerIds ?? null,
+  });
+  if (error) throw new Error(error.message);
+  const row = data && typeof data === 'object' && !Array.isArray(data) ? data : null;
+  return { reversed: typeof row?.reversed === 'number' ? row.reversed : 0 };
+}
+
+export async function setPaidSubscriptionStatus(params: {
+  organizationId: string;
+  status: Extract<SubscriptionStatus, 'active' | 'past_due' | 'cancelled' | 'expired'>;
+  provider?: BillingProvider;
+  externalId?: string;
+}): Promise<void> {
+  const service = await createServiceClient();
+  const { error } = await service.rpc('billing_set_subscription_status', {
+    p_organization_id: params.organizationId,
+    p_status: params.status,
+    p_provider: params.provider ?? null,
+    p_external_id: params.externalId ?? null,
+  });
+  if (error) throw new Error(error.message);
+}

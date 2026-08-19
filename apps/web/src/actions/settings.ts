@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { cache } from 'react';
 import {
   branchListSchema,
   branchSchema,
@@ -25,8 +26,17 @@ import type { Role } from '@sincvete/shared';
 import type { Json } from '@sincvete/db';
 import { createServerClient, createServiceClient } from '@/lib/supabase/server';
 import { PermissionError, requirePermission, requireSession } from '@/lib/permissions';
+import { ORGANIZATION_COLUMNS } from '@/lib/db-columns';
+import {
+  FEATURES,
+  assertWithinLimit,
+  getSeatUsageMeters,
+  planRestrictionResult,
+} from '@/lib/entitlements';
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
+  const planError = planRestrictionResult<T>(error);
+  if (planError) return planError;
   if (error instanceof PermissionError) {
     return { success: false, error: error.message };
   }
@@ -34,18 +44,33 @@ function actionError<T = void>(error: unknown): ActionResult<T> {
   return { success: false, error: 'Ocurrió un error inesperado' };
 }
 
-export async function getOrganization(): Promise<Organization | null> {
+async function assertVeterinarianSeatAvailable(organizationId: string) {
+  const seats = await getSeatUsageMeters(organizationId);
+  const meter = seats.find((item) => item.featureKey === FEATURES.PROFESSIONALS_MAX);
+  await assertWithinLimit({
+    organizationId,
+    featureKey: FEATURES.PROFESSIONALS_MAX,
+    currentCount: meter?.used ?? 0,
+  });
+}
+
+/** Request-scoped clinic metadata (non-PHI). Dedupes layout + forms + dashboard. */
+const loadOrganization = cache(async (): Promise<Organization | null> => {
   const session = await requireSession();
   const supabase = await createServerClient();
   const { data, error } = await supabase
     .from('organizations')
-    .select('*')
+    .select(ORGANIZATION_COLUMNS)
     .eq('id', session.organizationId)
     .is('deleted_at', null)
     .single();
 
   if (error) return null;
   return data as Organization;
+});
+
+export async function getOrganization(): Promise<Organization | null> {
+  return loadOrganization();
 }
 
 export async function getOrganizationSettingsForm(): Promise<
@@ -185,6 +210,16 @@ export async function createBranch(
     }
 
     const supabase = await createServerClient();
+    const { count } = await supabase
+      .from('branches')
+      .select('id', { count: 'exact', head: true })
+      .is('deleted_at', null);
+    await assertWithinLimit({
+      organizationId: session.organizationId,
+      featureKey: FEATURES.BRANCHES_MAX,
+      currentCount: count ?? 0,
+    });
+
     const { error } = await supabase
       .from('branches')
       .insert({
@@ -353,7 +388,7 @@ export async function updateTeamMember(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    await requirePermission('users:manage');
+    const session = await requirePermission('users:manage');
     const parsed = updateMemberSchema.safeParse({
       memberId: formData.get('memberId'),
       role: formData.get('role'),
@@ -365,6 +400,18 @@ export async function updateTeamMember(
     }
 
     const supabase = await createServerClient();
+    const { data: member } = await supabase
+      .from('branch_members')
+      .select('role, is_active, deleted_at')
+      .eq('id', parsed.data.memberId)
+      .maybeSingle();
+    const currentlyActiveVet =
+      member?.role === 'veterinarian' && member.is_active === true && member.deleted_at == null;
+    const willBeActiveVet = parsed.data.role === 'veterinarian' && parsed.data.isActive;
+    if (willBeActiveVet && !currentlyActiveVet) {
+      await assertVeterinarianSeatAvailable(session.organizationId);
+    }
+
     const { error } = await supabase
       .from('branch_members')
       .update({
@@ -405,6 +452,7 @@ export async function inviteTeamMember(
       };
     }
 
+    const supabaseForLimit = await createServerClient();
     const service = await createServiceClient();
 
     const { data: existingUsers } = await service.auth.admin.listUsers({
@@ -415,6 +463,56 @@ export async function inviteTeamMember(
     const existingUser = existingUsers.users.find(
       (u) => u.email?.toLowerCase() === parsed.data.email
     );
+
+    let alreadyInOrg = false;
+    if (existingUser) {
+      const { data: existingProfile } = await supabaseForLimit
+        .from('profiles')
+        .select('id')
+        .eq('id', existingUser.id)
+        .is('deleted_at', null)
+        .maybeSingle();
+      alreadyInOrg = Boolean(existingProfile);
+    }
+
+    if (!alreadyInOrg) {
+      const [{ count: profileCount }, { count: inviteCount }] = await Promise.all([
+        supabaseForLimit
+          .from('profiles')
+          .select('id', { count: 'exact', head: true })
+          .eq('is_active', true)
+          .is('deleted_at', null),
+        supabaseForLimit
+          .from('organization_invitations')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'pending')
+          .is('deleted_at', null),
+      ]);
+      await assertWithinLimit({
+        organizationId: session.organizationId,
+        featureKey: FEATURES.USERS_MAX,
+        currentCount: (profileCount ?? 0) + (inviteCount ?? 0),
+      });
+    }
+
+    if (parsed.data.role === 'veterinarian') {
+      let alreadyVet = false;
+      if (existingUser) {
+        const { data: vetRow } = await supabaseForLimit
+          .from('branch_members')
+          .select('id')
+          .eq('user_id', existingUser.id)
+          .eq('role', 'veterinarian')
+          .eq('is_active', true)
+          .is('deleted_at', null)
+          .limit(1)
+          .maybeSingle();
+        alreadyVet = Boolean(vetRow);
+      }
+      if (!alreadyVet) {
+        await assertVeterinarianSeatAvailable(session.organizationId);
+      }
+    }
 
     if (existingUser) {
       const supabase = await createServerClient();
@@ -540,6 +638,10 @@ export async function setActiveBranch(branchId: string): Promise<ActionResult> {
 export async function getUserBranches(): Promise<
   Array<{ id: string; name: string; code: string; is_main: boolean; is_active: boolean }>
 > {
+  return loadUserBranches();
+}
+
+const loadUserBranches = cache(async () => {
   const session = await requireSession();
   const supabase = await createServerClient();
 
@@ -563,4 +665,4 @@ export async function getUserBranches(): Promise<
 
   if (error) throw error;
   return data ?? [];
-}
+});

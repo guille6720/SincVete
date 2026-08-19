@@ -1,11 +1,15 @@
 import {
   getPermissionsForRole,
   hasPermission,
+  type FeatureKey,
   type Permission,
   type Role,
   type SessionContext,
 } from '@sincvete/shared';
-import { getSessionContext } from '@/actions/auth';
+import { getSessionContext } from '@/lib/session';
+import { createServerClient } from '@/lib/supabase/server';
+import { ensurePlatformAdminRegistration } from '@/lib/superadmin';
+import { canUseFeature, requireFeature } from '@/lib/entitlements';
 
 export class PermissionError extends Error {
   constructor(message = 'No tenés permisos para esta acción') {
@@ -37,6 +41,52 @@ export async function requirePermission(
   if (!hasPermission(session.permissions, permission)) {
     throw new PermissionError();
   }
+  return session;
+}
+
+export async function requirePermissionAndFeature(
+  permission: Permission | Permission[],
+  featureKey: FeatureKey
+): Promise<SessionContext> {
+  const session = await requirePermission(permission);
+  await requireFeature(session.organizationId, featureKey);
+  return session;
+}
+
+export async function requirePermissionIfFeature(
+  permission: Permission | Permission[],
+  featureKey: FeatureKey
+): Promise<SessionContext | null> {
+  const session = await requirePermission(permission);
+  const allowed = await canUseFeature({
+    organizationId: session.organizationId,
+    featureKey,
+  });
+  return allowed ? session : null;
+}
+
+export async function canPermissionAndFeature(
+  permission: Permission,
+  featureKey: FeatureKey
+): Promise<boolean> {
+  const session = await getSessionContext();
+  if (!session || !hasPermission(session.permissions, permission)) return false;
+  return canUseFeature({
+    organizationId: session.organizationId,
+    featureKey,
+  });
+}
+
+export async function requireSuperadmin(): Promise<SessionContext> {
+  const session = await requireSession();
+  if (!session.isPlatformAdmin) {
+    throw new PermissionError('No tenés acceso de Superadmin');
+  }
+  const supabase = await createServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  await ensurePlatformAdminRegistration(session.userId, user?.email ?? null);
   return session;
 }
 
