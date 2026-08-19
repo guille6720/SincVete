@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { DM_Sans, Fraunces } from 'next/font/google';
 import { Providers } from '@/components/providers';
+import { PwaRegister } from '@/components/pwa-register';
 import { APP_NAME } from '@sincvete/shared';
 import './globals.css';
 
@@ -16,10 +17,16 @@ const fraunces = Fraunces({
 
 export const metadata: Metadata = {
   title: APP_NAME,
-  description: 'Plataforma veterinaria SaaS profesional',
+  description: 'Modern veterinary management for clinics and professionals.',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    title: 'SincVete',
+    statusBarStyle: 'black-translucent',
+  },
   icons: {
-    icon: [{ url: '/favicon.png', type: 'image/png' }],
-    apple: [{ url: '/brand/logo.png' }],
+    icon: [{ url: '/icons/syncvete.svg', type: 'image/svg+xml' }],
+    apple: [{ url: '/icons/syncvete.svg' }],
   },
 };
 
@@ -32,7 +39,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
       </head>
       <body className={`${dmSans.variable} ${fraunces.variable} font-sans antialiased`}>
-        <Providers>{children}</Providers>
+        <Providers>
+          <PwaRegister />
+          {children}
+        </Providers>
       </body>
     </html>
   );

@@ -9,6 +9,8 @@ const PUBLIC_ROUTES = [
   '/auth/callback',
   '/portal/activar',
   '/recuperar-contrasena',
+  '/manifest.webmanifest',
+  '/sw.js',
 ];
 
 export async function middleware(request: NextRequest) {
@@ -69,5 +71,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|sw.js|manifest.webmanifest|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
 };
