@@ -1,4 +1,5 @@
 import { parseSuperadminEmails } from '@sincvete/shared';
+import { readServerEnv } from '@/lib/server-env';
 import { createServerClient, createServiceClient } from '@/lib/supabase/server';
 
 /**
@@ -6,34 +7,42 @@ import { createServerClient, createServiceClient } from '@/lib/supabase/server';
  * Called only after requireSuperadmin() confirmed the session flag.
  */
 export async function ensurePlatformAdminRegistration(userId: string, email: string | null) {
+  const supabase = await createServerClient();
+  const { data: alreadyAdmin } = await supabase.rpc('is_platform_admin');
+  if (alreadyAdmin === true) return;
+
   const normalized = email?.trim().toLowerCase() ?? '';
-  const allow = parseSuperadminEmails(process.env.SUPERADMIN_EMAILS);
-  if (normalized && allow.includes(normalized)) {
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      throw new Error(
-        'Falta SUPABASE_SERVICE_ROLE_KEY en Vercel (Production). Sin esa clave no se puede registrar Superadmin en la base.'
-      );
-    }
-    const service = await createServiceClient();
-    const { error } = await service.from('platform_admins').upsert({
-      user_id: userId,
-      email: normalized,
-      is_active: true,
-      notes: 'bootstrap from SUPERADMIN_EMAILS',
-    });
-    if (error) {
-      throw new Error(
-        `No se pudo registrar Superadmin en la base: ${error.message}. Aplicá las migraciones de entitlements en Supabase.`
-      );
-    }
+  const allow = parseSuperadminEmails(readServerEnv('SUPERADMIN_EMAILS'));
+  if (!(normalized && allow.includes(normalized))) {
+    throw new Error(
+      'No tenés acceso de Superadmin. El email tiene que estar en SUPERADMIN_EMAILS o en platform_admins.'
+    );
   }
 
-  const supabase = await createServerClient();
-  const { data, error } = await supabase.rpc('is_platform_admin');
-  if (error || data !== true) {
+  if (!readServerEnv('SUPABASE_SERVICE_ROLE_KEY')) {
     throw new Error(
-      error?.message
-        ? `No hay acceso Superadmin en la base: ${error.message}. Aplicá las migraciones y recargá.`
+      'Falta SUPABASE_SERVICE_ROLE_KEY en Vercel (Production). Sin esa clave no se puede registrar Superadmin en la base.'
+    );
+  }
+
+  const service = await createServiceClient();
+  const { error } = await service.from('platform_admins').upsert({
+    user_id: userId,
+    email: normalized,
+    is_active: true,
+    notes: 'bootstrap from SUPERADMIN_EMAILS',
+  });
+  if (error) {
+    throw new Error(
+      `No se pudo registrar Superadmin en la base: ${error.message}. Aplicá las migraciones de entitlements en Supabase.`
+    );
+  }
+
+  const { data, error: rpcError } = await supabase.rpc('is_platform_admin');
+  if (rpcError || data !== true) {
+    throw new Error(
+      rpcError?.message
+        ? `No hay acceso Superadmin en la base: ${rpcError.message}. Aplicá las migraciones y recargá.`
         : 'No tenés acceso de Superadmin. El email tiene que estar en SUPERADMIN_EMAILS o en platform_admins.'
     );
   }
