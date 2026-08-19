@@ -7,12 +7,13 @@ import {
   type SessionContext,
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
+import { readServerEnv } from '@/lib/server-env';
 
 async function resolveIsPlatformAdmin(params: {
   email: string | undefined;
   rpc: () => Promise<boolean>;
 }): Promise<boolean> {
-  const allow = parseSuperadminEmails(process.env.SUPERADMIN_EMAILS);
+  const allow = parseSuperadminEmails(readServerEnv('SUPERADMIN_EMAILS'));
   const email = params.email?.trim().toLowerCase() ?? '';
   if (email && allow.includes(email)) return true;
   return params.rpc();
