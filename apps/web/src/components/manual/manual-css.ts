@@ -198,4 +198,5 @@ export const MANUAL_CSS = `
     .sv-cover { break-inside: avoid; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     a { color: inherit; text-decoration: none; }
   }
+  @page { size: A4; margin: 12mm; }
 `;
