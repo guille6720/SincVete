@@ -9,7 +9,8 @@
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "test:unit": "vitest run --passWithNoTests",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "build:manual": "npx tsx --tsconfig scripts/tsconfig.json scripts/build-manual.ts"
   },
   "dependencies": {
     "@sincvete/db": "*",

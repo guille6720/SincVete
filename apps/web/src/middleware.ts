@@ -9,6 +9,8 @@ const PUBLIC_ROUTES = [
   '/auth/callback',
   '/portal/activar',
   '/recuperar-contrasena',
+  '/manual',
+  '/api/manual',
 ];
 
 export async function middleware(request: NextRequest) {
