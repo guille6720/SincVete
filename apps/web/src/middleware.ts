@@ -13,6 +13,7 @@ const PUBLIC_ROUTES = [
   '/sw.js',
   '/manual',
   '/api/manual',
+  '/legal',
 ];
 
 export async function middleware(request: NextRequest) {
