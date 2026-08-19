@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { BookOpen, Moon, Palette, Settings, Sun } from 'lucide-react';
-import { MANUAL_DOWNLOAD_HREF, MANUAL_FILENAME } from '@/components/manual/manual-constants';
+import { MANUAL_PDF_HREF } from '@/components/manual/manual-constants';
 import {
   COLOR_PRESETS,
   DEFAULT_THEME,
@@ -158,11 +158,10 @@ export function ThemeControls() {
       </button>
 
       <a
-        href={MANUAL_DOWNLOAD_HREF}
-        download={MANUAL_FILENAME}
+        href={MANUAL_PDF_HREF}
         className={controlClass}
-        aria-label="Descargar manual de uso"
-        title="Descargar manual de uso"
+        aria-label="Descargar manual de uso en PDF"
+        title="Descargar manual de uso en PDF"
       >
         <BookOpen className="h-4 w-4" />
         <span>Manual</span>
