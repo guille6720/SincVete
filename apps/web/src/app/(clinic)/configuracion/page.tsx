@@ -23,6 +23,7 @@ export default async function ConfiguracionPage({ searchParams }: PageProps) {
 
   const params = await searchParams;
   const availableTabs: SettingsTab[] = ['roles', 'legal'];
+  if (session.isPlatformAdmin) availableTabs.push('guia-superadmin');
   if (hasPermission(session.permissions, 'org:manage')) availableTabs.unshift('clinica', 'plan');
   if (hasPermission(session.permissions, 'branch:manage')) availableTabs.push('sucursales');
   if (hasPermission(session.permissions, 'users:manage')) availableTabs.push('equipo');

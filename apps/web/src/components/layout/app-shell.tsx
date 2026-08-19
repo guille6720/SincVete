@@ -133,7 +133,7 @@ export function AppShell({
   return (
     <div className="flex min-h-screen" style={{ background: 'var(--shell-bg)' }}>
       <AppUpdateBanner />
-      <CommandPalette entitledHrefs={entitledHrefs} />
+      <CommandPalette entitledHrefs={entitledHrefs} isPlatformAdmin={isPlatformAdmin} />
 
       {pendingHref ? (
         <div

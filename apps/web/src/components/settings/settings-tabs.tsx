@@ -2,7 +2,7 @@
 
 import { cn } from '@/lib/utils';
 
-export type SettingsTab = 'clinica' | 'sucursales' | 'equipo' | 'roles' | 'plan' | 'legal';
+export type SettingsTab = 'clinica' | 'sucursales' | 'equipo' | 'roles' | 'plan' | 'legal' | 'guia-superadmin';
 
 const TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'clinica', label: 'Clínica' },
@@ -11,6 +11,7 @@ const TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'equipo', label: 'Equipo' },
   { id: 'roles', label: 'Roles' },
   { id: 'legal', label: 'Legal' },
+  { id: 'guia-superadmin', label: 'Guía Superadmin' },
 ];
 
 interface SettingsTabsProps {

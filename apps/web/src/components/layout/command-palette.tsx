@@ -15,6 +15,7 @@ import {
   Scissors,
   Search,
   Settings,
+  Shield,
   Stethoscope,
   Syringe,
   Users,
@@ -95,7 +96,13 @@ const PREFETCH_ON_OPEN = [
   '/historia-clinica/nuevo',
 ] as const;
 
-export function CommandPalette({ entitledHrefs = null }: { entitledHrefs?: string[] | null }) {
+export function CommandPalette({
+  entitledHrefs = null,
+  isPlatformAdmin = false,
+}: {
+  entitledHrefs?: string[] | null;
+  isPlatformAdmin?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -173,6 +180,19 @@ export function CommandPalette({ entitledHrefs = null }: { entitledHrefs?: strin
                   {item.label}
                 </Command.Item>
               ))}
+              {isPlatformAdmin ? (
+                <Command.Item
+                  value="Guía Superadmin manual permisos habilitar clinica"
+                  onSelect={() => navigate('/configuracion?tab=guia-superadmin')}
+                  className={cn(
+                    'flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm',
+                    'aria-selected:bg-accent aria-selected:text-accent-foreground'
+                  )}
+                >
+                  <Shield className="h-4 w-4" />
+                  Guía Superadmin
+                </Command.Item>
+              ) : null}
             </Command.Group>
 
             <Command.Group heading="Acciones rápidas" className="px-1 py-1.5 text-xs font-medium text-muted-foreground">

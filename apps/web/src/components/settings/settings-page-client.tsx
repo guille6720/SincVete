@@ -8,6 +8,7 @@ import { TeamPanel } from '@/components/settings/team-panel';
 import { RolesPanel } from '@/components/settings/roles-panel';
 import { PlanBillingPanel } from '@/components/settings/plan-billing-panel';
 import { SettingsLegalPanel } from '@/components/settings/settings-legal-panel';
+import { SettingsSuperadminManualPanel } from '@/components/settings/settings-superadmin-manual-panel';
 import type { PlanBillingState } from '@/actions/plan-billing';
 import type {
   Branch,
@@ -83,6 +84,9 @@ export function SettingsPageClient({
 
       {activeTab === 'roles' && <RolesPanel />}
       {activeTab === 'legal' && <SettingsLegalPanel />}
+      {activeTab === 'guia-superadmin' && availableTabs.includes('guia-superadmin') ? (
+        <SettingsSuperadminManualPanel />
+      ) : null}
       {activeTab === 'plan' && planBilling ? (
         <PlanBillingPanel state={planBilling} checkoutBanner={checkoutBanner} />
       ) : activeTab === 'plan' ? (

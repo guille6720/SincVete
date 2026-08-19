@@ -18,6 +18,9 @@ export default async function SuperadminLayout({ children }: { children: React.R
             <Link href="/superadmin" className="hover:text-primary">
               Organizaciones
             </Link>
+            <Link href="/configuracion?tab=guia-superadmin" className="hover:text-primary">
+              Guía
+            </Link>
           </nav>
           <Link href="/dashboard" className="ml-auto text-sm text-muted-foreground hover:text-foreground">
             Volver a la clínica
