@@ -120,15 +120,11 @@ export type CommercialPlanKey =
   (typeof COMMERCIAL_PLAN_KEYS)[keyof typeof COMMERCIAL_PLAN_KEYS];
 
 /**
- * Product must set this before marketing a timed trial.
- * null = open-ended `trialing` (trial_ends_at NULL) until Superadmin configures duration.
- *
- * Where to define the real duration (do not hardcode a business number here):
- * 1. Superadmin / SQL: UPDATE plans SET metadata = jsonb_set(metadata, '{default_trial_days}', '<n>'::jsonb) WHERE key = 'trial';
- * 2. Keep this constant in sync so the app documents the same policy.
- * Maps to plans.metadata.default_trial_days for the `trial` plan.
+ * Timed free trial for new clinics (days).
+ * Must stay in sync with plans.metadata.default_trial_days for key = 'trial'.
+ * null = open-ended `trialing` (trial_ends_at NULL) until configured.
  */
-export const ONBOARDING_TRIAL_DAYS: number | null = null;
+export const ONBOARDING_TRIAL_DAYS: number | null = 10;
 
 /** Plan assigned to organizations created AFTER the entitlements migration. Never `legacy`. */
 export const ONBOARDING_PLAN_KEY = COMMERCIAL_PLAN_KEYS.TRIAL;
