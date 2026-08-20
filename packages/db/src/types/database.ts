@@ -3149,6 +3149,10 @@ export interface Database {
           commercial_note_updated_at: string | null;
           commercial_note_updated_by: string | null;
           last_refreshed_at: string | null;
+          follow_up_at: string | null;
+          follow_up_by: string | null;
+          follow_up_set_at: string | null;
+          follow_up_set_by: string | null;
         };
         Insert: {
           organization_id: string;
@@ -3178,6 +3182,10 @@ export interface Database {
           commercial_note_updated_at?: string | null;
           commercial_note_updated_by?: string | null;
           last_refreshed_at?: string | null;
+          follow_up_at?: string | null;
+          follow_up_by?: string | null;
+          follow_up_set_at?: string | null;
+          follow_up_set_by?: string | null;
         };
         Update: {
           organization_id?: string;
@@ -3207,6 +3215,10 @@ export interface Database {
           commercial_note_updated_at?: string | null;
           commercial_note_updated_by?: string | null;
           last_refreshed_at?: string | null;
+          follow_up_at?: string | null;
+          follow_up_by?: string | null;
+          follow_up_set_at?: string | null;
+          follow_up_set_by?: string | null;
         };
         Relationships: [];
       };
@@ -3577,6 +3589,28 @@ export interface Database {
       superadmin_touch_plan_recommendation_refresh: {
         Args: { p_organization_id: string };
         Returns: Json;
+      };
+      superadmin_set_plan_recommendation_follow_up: {
+        Args: {
+          p_organization_id: string;
+          p_follow_up_at?: string | null;
+        };
+        Returns: Json;
+      };
+      superadmin_list_recommendation_follow_ups: {
+        Args: { p_limit?: number };
+        Returns: {
+          organization_id: string;
+          organization_name: string;
+          organization_slug: string;
+          current_plan_key: string | null;
+          recommended_plan_key: string | null;
+          status: string;
+          severity: string;
+          usage_level: number;
+          follow_up_at: string;
+          commercial_note: string | null;
+        }[];
       };
       superadmin_get_org_commercial: {
         Args: { p_organization_id: string };

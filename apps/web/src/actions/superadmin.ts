@@ -1268,6 +1268,31 @@ export async function saveOrganizationPlanRecommendationNote(
   }
 }
 
+export async function saveOrganizationPlanRecommendationFollowUp(
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    await requireSuperadmin();
+    const organizationId = String(formData.get('organizationId') ?? '');
+    if (!organizationId) return { success: false, error: 'Organización inválida' };
+    const raw = String(formData.get('followUpAt') ?? '').trim();
+    let followUpAt: string | null = null;
+    if (raw) {
+      const parsed = new Date(raw);
+      if (Number.isNaN(parsed.getTime())) {
+        return { success: false, error: 'Fecha de seguimiento inválida' };
+      }
+      followUpAt = parsed.toISOString();
+    }
+    const { setPlanRecommendationFollowUp } = await import('@/lib/plan-recommendations');
+    await setPlanRecommendationFollowUp(organizationId, followUpAt);
+    revalidateOrg(organizationId);
+    return { success: true };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
 export async function listSuperadminUpgradeQueue(limit = 12) {
   const { listSuperadminOrganizationsWithRecommendations } = await import(
     '@/lib/plan-recommendations'
@@ -1279,6 +1304,11 @@ export async function listSuperadminUpgradeQueue(limit = 12) {
     sort: 'usage_desc',
     persistRecommendations: false,
   });
+}
+
+export async function listSuperadminRecommendationFollowUps(limit = 25) {
+  const { listRecommendationFollowUps } = await import('@/lib/plan-recommendations');
+  return listRecommendationFollowUps(limit);
 }
 
 export async function recordCommercialFeatureSignal(featureKey: string): Promise<void> {

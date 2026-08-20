@@ -36,7 +36,10 @@ export function ClinicUpgradeRecommendationNotice({
           type="button"
           size="sm"
           onClick={() => {
-            const el = document.getElementById('planes-disponibles');
+            const recommended = notice.recommendedPlan
+              ? document.getElementById(`plan-recomendado-${notice.recommendedPlan}`)
+              : null;
+            const el = recommended ?? document.getElementById('planes-disponibles');
             el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }}
         >

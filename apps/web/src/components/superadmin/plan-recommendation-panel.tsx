@@ -8,12 +8,14 @@ import {
   changeOrganizationPlan,
   dismissOrganizationPlanRecommendation,
   reviewOrganizationPlanRecommendation,
+  saveOrganizationPlanRecommendationFollowUp,
   saveOrganizationPlanRecommendationNote,
 } from '@/actions/superadmin';
 import type { PlanRecommendationCommercialMeta } from '@/lib/plan-recommendations';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { usePendingAction } from '@/lib/hooks/use-pending-action';
@@ -40,6 +42,13 @@ export function SuperadminPlanRecommendationPanel({
   const [message, setMessage] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const [note, setNote] = useState(commercialMeta?.commercialNote ?? '');
+  const [followUpLocal, setFollowUpLocal] = useState(() => {
+    if (!commercialMeta?.followUpAt) return '';
+    const d = new Date(commercialMeta.followUpAt);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  });
 
   const showAlert =
     recommendation.shouldRecommendUpgrade ||
@@ -178,6 +187,66 @@ export function SuperadminPlanRecommendationPanel({
                 {new Date(commercialMeta.lastRefreshedAt).toLocaleString('es-AR')}
               </span>
             ) : null}
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor="recFollowUp">Seguimiento comercial</Label>
+          <div className="flex flex-wrap items-end gap-2">
+            <Input
+              id="recFollowUp"
+              type="datetime-local"
+              value={followUpLocal}
+              onChange={(event) => setFollowUpLocal(event.target.value)}
+              className="max-w-xs"
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => {
+                const form = new FormData();
+                form.set('organizationId', organizationId);
+                form.set('followUpAt', followUpLocal);
+                void run(async () => {
+                  const result = await saveOrganizationPlanRecommendationFollowUp(form);
+                  setMessage(
+                    result.success
+                      ? 'Seguimiento guardado'
+                      : result.error ?? 'No se pudo guardar el seguimiento'
+                  );
+                  if (result.success) router.refresh();
+                  return result;
+                });
+              }}
+            >
+              Guardar fecha
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={pending || !followUpLocal}
+              onClick={() => {
+                setFollowUpLocal('');
+                const form = new FormData();
+                form.set('organizationId', organizationId);
+                form.set('followUpAt', '');
+                void run(async () => {
+                  const result = await saveOrganizationPlanRecommendationFollowUp(form);
+                  setMessage(
+                    result.success
+                      ? 'Seguimiento quitado'
+                      : result.error ?? 'No se pudo quitar el seguimiento'
+                  );
+                  if (result.success) router.refresh();
+                  return result;
+                });
+              }}
+            >
+              Quitar
+            </Button>
           </div>
         </div>
 

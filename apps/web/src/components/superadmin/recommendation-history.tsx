@@ -14,6 +14,8 @@ function eventLabel(eventType: string) {
   if (eventType === 'clinic_viewed') return 'Vista clínica';
   if (eventType === 'cleared') return 'Limpiada';
   if (eventType === 'noted') return 'Nota comercial';
+  if (eventType === 'follow_up_set') return 'Seguimiento';
+  if (eventType === 'follow_up_cleared') return 'Seguimiento quitado';
   return eventType;
 }
 

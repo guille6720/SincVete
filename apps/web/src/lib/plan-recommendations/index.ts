@@ -746,6 +746,8 @@ export type PlanRecommendationCommercialMeta = {
   commercialNote: string | null;
   commercialNoteUpdatedAt: string | null;
   lastRefreshedAt: string | null;
+  followUpAt: string | null;
+  followUpBy: string | null;
   status: string | null;
 };
 
@@ -764,6 +766,8 @@ export async function getPlanRecommendationCommercialMeta(
     commercialNoteUpdatedAt:
       typeof row.commercial_note_updated_at === 'string' ? row.commercial_note_updated_at : null,
     lastRefreshedAt: typeof row.last_refreshed_at === 'string' ? row.last_refreshed_at : null,
+    followUpAt: typeof row.follow_up_at === 'string' ? row.follow_up_at : null,
+    followUpBy: typeof row.follow_up_by === 'string' ? row.follow_up_by : null,
     status: typeof row.status === 'string' ? row.status : null,
   };
 }
@@ -779,6 +783,55 @@ export async function setPlanRecommendationCommercialNote(
     p_note: note,
   });
   if (error) throw new Error(error.message);
+}
+
+export async function setPlanRecommendationFollowUp(
+  organizationId: string,
+  followUpAt: string | null
+): Promise<void> {
+  await requireSuperadmin();
+  const supabase = await createServerClient();
+  const { error } = await supabase.rpc('superadmin_set_plan_recommendation_follow_up', {
+    p_organization_id: organizationId,
+    p_follow_up_at: followUpAt,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export type RecommendationFollowUpRow = {
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+  currentPlanKey: string | null;
+  recommendedPlanKey: string | null;
+  status: string;
+  severity: string;
+  usageLevel: number;
+  followUpAt: string;
+  commercialNote: string | null;
+};
+
+export async function listRecommendationFollowUps(
+  limit = 25
+): Promise<RecommendationFollowUpRow[]> {
+  await requireSuperadmin();
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc('superadmin_list_recommendation_follow_ups', {
+    p_limit: limit,
+  });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({
+    organizationId: row.organization_id,
+    organizationName: row.organization_name,
+    organizationSlug: row.organization_slug,
+    currentPlanKey: row.current_plan_key,
+    recommendedPlanKey: row.recommended_plan_key,
+    status: row.status,
+    severity: row.severity,
+    usageLevel: Number(row.usage_level) || 0,
+    followUpAt: row.follow_up_at,
+    commercialNote: row.commercial_note,
+  }));
 }
 
 /**
