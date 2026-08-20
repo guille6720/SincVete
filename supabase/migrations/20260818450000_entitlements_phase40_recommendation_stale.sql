@@ -353,7 +353,7 @@ BEGIN
         p_upgrade_filter IS NULL OR btrim(p_upgrade_filter) = ''
         OR (p_upgrade_filter = 'upgrade_recommended' AND rec.status = 'recommended' AND (rec.commercial_outcome IS NULL OR rec.commercial_outcome = 'deferred'))
         OR (p_upgrade_filter = 'closed_outcome' AND rec.commercial_outcome IN ('won', 'lost', 'not_a_fit'))
-        OR (p_upgrade_filter = 'stale' AND rec.status IN ('recommended', 'reviewed') AND (rec.commercial_outcome IS NULL OR rec.commercial_outcome = 'deferred') AND COALESCE(rec.last_refreshed_at, rec.recommended_at, rec.updated_at) < timezone('utc', now()) - make_interval(days => COALESCE((SELECT stale_days FROM public.commercial_recommendation_settings WHERE id = 1), 14)))
+        OR (p_upgrade_filter = 'stale' AND rec.status IN ('recommended', 'reviewed') AND (rec.commercial_outcome IS NULL OR rec.commercial_outcome = 'deferred') AND COALESCE(rec.last_refreshed_at, rec.recommended_at, rec.updated_at) < timezone('utc', now()) - make_interval(days => COALESCE((SELECT crs.stale_days FROM public.commercial_recommendation_settings crs WHERE crs.id = 1), 14)))
         OR (p_upgrade_filter = 'trial' AND ls.plan_key = 'trial')
         OR (p_upgrade_filter = 'legacy' AND ls.plan_key = 'legacy')
         OR (p_upgrade_filter = 'dismissed' AND rec.status = 'dismissed')
