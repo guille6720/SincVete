@@ -547,3 +547,66 @@ export function comparePlanFeatures(params: {
 
   return { gained, lost, limitChanges };
 }
+
+export type RecommendationCsvRow = {
+  clinicName: string;
+  slug: string;
+  ownerName: string | null;
+  currentPlan: string | null;
+  subscriptionStatus: string | null;
+  usersUsed: number;
+  branchesUsed: number;
+  patientsUsed: number;
+  usageLevel: number;
+  recommendedPlan: string | null;
+  upgradeStatus: string;
+  severity: string;
+  reasons: string[];
+};
+
+/** Escape a CSV field (RFC-style quotes). */
+export function csvEscape(value: string): string {
+  if (/[",\n\r]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+export function formatRecommendationsCsv(rows: RecommendationCsvRow[]): string {
+  const header = [
+    'clinic',
+    'slug',
+    'owner',
+    'current_plan',
+    'subscription_status',
+    'users',
+    'branches',
+    'patients',
+    'usage_level',
+    'recommended_plan',
+    'upgrade_status',
+    'severity',
+    'reasons',
+  ];
+  const lines = [header.join(',')];
+  for (const row of rows) {
+    lines.push(
+      [
+        csvEscape(row.clinicName),
+        csvEscape(row.slug),
+        csvEscape(row.ownerName ?? ''),
+        csvEscape(row.currentPlan ?? ''),
+        csvEscape(row.subscriptionStatus ?? ''),
+        String(row.usersUsed),
+        String(row.branchesUsed),
+        String(row.patientsUsed),
+        String(Math.round(Math.min(row.usageLevel, 9) * 1000) / 1000),
+        csvEscape(row.recommendedPlan ?? ''),
+        csvEscape(row.upgradeStatus),
+        csvEscape(row.severity),
+        csvEscape(row.reasons.join(' | ')),
+      ].join(',')
+    );
+  }
+  return `${lines.join('\n')}\n`;
+}

@@ -1152,6 +1152,44 @@ export async function listSuperadminOrganizationsRecommended(params: {
   return listSuperadminOrganizationsWithRecommendations(params);
 }
 
+export async function refreshSuperadminPlanRecommendations(): Promise<
+  ActionResult<{ scanned: number; recommended: number; cleared: number; pages: number }>
+> {
+  try {
+    await requireSuperadmin();
+    const { refreshAllPlanRecommendations } = await import('@/lib/plan-recommendations');
+    const data = await refreshAllPlanRecommendations();
+    revalidatePath('/superadmin');
+    return { success: true, data };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function exportSuperadminRecommendationsCsv(formData?: FormData): Promise<
+  ActionResult<{ csv: string; rowCount: number }>
+> {
+  try {
+    await requireSuperadmin();
+    const { exportRecommendationsCsv } = await import('@/lib/plan-recommendations');
+    const get = (key: string) => {
+      const raw = formData?.get(key);
+      return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
+    };
+    const data = await exportRecommendationsCsv({
+      search: get('search'),
+      planKey: get('plan'),
+      status: get('status'),
+      recommendedPlan: get('recommended'),
+      upgradeFilter: get('upgrade'),
+      sort: get('sort'),
+    });
+    return { success: true, data };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
 export async function dismissOrganizationPlanRecommendation(
   formData: FormData
 ): Promise<ActionResult> {

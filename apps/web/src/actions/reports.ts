@@ -153,6 +153,23 @@ export async function getClinicReport(input?: {
 
   if (error) throw error;
 
+  void (async () => {
+    try {
+      await supabase.rpc('record_commercial_feature_signal', {
+        p_feature_key: FEATURES.BASIC_REPORTS,
+        p_event_type: 'feature_used',
+      });
+      if (includeAdvanced) {
+        await supabase.rpc('record_commercial_feature_signal', {
+          p_feature_key: FEATURES.ADVANCED_REPORTS,
+          p_event_type: 'feature_used',
+        });
+      }
+    } catch {
+      // Best-effort commercial signal.
+    }
+  })();
+
   const raw = (data ?? {}) as Record<string, unknown>;
   return {
     from: String(raw.from ?? range.from).slice(0, 10),

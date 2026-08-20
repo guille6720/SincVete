@@ -5,6 +5,7 @@ import {
   METERED_USAGE_LABELS,
   computePlanRecommendation,
   comparePlanFeatures,
+  formatRecommendationsCsv,
   getResolvedFeatureLimit,
   type PlanRecommendation,
   type PlanRecommendationInput,
@@ -240,6 +241,8 @@ export async function listSuperadminOrganizationsWithRecommendations(params: {
   recommendedPlan?: string;
   upgradeFilter?: string;
   sort?: string;
+  /** When false, skip writing recommendation rows (used by bulk refresh). Default true. */
+  persistRecommendations?: boolean;
 }): Promise<{
   rows: SuperadminOrgRecommendationRow[];
   total: number;
@@ -251,6 +254,7 @@ export async function listSuperadminOrganizationsWithRecommendations(params: {
   const supabase = await createServerClient();
   const page = Math.max(1, params.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, params.pageSize ?? 25));
+  const persistRecommendations = params.persistRecommendations !== false;
   const matrix = await loadPlanCatalogMatrix();
   const maps = matrixToEngineMaps(matrix);
 
@@ -355,17 +359,19 @@ export async function listSuperadminOrganizationsWithRecommendations(params: {
   });
 
   // Persist active recommendations so clinic soft notices can appear (best-effort, page only).
-  await Promise.all(
-    rows
-      .filter((row) => row.recommendation.shouldRecommendUpgrade && row.recommendation.status === 'recommended')
-      .map(async (row) => {
-        try {
-          await persistPlanRecommendation(row.recommendation, 'recommended');
-        } catch {
-          // Persistence optional if phase 31/32 not applied yet.
-        }
-      })
-  );
+  if (persistRecommendations) {
+    await Promise.all(
+      rows
+        .filter((row) => row.recommendation.shouldRecommendUpgrade && row.recommendation.status === 'recommended')
+        .map(async (row) => {
+          try {
+            await persistPlanRecommendation(row.recommendation, 'recommended');
+          } catch {
+            // Persistence optional if phase 31/32 not applied yet.
+          }
+        })
+    );
+  }
 
   const [pageSummary, globalSummary] = await Promise.all([
     Promise.resolve(buildRecommendationSummary(rows, total)),
@@ -379,6 +385,123 @@ export async function listSuperadminOrganizationsWithRecommendations(params: {
     pageSize,
     summary: globalSummary ?? pageSummary,
   };
+}
+
+/**
+ * Walk all clinics, recompute recommendations, and persist advisory rows.
+ * Does not change subscriptions.
+ */
+export async function refreshAllPlanRecommendations(options?: {
+  maxOrgs?: number;
+  pageSize?: number;
+}): Promise<{ scanned: number; recommended: number; cleared: number; pages: number }> {
+  await requireSuperadmin();
+  const supabase = await createServerClient();
+  const pageSize = Math.min(100, Math.max(10, options?.pageSize ?? 50));
+  const maxOrgs = Math.max(1, options?.maxOrgs ?? 5000);
+  let page = 1;
+  let scanned = 0;
+  let recommended = 0;
+  let cleared = 0;
+  let pages = 0;
+  let total = Number.POSITIVE_INFINITY;
+
+  while (scanned < maxOrgs && scanned < total) {
+    const batch = await listSuperadminOrganizationsWithRecommendations({
+      page,
+      pageSize,
+      persistRecommendations: false,
+    });
+    pages += 1;
+    total = batch.total;
+    if (batch.rows.length === 0) break;
+
+    for (const row of batch.rows) {
+      scanned += 1;
+      const rec = row.recommendation;
+      try {
+        if (rec.status === 'recommended' && rec.shouldRecommendUpgrade) {
+          await persistPlanRecommendation(rec, 'recommended');
+          recommended += 1;
+        } else if (rec.status === 'none') {
+          const { data: clearData, error: clearError } = await supabase.rpc(
+            'superadmin_clear_idle_plan_recommendation',
+            { p_organization_id: row.id }
+          );
+          if (!clearError && clearData && typeof clearData === 'object' && (clearData as { cleared?: boolean }).cleared) {
+            cleared += 1;
+          }
+        }
+      } catch {
+        // Continue remaining orgs if one upsert fails.
+      }
+      if (scanned >= maxOrgs) break;
+    }
+
+    if (batch.rows.length < pageSize) break;
+    page += 1;
+  }
+
+  return { scanned, recommended, cleared, pages };
+}
+
+export function recommendationsToCsv(rows: SuperadminOrgRecommendationRow[]): string {
+  return formatRecommendationsCsv(
+    rows.map((row) => ({
+      clinicName: row.name,
+      slug: row.slug,
+      ownerName: row.ownerName,
+      currentPlan: row.planKey,
+      subscriptionStatus: row.status,
+      usersUsed: row.usersUsed,
+      branchesUsed: row.branchesUsed,
+      patientsUsed: row.patientsUsed,
+      usageLevel: row.recommendation.usageLevel,
+      recommendedPlan: row.recommendation.recommendedPlan,
+      upgradeStatus: row.recommendation.upgradeStatus,
+      severity: row.recommendation.severity,
+      reasons: row.recommendation.reasons,
+    }))
+  );
+}
+
+export async function exportRecommendationsCsv(params: {
+  search?: string;
+  planKey?: string;
+  status?: string;
+  recommendedPlan?: string;
+  upgradeFilter?: string;
+  sort?: string;
+  maxRows?: number;
+}): Promise<{ csv: string; rowCount: number }> {
+  await requireSuperadmin();
+  const pageSize = 100;
+  const maxRows = Math.min(5000, Math.max(1, params.maxRows ?? 2000));
+  const all: SuperadminOrgRecommendationRow[] = [];
+  let page = 1;
+  let total = Number.POSITIVE_INFINITY;
+
+  while (all.length < maxRows && all.length < total) {
+    const batch = await listSuperadminOrganizationsWithRecommendations({
+      search: params.search,
+      planKey: params.planKey,
+      status: params.status,
+      recommendedPlan: params.recommendedPlan,
+      upgradeFilter: params.upgradeFilter,
+      sort: params.sort,
+      page,
+      pageSize,
+      persistRecommendations: false,
+    });
+    total = batch.total;
+    if (batch.rows.length === 0) break;
+    all.push(...batch.rows);
+    if (batch.rows.length < pageSize) break;
+    page += 1;
+  }
+
+  const trimmed = all.slice(0, maxRows);
+  return { csv: recommendationsToCsv(trimmed), rowCount: trimmed.length };
 }
 
 export type RecommendationDashboardSummary = {

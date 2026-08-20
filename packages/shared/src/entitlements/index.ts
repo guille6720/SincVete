@@ -79,6 +79,8 @@ export {
   buildRecommendationFingerprint,
   shouldReopenDismissed,
   comparePlanFeatures,
+  formatRecommendationsCsv,
+  csvEscape,
 } from './plan-recommendations';
 
 export type {
@@ -92,4 +94,5 @@ export type {
   FeatureGrantSnapshot,
   PlanRecommendationInput,
   PlanRecommendation,
+  RecommendationCsvRow,
 } from './plan-recommendations';

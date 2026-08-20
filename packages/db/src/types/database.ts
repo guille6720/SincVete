@@ -3547,6 +3547,10 @@ export interface Database {
           created_at: string;
         }[];
       };
+      superadmin_clear_idle_plan_recommendation: {
+        Args: { p_organization_id: string };
+        Returns: Json;
+      };
       superadmin_get_org_commercial: {
         Args: { p_organization_id: string };
         Returns: Json;

@@ -6,10 +6,12 @@ import { useState, useTransition } from 'react';
 import { COMMERCIAL_PLAN_KEYS, buildPaginatedResult } from '@sincvete/shared';
 import type { SuperadminOrgRecommendationRow } from '@/lib/plan-recommendations';
 import type { RecommendationDashboardSummary } from '@/lib/plan-recommendations';
+import { exportSuperadminRecommendationsCsv } from '@/actions/superadmin';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { usePendingAction } from '@/lib/hooks/use-pending-action';
 
 function statusVariant(status: SuperadminOrgRecommendationRow['status']) {
   if (status === 'active') return 'success' as const;
@@ -96,6 +98,8 @@ export function SuperadminOrgList({
   const [upgradeFilter, setUpgradeFilter] = useState(initialUpgradeFilter);
   const [sort, setSort] = useState(initialSort);
   const [pending, startTransition] = useTransition();
+  const [exportPending, runExport] = usePendingAction();
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
   const data = buildPaginatedResult(rows, total, page, pageSize);
 
   function applySearch(nextPage = 1) {
@@ -110,6 +114,31 @@ export function SuperadminOrgList({
     startTransition(() => {
       router.push(params.size ? `/superadmin?${params.toString()}` : '/superadmin');
     });
+  }
+
+  async function downloadCsv() {
+    setExportMessage(null);
+    const form = new FormData();
+    if (search.trim()) form.set('search', search.trim());
+    if (planKey) form.set('plan', planKey);
+    if (status) form.set('status', status);
+    if (recommendedPlan) form.set('recommended', recommendedPlan);
+    if (upgradeFilter) form.set('upgrade', upgradeFilter);
+    if (sort) form.set('sort', sort);
+    const result = await runExport(() => exportSuperadminRecommendationsCsv(form));
+    if (!result) return;
+    if (!result.success || !result.data?.csv) {
+      setExportMessage(result.error ?? 'No se pudo exportar');
+      return;
+    }
+    const blob = new Blob([result.data.csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `syncvete-recomendaciones-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setExportMessage(`${result.data.rowCount} filas exportadas`);
   }
 
   return (
@@ -170,6 +199,17 @@ export function SuperadminOrgList({
           <option value="recommended_recent">Rec. reciente</option>
         </Select>
         <Button type="submit">Buscar</Button>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={exportPending}
+          onClick={() => void downloadCsv()}
+        >
+          Exportar CSV
+        </Button>
+        {exportMessage ? (
+          <span className="text-sm text-muted-foreground">{exportMessage}</span>
+        ) : null}
       </form>
 
       <div className="overflow-x-auto rounded-lg border">

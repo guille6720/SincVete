@@ -4,6 +4,7 @@ import {
   COMMERCIAL_PLAN_KEYS,
   computePlanRecommendation,
   comparePlanFeatures,
+  formatRecommendationsCsv,
   PLAN_USAGE_THRESHOLDS,
   type FeatureGrantSnapshot,
   type PlanRecommendationInput,
@@ -285,5 +286,30 @@ describe('comparePlanFeatures', () => {
     expect(result.limitChanges.some((c) => c.label === 'Usuarios' && c.from === '3' && c.to === '10')).toBe(
       true
     );
+  });
+});
+
+describe('formatRecommendationsCsv', () => {
+  it('escapes commas and quotes in clinic names', () => {
+    const csv = formatRecommendationsCsv([
+      {
+        clinicName: 'Clínica "BMW", Norte',
+        slug: 'bmw',
+        ownerName: null,
+        currentPlan: 'basic',
+        subscriptionStatus: 'active',
+        usersUsed: 2,
+        branchesUsed: 1,
+        patientsUsed: 40,
+        usageLevel: 0.82,
+        recommendedPlan: 'pro',
+        upgradeStatus: 'near_limit',
+        severity: 'warning',
+        reasons: ['Uso alto', 'Inventario'],
+      },
+    ]);
+    expect(csv).toContain('"Clínica ""BMW"", Norte"');
+    expect(csv).toContain('bmw');
+    expect(csv.split('\n')[0]).toContain('recommended_plan');
   });
 });

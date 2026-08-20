@@ -12,6 +12,7 @@ function eventLabel(eventType: string) {
   if (eventType === 'reopened') return 'Reabierta';
   if (eventType === 'clinic_dismissed') return 'Dismiss clínica';
   if (eventType === 'clinic_viewed') return 'Vista clínica';
+  if (eventType === 'cleared') return 'Limpiada';
   return eventType;
 }
 
