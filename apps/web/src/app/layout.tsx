@@ -16,6 +16,7 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://syncvete.opusorg.com'),
   title: APP_NAME,
   description: 'Modern veterinary management for clinics and professionals.',
   manifest: '/manifest.webmanifest',

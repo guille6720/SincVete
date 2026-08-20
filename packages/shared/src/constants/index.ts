@@ -104,3 +104,12 @@ export const SEARCH_DEBOUNCE_MS = 300;
 export const APP_NAME = 'SyncVete';
 export const APP_LOCALE = 'es-AR';
 export const APP_TIMEZONE = 'America/Argentina/Buenos_Aires';
+/** Public production host (Y). Old I-spellings redirect here. */
+export const APP_CANONICAL_HOST = 'syncvete.opusorg.com';
+export const APP_LEGACY_HOSTS = [
+  'sincvete.opusorg.com',
+  'sinc-vete.opusorg.com',
+  'www.sincvete.opusorg.com',
+  'www.sinc-vete.opusorg.com',
+  'www.syncvete.opusorg.com',
+] as const;

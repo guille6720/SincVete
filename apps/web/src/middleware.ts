@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import type { Database } from '@sincvete/db';
+import { APP_CANONICAL_HOST, APP_LEGACY_HOSTS } from '@sincvete/shared';
 
 const PUBLIC_ROUTES = [
   '/',
@@ -17,6 +18,15 @@ const PUBLIC_ROUTES = [
 ];
 
 export async function middleware(request: NextRequest) {
+  const hostname = request.nextUrl.hostname.toLowerCase();
+  if ((APP_LEGACY_HOSTS as readonly string[]).includes(hostname)) {
+    const url = request.nextUrl.clone();
+    url.hostname = APP_CANONICAL_HOST;
+    url.protocol = 'https:';
+    url.port = '';
+    return NextResponse.redirect(url, 308);
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient<Database>(
