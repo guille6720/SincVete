@@ -28,11 +28,11 @@ BEGIN
   PERFORM public.require_platform_admin();
   v_limit := LEAST(GREATEST(COALESCE(p_limit, 50), 1), 100);
 
-  UPDATE public.billing_checkout_intents
+  UPDATE public.billing_checkout_intents AS bci
   SET cancelled_at = timezone('utc', now())
-  WHERE consumed_at IS NULL
-    AND cancelled_at IS NULL
-    AND expires_at <= timezone('utc', now());
+  WHERE bci.consumed_at IS NULL
+    AND bci.cancelled_at IS NULL
+    AND bci.expires_at <= timezone('utc', now());
 
   RETURN QUERY
   SELECT
