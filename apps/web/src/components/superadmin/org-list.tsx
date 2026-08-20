@@ -324,6 +324,9 @@ export function RecommendationSummaryCards({
     { label: 'Dismiss Superadmin', value: summary.dismissed ?? 0 },
     { label: 'Aceptadas', value: summary.accepted ?? 0 },
     { label: 'Dismiss clínica (activas)', value: summary.clinicDismissedActive ?? 0 },
+    { label: 'Congeladas', value: summary.frozen ?? 0 },
+    { label: 'Follow-ups abiertos', value: summary.followUpsOpen ?? 0 },
+    { label: 'Follow-ups vencidos', value: summary.followUpsOverdue ?? 0 },
   ];
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

@@ -1,6 +1,7 @@
 import {
   FEATURES,
   PLAN_UPGRADE_LADDER,
+  PLAN_USAGE_THRESHOLDS,
   SEAT_USAGE_LABELS,
   METERED_USAGE_LABELS,
   computePlanRecommendation,
@@ -76,6 +77,82 @@ type RecommendationInputRow = {
 };
 
 let catalogCache: { at: number; value: PlanCatalogMatrix } | null = null;
+let thresholdsCache: { at: number; value: typeof PLAN_USAGE_THRESHOLDS } | null = null;
+
+export type RecommendationSettings = {
+  thresholdInfo: number;
+  thresholdWarning: number;
+  thresholdCritical: number;
+  clinicSnoozeDays: number;
+  updatedAt: string | null;
+};
+
+export async function loadRecommendationThresholds(): Promise<typeof PLAN_USAGE_THRESHOLDS> {
+  if (thresholdsCache && Date.now() - thresholdsCache.at < 60_000) {
+    return thresholdsCache.value;
+  }
+  try {
+    const supabase = await createServerClient();
+    const { data, error } = await supabase.rpc('get_recommendation_thresholds');
+    if (error || !data || typeof data !== 'object') {
+      return PLAN_USAGE_THRESHOLDS;
+    }
+    const row = data as Record<string, unknown>;
+    const info = Number(row.info);
+    const warning = Number(row.warning);
+    const critical = Number(row.critical);
+    const value = {
+      info: Number.isFinite(info) && info > 0 ? info : PLAN_USAGE_THRESHOLDS.info,
+      warning: Number.isFinite(warning) && warning > 0 ? warning : PLAN_USAGE_THRESHOLDS.warning,
+      critical: Number.isFinite(critical) && critical > 0 ? critical : PLAN_USAGE_THRESHOLDS.critical,
+    } as typeof PLAN_USAGE_THRESHOLDS;
+    thresholdsCache = { at: Date.now(), value };
+    return value;
+  } catch {
+    return PLAN_USAGE_THRESHOLDS;
+  }
+}
+
+export async function getRecommendationSettings(): Promise<RecommendationSettings> {
+  await requireSuperadmin();
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc('superadmin_get_recommendation_settings');
+  if (error) throw new Error(error.message);
+  const row = (data ?? {}) as Record<string, unknown>;
+  return {
+    thresholdInfo: Number(row.threshold_info ?? PLAN_USAGE_THRESHOLDS.info),
+    thresholdWarning: Number(row.threshold_warning ?? PLAN_USAGE_THRESHOLDS.warning),
+    thresholdCritical: Number(row.threshold_critical ?? PLAN_USAGE_THRESHOLDS.critical),
+    clinicSnoozeDays: Number(row.clinic_snooze_days ?? 14) || 14,
+    updatedAt: typeof row.updated_at === 'string' ? row.updated_at : null,
+  };
+}
+
+export async function setRecommendationSettings(input: {
+  thresholdInfo: number;
+  thresholdWarning: number;
+  thresholdCritical: number;
+  clinicSnoozeDays: number;
+}): Promise<RecommendationSettings> {
+  await requireSuperadmin();
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc('superadmin_set_recommendation_settings', {
+    p_threshold_info: input.thresholdInfo,
+    p_threshold_warning: input.thresholdWarning,
+    p_threshold_critical: input.thresholdCritical,
+    p_clinic_snooze_days: input.clinicSnoozeDays,
+  });
+  if (error) throw new Error(error.message);
+  thresholdsCache = null;
+  const row = (data ?? {}) as Record<string, unknown>;
+  return {
+    thresholdInfo: Number(row.threshold_info ?? input.thresholdInfo),
+    thresholdWarning: Number(row.threshold_warning ?? input.thresholdWarning),
+    thresholdCritical: Number(row.threshold_critical ?? input.thresholdCritical),
+    clinicSnoozeDays: Number(row.clinic_snooze_days ?? input.clinicSnoozeDays) || 14,
+    updatedAt: typeof row.updated_at === 'string' ? row.updated_at : null,
+  };
+}
 
 export async function loadPlanCatalogMatrix(): Promise<PlanCatalogMatrix> {
   await requireSuperadmin();
@@ -257,6 +334,7 @@ export async function listSuperadminOrganizationsWithRecommendations(params: {
   const persistRecommendations = params.persistRecommendations !== false;
   const matrix = await loadPlanCatalogMatrix();
   const maps = matrixToEngineMaps(matrix);
+  const thresholds = await loadRecommendationThresholds();
 
   const { data, error } = await supabase.rpc('superadmin_list_orgs_recommendation_inputs', {
     p_search: params.search?.trim() || null,
@@ -326,6 +404,7 @@ export async function listSuperadminOrganizationsWithRecommendations(params: {
       accessAttempts,
       planIncludesFeature: maps.planIncludesFeature,
       planLimits: maps.planLimits,
+      thresholds,
       persisted: row.rec_status
         ? {
             status: row.rec_status as RecommendationStatus,
@@ -517,6 +596,9 @@ export type RecommendationDashboardSummary = {
   dismissed?: number;
   accepted?: number;
   clinicDismissedActive?: number;
+  frozen?: number;
+  followUpsOpen?: number;
+  followUpsOverdue?: number;
 };
 
 export async function getGlobalRecommendationSummary(): Promise<RecommendationDashboardSummary> {
@@ -539,6 +621,9 @@ export async function getGlobalRecommendationSummary(): Promise<RecommendationDa
     dismissed: num('dismissed'),
     accepted: num('accepted'),
     clinicDismissedActive: num('clinic_dismissed_active'),
+    frozen: num('frozen'),
+    followUpsOpen: num('follow_ups_open'),
+    followUpsOverdue: num('follow_ups_overdue'),
   };
 }
 
@@ -590,6 +675,7 @@ export async function getPlanRecommendationForOrganization(
   await requireSuperadmin();
   const matrix = await loadPlanCatalogMatrix();
   const maps = matrixToEngineMaps(matrix);
+  const thresholds = await loadRecommendationThresholds();
   const supabase = await createServerClient();
 
   const { data, error } = await supabase.rpc('superadmin_list_orgs_recommendation_inputs', {
@@ -627,6 +713,7 @@ export async function getPlanRecommendationForOrganization(
       accessAttempts: [],
       planIncludesFeature: maps.planIncludesFeature,
       planLimits: maps.planLimits,
+      thresholds,
     });
     return {
       recommendation,
@@ -672,6 +759,7 @@ export async function getPlanRecommendationForOrganization(
     accessAttempts,
     planIncludesFeature: maps.planIncludesFeature,
     planLimits: maps.planLimits,
+    thresholds,
     persisted: row.rec_status
       ? {
           status: row.rec_status as RecommendationStatus,
@@ -748,6 +836,9 @@ export type PlanRecommendationCommercialMeta = {
   lastRefreshedAt: string | null;
   followUpAt: string | null;
   followUpBy: string | null;
+  isFrozen: boolean;
+  frozenAt: string | null;
+  frozenNote: string | null;
   status: string | null;
 };
 
@@ -768,6 +859,9 @@ export async function getPlanRecommendationCommercialMeta(
     lastRefreshedAt: typeof row.last_refreshed_at === 'string' ? row.last_refreshed_at : null,
     followUpAt: typeof row.follow_up_at === 'string' ? row.follow_up_at : null,
     followUpBy: typeof row.follow_up_by === 'string' ? row.follow_up_by : null,
+    isFrozen: Boolean(row.is_frozen),
+    frozenAt: typeof row.frozen_at === 'string' ? row.frozen_at : null,
+    frozenNote: typeof row.frozen_note === 'string' ? row.frozen_note : null,
     status: typeof row.status === 'string' ? row.status : null,
   };
 }
@@ -794,6 +888,21 @@ export async function setPlanRecommendationFollowUp(
   const { error } = await supabase.rpc('superadmin_set_plan_recommendation_follow_up', {
     p_organization_id: organizationId,
     p_follow_up_at: followUpAt,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function setPlanRecommendationFreeze(
+  organizationId: string,
+  frozen: boolean,
+  note?: string | null
+): Promise<void> {
+  await requireSuperadmin();
+  const supabase = await createServerClient();
+  const { error } = await supabase.rpc('superadmin_set_plan_recommendation_freeze', {
+    p_organization_id: organizationId,
+    p_frozen: frozen,
+    p_note: note ?? null,
   });
   if (error) throw new Error(error.message);
 }
@@ -834,6 +943,45 @@ export async function listRecommendationFollowUps(
   }));
 }
 
+export function formatFollowUpsCsv(rows: RecommendationFollowUpRow[]): string {
+  const header = [
+    'clinic',
+    'slug',
+    'current_plan',
+    'recommended_plan',
+    'status',
+    'severity',
+    'usage_level',
+    'follow_up_at',
+    'overdue',
+    'commercial_note',
+  ];
+  const lines = [header.join(',')];
+  const now = Date.now();
+  for (const row of rows) {
+    const overdue = new Date(row.followUpAt).getTime() < now ? 'yes' : 'no';
+    const esc = (value: string) => {
+      if (/[",\n\r]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
+      return value;
+    };
+    lines.push(
+      [
+        esc(row.organizationName),
+        esc(row.organizationSlug),
+        esc(row.currentPlanKey ?? ''),
+        esc(row.recommendedPlanKey ?? ''),
+        esc(row.status),
+        esc(row.severity),
+        String(row.usageLevel),
+        esc(row.followUpAt),
+        overdue,
+        esc(row.commercialNote ?? ''),
+      ].join(',')
+    );
+  }
+  return `${lines.join('\n')}\n`;
+}
+
 /**
  * Soft clinic notice for org managers (Configuración → Plan).
  * Only shows Superadmin-persisted recommendations (phase 31/32).
@@ -845,6 +993,7 @@ export type ClinicPlanRecommendationNotice = {
   severity: string;
   usageLevel: number;
   fingerprint: string | null;
+  gainsPreview: string[];
 };
 
 export async function getClinicFacingPlanRecommendationHint(
@@ -864,13 +1013,25 @@ export async function getClinicFacingPlanRecommendationHint(
     }
     const reasonsRaw = row.reasons;
     const reasons = Array.isArray(reasonsRaw) ? reasonsRaw.map((item) => String(item)) : [];
+    const currentPlan = typeof row.current_plan_key === 'string' ? row.current_plan_key : null;
+
+    let gainsPreview: string[] = [];
+    if (recommended === 'pro') {
+      gainsPreview = ['Inventario', 'Internación / cirugía', 'Facturación y caja', 'Reportes'];
+    } else if (recommended === 'premium') {
+      gainsPreview = ['IA clínica', 'WhatsApp', 'Imágenes clínicas', 'Reportes avanzados'];
+    } else if (recommended === 'enterprise') {
+      gainsPreview = ['Límites a medida', 'Operación multi-sucursal', 'Acompañamiento comercial'];
+    }
+
     return {
-      currentPlan: typeof row.current_plan_key === 'string' ? row.current_plan_key : null,
+      currentPlan,
       recommendedPlan: recommended as PaidPlanKey,
       reasons,
       severity: typeof row.severity === 'string' ? row.severity : 'info',
       usageLevel: Number(row.usage_level ?? 0) || 0,
       fingerprint: typeof row.fingerprint === 'string' ? row.fingerprint : null,
+      gainsPreview,
     };
   } catch {
     return null;

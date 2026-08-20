@@ -9,6 +9,7 @@ import {
   dismissOrganizationPlanRecommendation,
   reviewOrganizationPlanRecommendation,
   saveOrganizationPlanRecommendationFollowUp,
+  saveOrganizationPlanRecommendationFreeze,
   saveOrganizationPlanRecommendationNote,
 } from '@/actions/superadmin';
 import type { PlanRecommendationCommercialMeta } from '@/lib/plan-recommendations';
@@ -94,6 +95,7 @@ export function SuperadminPlanRecommendationPanel({
             ? 'LEGACY — REVISIÓN COMERCIAL'
             : 'UPGRADE RECOMMENDED'}
           <Badge variant="warning">{recommendation.severity}</Badge>
+          {commercialMeta?.isFrozen ? <Badge variant="destructive">Congelada</Badge> : null}
         </CardTitle>
         <CardDescription>
           {organizationName} está en <strong>{recommendation.currentPlan ?? 'sin plan'}</strong>
@@ -248,6 +250,50 @@ export function SuperadminPlanRecommendationPanel({
               Quitar
             </Button>
           </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={commercialMeta?.isFrozen ? 'outline' : 'secondary'}
+            disabled={pending}
+            onClick={() => {
+              const form = new FormData();
+              form.set('organizationId', organizationId);
+              form.set('frozen', commercialMeta?.isFrozen ? 'false' : 'true');
+              form.set(
+                'note',
+                commercialMeta?.isFrozen
+                  ? ''
+                  : 'Congelada para seguimiento comercial; el refresh no la limpia'
+              );
+              void run(async () => {
+                const result = await saveOrganizationPlanRecommendationFreeze(form);
+                setMessage(
+                  result.success
+                    ? commercialMeta?.isFrozen
+                      ? 'Recomendación descongelada'
+                      : 'Recomendación congelada'
+                    : result.error ?? 'No se pudo actualizar el freeze'
+                );
+                if (result.success) router.refresh();
+                return result;
+              });
+            }}
+          >
+            {commercialMeta?.isFrozen ? 'Descongelar' : 'Congelar recomendación'}
+          </Button>
+          {commercialMeta?.isFrozen && commercialMeta.frozenAt ? (
+            <span className="text-xs text-muted-foreground">
+              Desde {new Date(commercialMeta.frozenAt).toLocaleString('es-AR')}
+              {commercialMeta.frozenNote ? ` · ${commercialMeta.frozenNote}` : ''}
+            </span>
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              Congelar evita que el refresh masivo limpie este aviso.
+            </span>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-2">

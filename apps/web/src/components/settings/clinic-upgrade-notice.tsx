@@ -31,6 +31,11 @@ export function ClinicUpgradeRecommendationNotice({
           ))}
         </ul>
       ) : null}
+      {notice.gainsPreview?.length ? (
+        <p className="mt-2 text-xs opacity-80">
+          En {notice.recommendedPlan} suele sumar: {notice.gainsPreview.join(', ')}.
+        </p>
+      ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
         <Button
           type="button"
@@ -64,6 +69,9 @@ export function ClinicUpgradeRecommendationNotice({
           Ahora no
         </Button>
       </div>
+      <p className="mt-2 text-[11px] opacity-70">
+        Si elegís “Ahora no”, el aviso se oculta por un tiempo. No cambia tu plan.
+      </p>
     </div>
   );
 }

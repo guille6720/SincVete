@@ -16,6 +16,8 @@ function eventLabel(eventType: string) {
   if (eventType === 'noted') return 'Nota comercial';
   if (eventType === 'follow_up_set') return 'Seguimiento';
   if (eventType === 'follow_up_cleared') return 'Seguimiento quitado';
+  if (eventType === 'frozen') return 'Congelada';
+  if (eventType === 'unfrozen') return 'Descongelada';
   return eventType;
 }
 

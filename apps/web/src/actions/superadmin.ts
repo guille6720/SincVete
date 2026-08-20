@@ -1293,6 +1293,24 @@ export async function saveOrganizationPlanRecommendationFollowUp(
   }
 }
 
+export async function saveOrganizationPlanRecommendationFreeze(
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    await requireSuperadmin();
+    const organizationId = String(formData.get('organizationId') ?? '');
+    if (!organizationId) return { success: false, error: 'Organización inválida' };
+    const frozen = String(formData.get('frozen') ?? '') === 'true';
+    const note = String(formData.get('note') ?? '').trim() || null;
+    const { setPlanRecommendationFreeze } = await import('@/lib/plan-recommendations');
+    await setPlanRecommendationFreeze(organizationId, frozen, note);
+    revalidateOrg(organizationId);
+    return { success: true };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
 export async function listSuperadminUpgradeQueue(limit = 12) {
   const { listSuperadminOrganizationsWithRecommendations } = await import(
     '@/lib/plan-recommendations'
@@ -1309,6 +1327,62 @@ export async function listSuperadminUpgradeQueue(limit = 12) {
 export async function listSuperadminRecommendationFollowUps(limit = 25) {
   const { listRecommendationFollowUps } = await import('@/lib/plan-recommendations');
   return listRecommendationFollowUps(limit);
+}
+
+export async function exportSuperadminFollowUpsCsv(): Promise<
+  ActionResult<{ csv: string; rowCount: number }>
+> {
+  try {
+    await requireSuperadmin();
+    const { listRecommendationFollowUps, formatFollowUpsCsv } = await import(
+      '@/lib/plan-recommendations'
+    );
+    const rows = await listRecommendationFollowUps(100);
+    return { success: true, data: { csv: formatFollowUpsCsv(rows), rowCount: rows.length } };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function getSuperadminRecommendationSettings() {
+  const { getRecommendationSettings } = await import('@/lib/plan-recommendations');
+  return getRecommendationSettings();
+}
+
+export async function saveSuperadminRecommendationSettings(
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    await requireSuperadmin();
+    const thresholdInfo = Number(formData.get('thresholdInfo'));
+    const thresholdWarning = Number(formData.get('thresholdWarning'));
+    const thresholdCritical = Number(formData.get('thresholdCritical'));
+    const clinicSnoozeDays = Number(formData.get('clinicSnoozeDays'));
+    if (
+      ![thresholdInfo, thresholdWarning, thresholdCritical, clinicSnoozeDays].every((n) =>
+        Number.isFinite(n)
+      )
+    ) {
+      return { success: false, error: 'Valores inválidos' };
+    }
+    if (!(thresholdInfo < thresholdWarning && thresholdWarning <= thresholdCritical)) {
+      return { success: false, error: 'Los umbrales deben ser info < warning ≤ critical' };
+    }
+    if (clinicSnoozeDays < 1 || clinicSnoozeDays > 90) {
+      return { success: false, error: 'El snooze debe ser entre 1 y 90 días' };
+    }
+    const { setRecommendationSettings } = await import('@/lib/plan-recommendations');
+    await setRecommendationSettings({
+      thresholdInfo,
+      thresholdWarning,
+      thresholdCritical,
+      clinicSnoozeDays: Math.round(clinicSnoozeDays),
+    });
+    revalidatePath('/superadmin');
+    return { success: true };
+  } catch (error) {
+    return actionError(error);
+  }
 }
 
 export async function recordCommercialFeatureSignal(featureKey: string): Promise<void> {

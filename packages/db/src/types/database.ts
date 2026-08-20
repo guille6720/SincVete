@@ -3153,6 +3153,11 @@ export interface Database {
           follow_up_by: string | null;
           follow_up_set_at: string | null;
           follow_up_set_by: string | null;
+          clinic_snooze_until: string | null;
+          is_frozen: boolean;
+          frozen_at: string | null;
+          frozen_by: string | null;
+          frozen_note: string | null;
         };
         Insert: {
           organization_id: string;
@@ -3186,6 +3191,11 @@ export interface Database {
           follow_up_by?: string | null;
           follow_up_set_at?: string | null;
           follow_up_set_by?: string | null;
+          clinic_snooze_until?: string | null;
+          is_frozen?: boolean;
+          frozen_at?: string | null;
+          frozen_by?: string | null;
+          frozen_note?: string | null;
         };
         Update: {
           organization_id?: string;
@@ -3219,6 +3229,41 @@ export interface Database {
           follow_up_by?: string | null;
           follow_up_set_at?: string | null;
           follow_up_set_by?: string | null;
+          clinic_snooze_until?: string | null;
+          is_frozen?: boolean;
+          frozen_at?: string | null;
+          frozen_by?: string | null;
+          frozen_note?: string | null;
+        };
+        Relationships: [];
+      };
+      commercial_recommendation_settings: {
+        Row: {
+          id: number;
+          threshold_info: number;
+          threshold_warning: number;
+          threshold_critical: number;
+          clinic_snooze_days: number;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          id?: number;
+          threshold_info?: number;
+          threshold_warning?: number;
+          threshold_critical?: number;
+          clinic_snooze_days?: number;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: {
+          id?: number;
+          threshold_info?: number;
+          threshold_warning?: number;
+          threshold_critical?: number;
+          clinic_snooze_days?: number;
+          updated_at?: string;
+          updated_by?: string | null;
         };
         Relationships: [];
       };
@@ -3611,6 +3656,31 @@ export interface Database {
           follow_up_at: string;
           commercial_note: string | null;
         }[];
+      };
+      get_recommendation_thresholds: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      superadmin_get_recommendation_settings: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      superadmin_set_recommendation_settings: {
+        Args: {
+          p_threshold_info?: number | null;
+          p_threshold_warning?: number | null;
+          p_threshold_critical?: number | null;
+          p_clinic_snooze_days?: number | null;
+        };
+        Returns: Json;
+      };
+      superadmin_set_plan_recommendation_freeze: {
+        Args: {
+          p_organization_id: string;
+          p_frozen?: boolean;
+          p_note?: string | null;
+        };
+        Returns: Json;
       };
       superadmin_get_org_commercial: {
         Args: { p_organization_id: string };
