@@ -537,6 +537,17 @@ export async function changeOrganizationPlan(formData: FormData): Promise<Action
     });
     if (error) return { success: false, error: error.message };
     await clearOrgCheckoutIntents(organizationId);
+    try {
+      const { getPlanRecommendationForOrganization, persistPlanRecommendation } = await import(
+        '@/lib/plan-recommendations'
+      );
+      const { recommendation } = await getPlanRecommendationForOrganization(organizationId);
+      if (recommendation.recommendedPlan === planKey) {
+        await persistPlanRecommendation(recommendation, 'accepted');
+      }
+    } catch {
+      // Recommendation persistence is best-effort; plan change already succeeded.
+    }
     revalidateOrg(organizationId);
     return { success: true };
   } catch (error) {
@@ -1122,5 +1133,72 @@ export async function reverseSuperadminPaidGrant(formData: FormData): Promise<Ac
     return { success: true };
   } catch (error) {
     return actionError(error);
+  }
+}
+
+export async function listSuperadminOrganizationsRecommended(params: {
+  search?: string;
+  page?: number;
+  pageSize?: number;
+  planKey?: string;
+  status?: string;
+  recommendedPlan?: string;
+  upgradeFilter?: string;
+  sort?: string;
+}) {
+  const { listSuperadminOrganizationsWithRecommendations } = await import(
+    '@/lib/plan-recommendations'
+  );
+  return listSuperadminOrganizationsWithRecommendations(params);
+}
+
+export async function dismissOrganizationPlanRecommendation(
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    await requireSuperadmin();
+    const organizationId = String(formData.get('organizationId') ?? '');
+    if (!organizationId) return { success: false, error: 'Organización inválida' };
+    const { getPlanRecommendationForOrganization, persistPlanRecommendation } = await import(
+      '@/lib/plan-recommendations'
+    );
+    const { recommendation } = await getPlanRecommendationForOrganization(organizationId);
+    await persistPlanRecommendation(recommendation, 'dismissed');
+    revalidateOrg(organizationId);
+    return { success: true };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function reviewOrganizationPlanRecommendation(
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    await requireSuperadmin();
+    const organizationId = String(formData.get('organizationId') ?? '');
+    if (!organizationId) return { success: false, error: 'Organización inválida' };
+    const { getPlanRecommendationForOrganization, persistPlanRecommendation } = await import(
+      '@/lib/plan-recommendations'
+    );
+    const { recommendation } = await getPlanRecommendationForOrganization(organizationId);
+    await persistPlanRecommendation(recommendation, 'reviewed');
+    revalidateOrg(organizationId);
+    return { success: true };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function recordCommercialFeatureSignal(featureKey: string): Promise<void> {
+  try {
+    if (!featureKey) return;
+    const supabase = await createServerClient();
+    await supabase.rpc('record_commercial_feature_signal', {
+      p_feature_key: featureKey,
+      p_event_type: 'feature_denied',
+    });
+  } catch {
+    // Best-effort commercial signal; never block clinic UX.
   }
 }

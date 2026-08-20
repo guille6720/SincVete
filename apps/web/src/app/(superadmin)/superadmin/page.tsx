@@ -3,18 +3,26 @@ import {
   getSuperadminCommercialSummary,
   listSuperadminAddonsEndingSoon,
   listSuperadminOpenCheckoutIntents,
-  listSuperadminOrganizations,
+  listSuperadminOrganizationsRecommended,
   listSuperadminOrgsOverSeats,
   listSuperadminPlansEndingSoon,
   listSuperadminUnappliedBillingEvents,
 } from '@/actions/superadmin';
-import { SuperadminOrgList } from '@/components/superadmin/org-list';
+import { SuperadminOrgList, RecommendationSummaryCards } from '@/components/superadmin/org-list';
 import { SuperadminCommercialOps } from '@/components/superadmin/commercial-ops';
 import { SuperadminCommercialQueues } from '@/components/superadmin/commercial-queues';
 import { getSessionContext } from '@/lib/session';
 
 interface PageProps {
-  searchParams: Promise<{ page?: string; search?: string; plan?: string; status?: string }>;
+  searchParams: Promise<{
+    page?: string;
+    search?: string;
+    plan?: string;
+    status?: string;
+    recommended?: string;
+    upgrade?: string;
+    sort?: string;
+  }>;
 }
 
 export default async function SuperadminOrganizationsPage({ searchParams }: PageProps) {
@@ -25,16 +33,22 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
   const search = params.search?.trim() ?? '';
   const planKey = params.plan?.trim() ?? '';
   const status = params.status?.trim() ?? '';
+  const recommendedPlan = params.recommended?.trim() ?? '';
+  const upgradeFilter = params.upgrade?.trim() ?? '';
+  const sort = params.sort?.trim() ?? '';
 
   try {
-    const [data, summary, checkoutIntents, pendingEvents, plansEndingSoon, addonsEndingSoon, orgsOverSeats] =
+    const [recommended, summary, checkoutIntents, pendingEvents, plansEndingSoon, addonsEndingSoon, orgsOverSeats] =
       await Promise.all([
-        listSuperadminOrganizations({
+        listSuperadminOrganizationsRecommended({
           page,
           pageSize: 25,
           search: search || undefined,
           planKey: planKey || undefined,
           status: status || undefined,
+          recommendedPlan: recommendedPlan || undefined,
+          upgradeFilter: upgradeFilter || undefined,
+          sort: sort || undefined,
         }),
         getSuperadminCommercialSummary(),
         listSuperadminOpenCheckoutIntents(),
@@ -49,11 +63,11 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Organizaciones</h1>
           <p className="text-muted-foreground">
-            Plan, trial, pagos, extras y usage. Los cambios quedan auditados. Superadmin puede vencer
-            planes y extras sin esperar al cron.
+            Plan, uso, recomendaciones y pagos. Las recomendaciones no cambian el plan solas.
           </p>
         </div>
         <SuperadminCommercialOps summary={summary} />
+        <RecommendationSummaryCards summary={recommended.summary} />
         <SuperadminCommercialQueues
           checkoutIntents={checkoutIntents}
           pendingEvents={pendingEvents}
@@ -62,10 +76,16 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
           orgsOverSeats={orgsOverSeats}
         />
         <SuperadminOrgList
-          data={data}
+          rows={recommended.rows}
+          total={recommended.total}
+          page={recommended.page}
+          pageSize={recommended.pageSize}
           initialSearch={search}
           initialPlanKey={planKey}
           initialStatus={status}
+          initialRecommendedPlan={recommendedPlan}
+          initialUpgradeFilter={upgradeFilter}
+          initialSort={sort}
         />
       </div>
     );
@@ -75,18 +95,18 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
       <div className="mx-auto max-w-xl space-y-4 rounded-xl border bg-card p-6">
         <h1 className="text-xl font-semibold">Superadmin no pudo cargar los datos</h1>
         <p className="text-sm text-muted-foreground">
-          Tu sesión sí es Superadmin (por eso ves esta pantalla). Falta configuración de Vercel o
-          migraciones en Supabase.
+          Tu sesión sí es Superadmin. Falta configuración de Vercel o migraciones en Supabase
+          (incluí phase 31 de recomendaciones).
         </p>
         <p className="rounded-md bg-muted p-3 font-mono text-xs">{message}</p>
         <ol className="list-decimal space-y-2 pl-5 text-sm">
           <li>
-            En Vercel → Environment Variables, agregá <code>SUPABASE_SERVICE_ROLE_KEY</code> (la
-            service_role de tu proyecto Supabase, Production) y redesplegá.
+            En Vercel → Environment Variables, agregá <code>SUPABASE_SERVICE_ROLE_KEY</code> y
+            redesplegá.
           </li>
           <li>
-            En Supabase → SQL Editor, aplicá las migraciones de entitlements del repo (
-            <code>supabase/migrations/20260818*</code>).
+            En Supabase → SQL Editor, aplicá <code>supabase/migrations/20260818*</code> incluyendo{' '}
+            <code>20260818360000_entitlements_phase31_plan_recommendations.sql</code>.
           </li>
           <li>Recargá esta página.</li>
         </ol>

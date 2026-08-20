@@ -1,0 +1,184 @@
+'use client';
+
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
+import type { PlanRecommendation } from '@sincvete/shared';
+import {
+  changeOrganizationPlan,
+  dismissOrganizationPlanRecommendation,
+  reviewOrganizationPlanRecommendation,
+} from '@/actions/superadmin';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { usePendingAction } from '@/lib/hooks/use-pending-action';
+
+export function SuperadminPlanRecommendationPanel({
+  organizationId,
+  organizationName,
+  recommendation,
+  comparison,
+}: {
+  organizationId: string;
+  organizationName: string;
+  recommendation: PlanRecommendation;
+  comparison: {
+    gained: string[];
+    lost: string[];
+    limitChanges: Array<{ label: string; from: string; to: string }>;
+  } | null;
+}) {
+  const router = useRouter();
+  const [pending, run] = usePendingAction();
+  const [message, setMessage] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
+
+  const showAlert =
+    recommendation.shouldRecommendUpgrade ||
+    recommendation.upgradeStatus === 'legacy_review' ||
+    recommendation.upgradeStatus === 'trial_conversion';
+
+  if (!showAlert && recommendation.upgradeStatus === 'none') {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Recomendación comercial</CardTitle>
+          <CardDescription>Sin upgrade recomendado con el uso actual.</CardDescription>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground">
+          Uso máximo: {Math.round(Math.min(recommendation.usageLevel, 1) * 100)}%
+        </CardContent>
+      </Card>
+    );
+  }
+
+  async function applyPlan() {
+    if (!recommendation.recommendedPlan) return;
+    setMessage(null);
+    const form = new FormData();
+    form.set('organizationId', organizationId);
+    form.set('planKey', recommendation.recommendedPlan);
+    form.set(
+      'reason',
+      reason.trim() ||
+        `Aceptar recomendación ${recommendation.currentPlan} → ${recommendation.recommendedPlan}`
+    );
+    const result = await run(() => changeOrganizationPlan(form));
+    if (!result) return;
+    setMessage(result.success ? 'Plan actualizado' : result.error ?? 'No se pudo cambiar el plan');
+    if (result.success) router.refresh();
+  }
+
+  return (
+    <Card className="border-amber-300/60">
+      <CardHeader>
+        <CardTitle className="flex flex-wrap items-center gap-2">
+          {recommendation.upgradeStatus === 'legacy_review'
+            ? 'LEGACY — REVISIÓN COMERCIAL'
+            : 'UPGRADE RECOMMENDED'}
+          <Badge variant="warning">{recommendation.severity}</Badge>
+        </CardTitle>
+        <CardDescription>
+          {organizationName} está en <strong>{recommendation.currentPlan ?? 'sin plan'}</strong>
+          {recommendation.recommendedPlan
+            ? `. Según el uso, recomendamos ${recommendation.recommendedPlan}.`
+            : '.'}{' '}
+          El plan no cambia solo: hace falta una acción explícita.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
+        <div>
+          <p className="mb-2 text-sm font-medium">Motivos</p>
+          <ul className="list-disc space-y-1 pl-5 text-sm">
+            {recommendation.reasons.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+
+        {comparison ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <p className="mb-1 text-sm font-medium">Features ganadas</p>
+              <ul className="list-disc pl-5 text-sm text-muted-foreground">
+                {comparison.gained.length === 0 ? <li>Ninguna</li> : null}
+                {comparison.gained.slice(0, 12).map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <p className="mb-1 text-sm font-medium">Límites</p>
+              <ul className="list-disc pl-5 text-sm text-muted-foreground">
+                {comparison.limitChanges.length === 0 ? <li>Sin cambios de cupo</li> : null}
+                {comparison.limitChanges.slice(0, 8).map((item) => (
+                  <li key={item.label}>
+                    {item.label}: {item.from} → {item.to}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="space-y-1">
+          <Label htmlFor="recReason">Motivo del cambio (auditoría)</Label>
+          <Textarea
+            id="recReason"
+            rows={2}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder="Opcional"
+          />
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" asChild>
+            <Link href="#suscripcion">Ver detalle</Link>
+          </Button>
+          {recommendation.recommendedPlan ? (
+            <Button type="button" disabled={pending} onClick={() => void applyPlan()}>
+              Cambiar a {recommendation.recommendedPlan}
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={pending}
+            onClick={() => {
+              const form = new FormData();
+              form.set('organizationId', organizationId);
+              void run(async () => {
+                const result = await dismissOrganizationPlanRecommendation(form);
+                if (result.success) router.refresh();
+                return result;
+              });
+            }}
+          >
+            Dismiss recommendation
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={pending}
+            onClick={() => {
+              const form = new FormData();
+              form.set('organizationId', organizationId);
+              void run(async () => {
+                const result = await reviewOrganizationPlanRecommendation(form);
+                if (result.success) router.refresh();
+                return result;
+              });
+            }}
+          >
+            Mark reviewed
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}

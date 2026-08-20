@@ -67,3 +67,29 @@ export type {
   ClinicSeatMeter,
   OpenCheckoutIntent,
 } from './lifecycle';
+
+export {
+  PLAN_USAGE_THRESHOLDS,
+  PLAN_UPGRADE_LADDER,
+  PRO_MODULE_SIGNALS,
+  PREMIUM_MODULE_SIGNALS,
+  ENTERPRISE_BRANCH_THRESHOLD,
+  ENTERPRISE_USER_THRESHOLD,
+  computePlanRecommendation,
+  buildRecommendationFingerprint,
+  shouldReopenDismissed,
+  comparePlanFeatures,
+} from './plan-recommendations';
+
+export type {
+  PlanUsageThresholdKey,
+  PaidPlanKey,
+  RecommendationSeverity,
+  RecommendationStatus,
+  UpgradeStatusLabel,
+  UsageMeterSnapshot,
+  ModuleActivitySnapshot,
+  FeatureGrantSnapshot,
+  PlanRecommendationInput,
+  PlanRecommendation,
+} from './plan-recommendations';

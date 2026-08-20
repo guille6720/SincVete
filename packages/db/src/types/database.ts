@@ -3120,6 +3120,102 @@ export interface Database {
         };
         Relationships: [];
       };
+      organization_plan_recommendations: {
+        Row: {
+          organization_id: string;
+          status: string;
+          current_plan_key: string | null;
+          recommended_plan_key: string | null;
+          severity: string;
+          score: number;
+          usage_level: number;
+          reasons: Json;
+          fingerprint: string | null;
+          max_usage_ratio_at_dismiss: number | null;
+          recommended_at: string | null;
+          reviewed_at: string | null;
+          dismissed_at: string | null;
+          accepted_at: string | null;
+          reviewed_by: string | null;
+          dismissed_by: string | null;
+          accepted_by: string | null;
+          metadata: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          organization_id: string;
+          status?: string;
+          current_plan_key?: string | null;
+          recommended_plan_key?: string | null;
+          severity?: string;
+          score?: number;
+          usage_level?: number;
+          reasons?: Json;
+          fingerprint?: string | null;
+          max_usage_ratio_at_dismiss?: number | null;
+          recommended_at?: string | null;
+          reviewed_at?: string | null;
+          dismissed_at?: string | null;
+          accepted_at?: string | null;
+          reviewed_by?: string | null;
+          dismissed_by?: string | null;
+          accepted_by?: string | null;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          organization_id?: string;
+          status?: string;
+          current_plan_key?: string | null;
+          recommended_plan_key?: string | null;
+          severity?: string;
+          score?: number;
+          usage_level?: number;
+          reasons?: Json;
+          fingerprint?: string | null;
+          max_usage_ratio_at_dismiss?: number | null;
+          recommended_at?: string | null;
+          reviewed_at?: string | null;
+          dismissed_at?: string | null;
+          accepted_at?: string | null;
+          reviewed_by?: string | null;
+          dismissed_by?: string | null;
+          accepted_by?: string | null;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      commercial_feature_signals: {
+        Row: {
+          id: string;
+          organization_id: string;
+          feature_key: string;
+          event_type: string;
+          created_at: string;
+          metadata: Json;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          feature_key: string;
+          event_type?: string;
+          created_at?: string;
+          metadata?: Json;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          feature_key?: string;
+          event_type?: string;
+          created_at?: string;
+          metadata?: Json;
+        };
+        Relationships: [];
+      };
       billing_customers: {
         Row: {
           organization_id: string;
@@ -3279,6 +3375,84 @@ export interface Database {
           created_at: string;
           total_count: number;
         }[];
+      };
+      superadmin_list_orgs_recommendation_inputs: {
+        Args: {
+          p_search?: string | null;
+          p_page?: number;
+          p_page_size?: number;
+          p_plan_key?: string | null;
+          p_status?: string | null;
+          p_recommended_plan?: string | null;
+          p_upgrade_filter?: string | null;
+          p_sort?: string | null;
+          p_organization_id?: string | null;
+        };
+        Returns: {
+          id: string;
+          name: string;
+          slug: string;
+          plan_key: string | null;
+          plan_name: string | null;
+          status: SubscriptionStatus | null;
+          trial_ends_at: string | null;
+          starts_at: string | null;
+          created_at: string;
+          owner_name: string | null;
+          users_used: number;
+          branches_used: number;
+          professionals_used: number;
+          patients_used: number;
+          ai_used: number;
+          whatsapp_used: number;
+          storage_used: number;
+          has_hospitalization: boolean;
+          has_surgery: boolean;
+          has_laboratory: boolean;
+          has_inventory: boolean;
+          has_pharmacy: boolean;
+          has_billing: boolean;
+          has_cash: boolean;
+          has_portal: boolean;
+          has_reports: boolean;
+          has_ai: boolean;
+          has_whatsapp: boolean;
+          has_images: boolean;
+          has_advanced_reports: boolean;
+          access_attempt_features: string[] | null;
+          rec_status: string | null;
+          rec_recommended_plan_key: string | null;
+          rec_fingerprint: string | null;
+          rec_dismissed_at: string | null;
+          rec_max_usage_ratio_at_dismiss: number | null;
+          total_count: number;
+        }[];
+      };
+      superadmin_plan_catalog_matrix: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      superadmin_upsert_plan_recommendation: {
+        Args: {
+          p_organization_id: string;
+          p_status: string;
+          p_current_plan_key?: string | null;
+          p_recommended_plan_key?: string | null;
+          p_severity?: string;
+          p_score?: number;
+          p_usage_level?: number;
+          p_reasons?: Json;
+          p_fingerprint?: string | null;
+          p_max_usage_ratio_at_dismiss?: number | null;
+        };
+        Returns: Json;
+      };
+      record_commercial_feature_signal: {
+        Args: {
+          p_feature_key: string;
+          p_event_type?: string;
+        };
+        Returns: string;
       };
       superadmin_get_org_commercial: {
         Args: { p_organization_id: string };
