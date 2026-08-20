@@ -772,7 +772,13 @@ export async function getSuperadminCommercialSummary(): Promise<SuperadminCommer
 }
 
 export async function runSuperadminCommercialLifecycle(): Promise<
-  ActionResult<{ expired: number; notices: number }>
+  ActionResult<{
+    expired: number;
+    notices: number;
+    recommendationsScanned?: number;
+    recommendationsActive?: number;
+    recommendationsCleared?: number;
+  }>
 > {
   try {
     await requireSuperadmin();
@@ -783,12 +789,29 @@ export async function runSuperadminCommercialLifecycle(): Promise<
     });
     if (error) return { success: false, error: error.message };
     const row = asObject(data);
+
+    let recommendationsScanned: number | undefined;
+    let recommendationsActive: number | undefined;
+    let recommendationsCleared: number | undefined;
+    try {
+      const { refreshAllPlanRecommendations } = await import('@/lib/plan-recommendations');
+      const refresh = await refreshAllPlanRecommendations();
+      recommendationsScanned = refresh.scanned;
+      recommendationsActive = refresh.recommended;
+      recommendationsCleared = refresh.cleared;
+    } catch {
+      // Phase 31+ optional; lifecycle still succeeds.
+    }
+
     revalidatePath('/superadmin');
     return {
       success: true,
       data: {
         expired: asNumber(row?.expired) ?? 0,
         notices: asNumber(row?.notices) ?? 0,
+        recommendationsScanned,
+        recommendationsActive,
+        recommendationsCleared,
       },
     };
   } catch (error) {
@@ -1226,6 +1249,36 @@ export async function reviewOrganizationPlanRecommendation(
   } catch (error) {
     return actionError(error);
   }
+}
+
+export async function saveOrganizationPlanRecommendationNote(
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    await requireSuperadmin();
+    const organizationId = String(formData.get('organizationId') ?? '');
+    if (!organizationId) return { success: false, error: 'Organización inválida' };
+    const noteRaw = String(formData.get('note') ?? '');
+    const { setPlanRecommendationCommercialNote } = await import('@/lib/plan-recommendations');
+    await setPlanRecommendationCommercialNote(organizationId, noteRaw.trim() || null);
+    revalidateOrg(organizationId);
+    return { success: true };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function listSuperadminUpgradeQueue(limit = 12) {
+  const { listSuperadminOrganizationsWithRecommendations } = await import(
+    '@/lib/plan-recommendations'
+  );
+  return listSuperadminOrganizationsWithRecommendations({
+    page: 1,
+    pageSize: Math.min(25, Math.max(1, limit)),
+    upgradeFilter: 'upgrade_recommended',
+    sort: 'usage_desc',
+    persistRecommendations: false,
+  });
 }
 
 export async function recordCommercialFeatureSignal(featureKey: string): Promise<void> {

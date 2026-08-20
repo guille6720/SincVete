@@ -21,8 +21,12 @@ export function SuperadminCommercialOps({ summary }: { summary: SuperadminCommer
     const result = await run(() => runSuperadminCommercialLifecycle());
     if (!result) return;
     if (result.success && result.data) {
+      const rec =
+        result.data.recommendationsScanned != null
+          ? ` Recomendaciones: ${result.data.recommendationsScanned} clínicas, ${result.data.recommendationsActive ?? 0} activas, ${result.data.recommendationsCleared ?? 0} limpiadas.`
+          : '';
       setMessage(
-        `Ciclo comercial: ${result.data.expired} vencidas, ${result.data.notices} avisos.`
+        `Ciclo comercial: ${result.data.expired} vencidas, ${result.data.notices} avisos.${rec} Sin cambio automático de plan.`
       );
       router.refresh();
       return;

@@ -7,10 +7,12 @@ import {
   listSuperadminOrgsOverSeats,
   listSuperadminPlansEndingSoon,
   listSuperadminUnappliedBillingEvents,
+  listSuperadminUpgradeQueue,
 } from '@/actions/superadmin';
 import { SuperadminOrgList, RecommendationSummaryCards } from '@/components/superadmin/org-list';
 import { SuperadminCommercialOps } from '@/components/superadmin/commercial-ops';
 import { SuperadminCommercialQueues } from '@/components/superadmin/commercial-queues';
+import { SuperadminUpgradeQueue } from '@/components/superadmin/upgrade-queue';
 import { getSessionContext } from '@/lib/session';
 
 interface PageProps {
@@ -38,25 +40,34 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
   const sort = params.sort?.trim() ?? '';
 
   try {
-    const [recommended, summary, checkoutIntents, pendingEvents, plansEndingSoon, addonsEndingSoon, orgsOverSeats] =
-      await Promise.all([
-        listSuperadminOrganizationsRecommended({
-          page,
-          pageSize: 25,
-          search: search || undefined,
-          planKey: planKey || undefined,
-          status: status || undefined,
-          recommendedPlan: recommendedPlan || undefined,
-          upgradeFilter: upgradeFilter || undefined,
-          sort: sort || undefined,
-        }),
-        getSuperadminCommercialSummary(),
-        listSuperadminOpenCheckoutIntents(),
-        listSuperadminUnappliedBillingEvents(),
-        listSuperadminPlansEndingSoon(),
-        listSuperadminAddonsEndingSoon(),
-        listSuperadminOrgsOverSeats(),
-      ]);
+    const [
+      recommended,
+      summary,
+      checkoutIntents,
+      pendingEvents,
+      plansEndingSoon,
+      addonsEndingSoon,
+      orgsOverSeats,
+      upgradeQueue,
+    ] = await Promise.all([
+      listSuperadminOrganizationsRecommended({
+        page,
+        pageSize: 25,
+        search: search || undefined,
+        planKey: planKey || undefined,
+        status: status || undefined,
+        recommendedPlan: recommendedPlan || undefined,
+        upgradeFilter: upgradeFilter || undefined,
+        sort: sort || undefined,
+      }),
+      getSuperadminCommercialSummary(),
+      listSuperadminOpenCheckoutIntents(),
+      listSuperadminUnappliedBillingEvents(),
+      listSuperadminPlansEndingSoon(),
+      listSuperadminAddonsEndingSoon(),
+      listSuperadminOrgsOverSeats(),
+      listSuperadminUpgradeQueue(12).catch(() => ({ rows: [], total: 0 })),
+    ]);
 
     return (
       <div className="space-y-6">
@@ -68,6 +79,7 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
         </div>
         <SuperadminCommercialOps summary={summary} />
         <RecommendationSummaryCards summary={recommended.summary} />
+        <SuperadminUpgradeQueue rows={upgradeQueue.rows} total={upgradeQueue.total} />
         <SuperadminCommercialQueues
           checkoutIntents={checkoutIntents}
           pendingEvents={pendingEvents}
@@ -96,7 +108,7 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
         <h1 className="text-xl font-semibold">Superadmin no pudo cargar los datos</h1>
         <p className="text-sm text-muted-foreground">
           Tu sesión sí es Superadmin. Falta configuración de Vercel o migraciones en Supabase
-          (incluí phase 31–33 de recomendaciones).
+          (incluí phase 31–34 de recomendaciones).
         </p>
         <p className="rounded-md bg-muted p-3 font-mono text-xs">{message}</p>
         <ol className="list-decimal space-y-2 pl-5 text-sm">
@@ -105,8 +117,8 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
             redesplegá.
           </li>
           <li>
-            En Supabase → SQL Editor, aplicá phase 31–33 (
-            <code>20260818360000</code>, <code>20260818370000</code>, <code>20260818380000</code>).
+            En Supabase → SQL Editor, aplicá phase 31–34 (
+            <code>20260818360000</code> … <code>20260818390000</code>).
           </li>
           <li>Recargá esta página.</li>
         </ol>

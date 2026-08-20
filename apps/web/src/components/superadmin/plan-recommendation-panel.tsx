@@ -8,7 +8,9 @@ import {
   changeOrganizationPlan,
   dismissOrganizationPlanRecommendation,
   reviewOrganizationPlanRecommendation,
+  saveOrganizationPlanRecommendationNote,
 } from '@/actions/superadmin';
+import type { PlanRecommendationCommercialMeta } from '@/lib/plan-recommendations';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,6 +23,7 @@ export function SuperadminPlanRecommendationPanel({
   organizationName,
   recommendation,
   comparison,
+  commercialMeta = null,
 }: {
   organizationId: string;
   organizationName: string;
@@ -30,11 +33,13 @@ export function SuperadminPlanRecommendationPanel({
     lost: string[];
     limitChanges: Array<{ label: string; from: string; to: string }>;
   } | null;
+  commercialMeta?: PlanRecommendationCommercialMeta | null;
 }) {
   const router = useRouter();
   const [pending, run] = usePendingAction();
   const [message, setMessage] = useState<string | null>(null);
   const [reason, setReason] = useState('');
+  const [note, setNote] = useState(commercialMeta?.commercialNote ?? '');
 
   const showAlert =
     recommendation.shouldRecommendUpgrade ||
@@ -134,6 +139,46 @@ export function SuperadminPlanRecommendationPanel({
             onChange={(event) => setReason(event.target.value)}
             placeholder="Opcional"
           />
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor="recNote">Nota comercial interna</Label>
+          <Textarea
+            id="recNote"
+            rows={2}
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="Solo Superadmin. No se muestra a la clínica."
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => {
+                const form = new FormData();
+                form.set('organizationId', organizationId);
+                form.set('note', note);
+                void run(async () => {
+                  const result = await saveOrganizationPlanRecommendationNote(form);
+                  setMessage(
+                    result.success ? 'Nota guardada' : result.error ?? 'No se pudo guardar la nota'
+                  );
+                  if (result.success) router.refresh();
+                  return result;
+                });
+              }}
+            >
+              Guardar nota
+            </Button>
+            {commercialMeta?.lastRefreshedAt ? (
+              <span className="text-xs text-muted-foreground">
+                Último refresh{' '}
+                {new Date(commercialMeta.lastRefreshedAt).toLocaleString('es-AR')}
+              </span>
+            ) : null}
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2">

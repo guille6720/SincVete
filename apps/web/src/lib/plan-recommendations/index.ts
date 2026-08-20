@@ -733,6 +733,52 @@ export async function persistPlanRecommendation(
       nextStatus === 'dismissed' ? recommendation.usageLevel : null,
   });
   if (error) throw new Error(error.message);
+  try {
+    await supabase.rpc('superadmin_touch_plan_recommendation_refresh', {
+      p_organization_id: recommendation.organizationId,
+    });
+  } catch {
+    // Phase 34 optional until applied.
+  }
+}
+
+export type PlanRecommendationCommercialMeta = {
+  commercialNote: string | null;
+  commercialNoteUpdatedAt: string | null;
+  lastRefreshedAt: string | null;
+  status: string | null;
+};
+
+export async function getPlanRecommendationCommercialMeta(
+  organizationId: string
+): Promise<PlanRecommendationCommercialMeta> {
+  await requireSuperadmin();
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc('superadmin_get_plan_recommendation_note', {
+    p_organization_id: organizationId,
+  });
+  if (error) throw new Error(error.message);
+  const row = (data ?? {}) as Record<string, unknown>;
+  return {
+    commercialNote: typeof row.commercial_note === 'string' ? row.commercial_note : null,
+    commercialNoteUpdatedAt:
+      typeof row.commercial_note_updated_at === 'string' ? row.commercial_note_updated_at : null,
+    lastRefreshedAt: typeof row.last_refreshed_at === 'string' ? row.last_refreshed_at : null,
+    status: typeof row.status === 'string' ? row.status : null,
+  };
+}
+
+export async function setPlanRecommendationCommercialNote(
+  organizationId: string,
+  note: string | null
+): Promise<void> {
+  await requireSuperadmin();
+  const supabase = await createServerClient();
+  const { error } = await supabase.rpc('superadmin_set_plan_recommendation_note', {
+    p_organization_id: organizationId,
+    p_note: note,
+  });
+  if (error) throw new Error(error.message);
 }
 
 /**

@@ -9,6 +9,7 @@ import { SuperadminPlanRecommendationPanel } from '@/components/superadmin/plan-
 import { getSessionContext } from '@/lib/session';
 import {
   getPlanRecommendationForOrganization,
+  getPlanRecommendationCommercialMeta,
   listPlanRecommendationHistory,
 } from '@/lib/plan-recommendations';
 import { SuperadminRecommendationHistory } from '@/components/superadmin/recommendation-history';
@@ -25,14 +26,21 @@ export default async function SuperadminOrganizationPage({ params }: PageProps) 
   if (!session?.isPlatformAdmin) redirect('/dashboard');
 
   try {
-    const [data, events, checkoutIntents, recommendationBundle, recommendationHistory] =
-      await Promise.all([
-        getSuperadminOrgCommercial(id),
-        listSuperadminBillingEvents(id),
-        listSuperadminCheckoutIntents(id),
-        getPlanRecommendationForOrganization(id).catch(() => null),
-        listPlanRecommendationHistory(id).catch(() => []),
-      ]);
+    const [
+      data,
+      events,
+      checkoutIntents,
+      recommendationBundle,
+      recommendationHistory,
+      commercialMeta,
+    ] = await Promise.all([
+      getSuperadminOrgCommercial(id),
+      listSuperadminBillingEvents(id),
+      listSuperadminCheckoutIntents(id),
+      getPlanRecommendationForOrganization(id).catch(() => null),
+      listPlanRecommendationHistory(id).catch(() => []),
+      getPlanRecommendationCommercialMeta(id).catch(() => null),
+    ]);
 
     return (
       <div className="space-y-6">
@@ -42,6 +50,7 @@ export default async function SuperadminOrganizationPage({ params }: PageProps) 
             organizationName={data.organization.name}
             recommendation={recommendationBundle.recommendation}
             comparison={recommendationBundle.comparison}
+            commercialMeta={commercialMeta}
           />
         ) : null}
 

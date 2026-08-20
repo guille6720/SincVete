@@ -3145,6 +3145,10 @@ export interface Database {
           clinic_dismissed_at: string | null;
           clinic_dismissed_fingerprint: string | null;
           clinic_dismissed_by: string | null;
+          commercial_note: string | null;
+          commercial_note_updated_at: string | null;
+          commercial_note_updated_by: string | null;
+          last_refreshed_at: string | null;
         };
         Insert: {
           organization_id: string;
@@ -3170,6 +3174,10 @@ export interface Database {
           clinic_dismissed_at?: string | null;
           clinic_dismissed_fingerprint?: string | null;
           clinic_dismissed_by?: string | null;
+          commercial_note?: string | null;
+          commercial_note_updated_at?: string | null;
+          commercial_note_updated_by?: string | null;
+          last_refreshed_at?: string | null;
         };
         Update: {
           organization_id?: string;
@@ -3195,6 +3203,10 @@ export interface Database {
           clinic_dismissed_at?: string | null;
           clinic_dismissed_fingerprint?: string | null;
           clinic_dismissed_by?: string | null;
+          commercial_note?: string | null;
+          commercial_note_updated_at?: string | null;
+          commercial_note_updated_by?: string | null;
+          last_refreshed_at?: string | null;
         };
         Relationships: [];
       };
@@ -3548,6 +3560,21 @@ export interface Database {
         }[];
       };
       superadmin_clear_idle_plan_recommendation: {
+        Args: { p_organization_id: string };
+        Returns: Json;
+      };
+      superadmin_set_plan_recommendation_note: {
+        Args: {
+          p_organization_id: string;
+          p_note?: string | null;
+        };
+        Returns: Json;
+      };
+      superadmin_get_plan_recommendation_note: {
+        Args: { p_organization_id: string };
+        Returns: Json;
+      };
+      superadmin_touch_plan_recommendation_refresh: {
         Args: { p_organization_id: string };
         Returns: Json;
       };

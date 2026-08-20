@@ -13,6 +13,7 @@ function eventLabel(eventType: string) {
   if (eventType === 'clinic_dismissed') return 'Dismiss clínica';
   if (eventType === 'clinic_viewed') return 'Vista clínica';
   if (eventType === 'cleared') return 'Limpiada';
+  if (eventType === 'noted') return 'Nota comercial';
   return eventType;
 }
 
