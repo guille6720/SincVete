@@ -13,14 +13,14 @@
     "build:manual": "npx tsx --tsconfig scripts/tsconfig.json scripts/build-manual.ts"
   },
   "dependencies": {
-    "@sincvete/db": "*",
-    "@sincvete/shared": "*",
     "@radix-ui/react-dialog": "^1.1.6",
     "@radix-ui/react-dropdown-menu": "^2.1.6",
     "@radix-ui/react-label": "^2.1.2",
     "@radix-ui/react-separator": "^1.1.2",
     "@radix-ui/react-slot": "^1.1.2",
     "@radix-ui/react-tooltip": "^1.1.8",
+    "@sincvete/db": "*",
+    "@sincvete/shared": "*",
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.49.1",
     "@tanstack/react-query": "^5.68.0",
@@ -31,6 +31,7 @@
     "next": "^15.2.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "server-only": "^0.0.1",
     "tailwind-merge": "^3.0.2",
     "zod": "^3.24.2"
   },

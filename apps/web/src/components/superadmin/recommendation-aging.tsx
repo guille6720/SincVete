@@ -4,11 +4,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { exportSuperadminRecommendationAgingCsv } from '@/actions/superadmin';
-import {
-  COMMERCIAL_OUTCOME_LABELS,
-  type RecommendationAging,
-  type RecommendationAgingBucket,
-  type RecommendationAgingRow,
+import { COMMERCIAL_OUTCOME_LABELS } from '@/lib/plan-recommendations/shared';
+import type {
+  RecommendationAging,
+  RecommendationAgingBucket,
+  RecommendationAgingRow,
 } from '@/lib/plan-recommendations';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';

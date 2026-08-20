@@ -10,7 +10,7 @@ import {
   DEFAULT_RECOMMENDATION_PRIORITY_WEIGHTS,
   type RecommendationPriorityWeights,
   type RecommendationSettings,
-} from '@/lib/plan-recommendations';
+} from '@/lib/plan-recommendations/shared';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';

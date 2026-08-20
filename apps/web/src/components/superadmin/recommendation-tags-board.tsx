@@ -2,10 +2,10 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import {
-  COMMERCIAL_OUTCOME_LABELS,
-  type RecommendationTagCatalogItem,
-  type RecommendationTaggedOrg,
+import { COMMERCIAL_OUTCOME_LABELS } from '@/lib/plan-recommendations/shared';
+import type {
+  RecommendationTagCatalogItem,
+  RecommendationTaggedOrg,
 } from '@/lib/plan-recommendations';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';

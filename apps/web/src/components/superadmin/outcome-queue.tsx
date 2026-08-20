@@ -7,8 +7,8 @@ import { exportSuperadminOutcomesCsv } from '@/actions/superadmin';
 import {
   COMMERCIAL_OUTCOME_LABELS,
   type CommercialRecommendationOutcome,
-  type RecommendationOutcomeRow,
-} from '@/lib/plan-recommendations';
+} from '@/lib/plan-recommendations/shared';
+import type { RecommendationOutcomeRow } from '@/lib/plan-recommendations';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';

@@ -55,11 +55,13 @@ import { SuperadminCommercialBulkBoard } from '@/components/superadmin/commercia
 import { SuperadminRecommendationSettingsCard } from '@/components/superadmin/recommendation-settings';
 import { getSessionContext } from '@/lib/session';
 import type {
-  CommercialSavedViewParamKey,
   RecommendationAgingBucket,
   RecommendationOpenPipelineSort,
 } from '@/lib/plan-recommendations';
-import { sanitizeCommercialSavedViewParams } from '@/lib/plan-recommendations';
+import {
+  sanitizeCommercialSavedViewParams,
+  type CommercialSavedViewParamKey,
+} from '@/lib/plan-recommendations/shared';
 
 interface PageProps {
   searchParams: Promise<{

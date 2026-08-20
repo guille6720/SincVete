@@ -4,10 +4,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { exportSuperadminRecommendationNoteSearchCsv } from '@/actions/superadmin';
-import {
-  COMMERCIAL_OUTCOME_LABELS,
-  type RecommendationNoteSearchHit,
-} from '@/lib/plan-recommendations';
+import { COMMERCIAL_OUTCOME_LABELS } from '@/lib/plan-recommendations/shared';
+import type { RecommendationNoteSearchHit } from '@/lib/plan-recommendations';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';

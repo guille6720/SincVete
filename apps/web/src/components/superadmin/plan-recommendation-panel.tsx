@@ -17,12 +17,12 @@ import {
   saveOrganizationPlanRecommendationContact,
   saveOrganizationPlanRecommendationTags,
 } from '@/actions/superadmin';
-import type {
-  CommercialRecommendationOutcome,
-  PlanRecommendationCommercialMeta,
-  RecommendationAssigneeOption,
-} from '@/lib/plan-recommendations';
-import { COMMERCIAL_OUTCOME_LABELS } from '@/lib/plan-recommendations';
+import {
+  COMMERCIAL_OUTCOME_LABELS,
+  type CommercialRecommendationOutcome,
+} from '@/lib/plan-recommendations/shared';
+import type { RecommendationAssigneeOption } from '@/lib/plan-recommendations';
+import type { PlanRecommendationCommercialMeta } from '@/lib/plan-recommendations';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';

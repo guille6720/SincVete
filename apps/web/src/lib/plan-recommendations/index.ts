@@ -1,3 +1,5 @@
+import 'server-only';
+
 import {
   FEATURES,
   PLAN_UPGRADE_LADDER,
@@ -20,6 +22,33 @@ import {
 import { createServerClient } from '@/lib/supabase/server';
 import { requireSuperadmin } from '@/lib/permissions';
 import { getOrganizationEntitlements, loadOrganizationEntitlementInput } from '@/lib/entitlements';
+import {
+  COMMERCIAL_OUTCOME_LABELS,
+  COMMERCIAL_SAVED_VIEW_PARAM_KEYS,
+  DEFAULT_RECOMMENDATION_PRIORITY_WEIGHTS,
+  commercialSavedViewHref,
+  sanitizeCommercialSavedViewParams,
+  type CommercialRecommendationOutcome,
+  type CommercialSavedViewParamKey,
+  type RecommendationPriorityWeights,
+  type RecommendationSavedView,
+  type RecommendationSettings,
+} from '@/lib/plan-recommendations/shared';
+
+export {
+  COMMERCIAL_OUTCOME_LABELS,
+  COMMERCIAL_SAVED_VIEW_PARAM_KEYS,
+  DEFAULT_RECOMMENDATION_PRIORITY_WEIGHTS,
+  commercialSavedViewHref,
+  sanitizeCommercialSavedViewParams,
+};
+export type {
+  CommercialRecommendationOutcome,
+  CommercialSavedViewParamKey,
+  RecommendationPriorityWeights,
+  RecommendationSavedView,
+  RecommendationSettings,
+};
 
 export type PlanCatalogMatrix = {
   plans: Array<{
@@ -78,48 +107,6 @@ type RecommendationInputRow = {
 
 let catalogCache: { at: number; value: PlanCatalogMatrix } | null = null;
 let thresholdsCache: { at: number; value: typeof PLAN_USAGE_THRESHOLDS } | null = null;
-
-export type RecommendationPriorityWeights = {
-  critical: number;
-  warning: number;
-  info: number;
-  usage100: number;
-  usage90: number;
-  usage80: number;
-  age31: number;
-  age15: number;
-  age8: number;
-  neverContacted: number;
-  overdueFollowUp: number;
-  unassigned: number;
-  frozenPenalty: number;
-};
-
-export const DEFAULT_RECOMMENDATION_PRIORITY_WEIGHTS: RecommendationPriorityWeights = {
-  critical: 40,
-  warning: 20,
-  info: 8,
-  usage100: 25,
-  usage90: 15,
-  usage80: 8,
-  age31: 30,
-  age15: 18,
-  age8: 10,
-  neverContacted: 15,
-  overdueFollowUp: 22,
-  unassigned: 12,
-  frozenPenalty: 35,
-};
-
-export type RecommendationSettings = {
-  thresholdInfo: number;
-  thresholdWarning: number;
-  thresholdCritical: number;
-  clinicSnoozeDays: number;
-  staleDays: number;
-  priorityWeights: RecommendationPriorityWeights;
-  updatedAt: string | null;
-};
 
 function parsePriorityWeights(raw: unknown): RecommendationPriorityWeights {
   const row =
@@ -803,7 +790,7 @@ export async function getPlanRecommendationForOrganization(
   });
   if (error) throw new Error(error.message);
   const rawRows = (data ?? []) as RecommendationInputRow[];
-  let row = rawRows.find((r) => r.id === organizationId);
+  const row = rawRows.find((r) => r.id === organizationId);
 
   if (!row) {
     // Org may be outside first page — fetch by scanning pages is avoided; build minimal input.
@@ -941,19 +928,6 @@ export async function persistPlanRecommendation(
     // Phase 34 optional until applied.
   }
 }
-
-export type CommercialRecommendationOutcome =
-  | 'won'
-  | 'lost'
-  | 'deferred'
-  | 'not_a_fit';
-
-export const COMMERCIAL_OUTCOME_LABELS: Record<CommercialRecommendationOutcome, string> = {
-  won: 'Ganada',
-  lost: 'Perdida',
-  deferred: 'Diferida',
-  not_a_fit: 'No encaja',
-};
 
 export type PlanRecommendationCommercialMeta = {
   commercialNote: string | null;
@@ -3099,64 +3073,6 @@ export function formatRecommendationActivityCsv(events: RecommendationActivityEv
     ].join(',')
   );
   return `${header}\n${lines.join('\n')}\n`;
-}
-
-export const COMMERCIAL_SAVED_VIEW_PARAM_KEYS = [
-  'assignee',
-  'outcome',
-  'digest',
-  'activity',
-  'tag',
-  'aging',
-  'note',
-  'pipeline',
-  'psort',
-  'priority',
-  'pfrozen',
-  'psnooze',
-  'upgrade',
-  'recommended',
-] as const;
-
-export type CommercialSavedViewParamKey = (typeof COMMERCIAL_SAVED_VIEW_PARAM_KEYS)[number];
-
-export type RecommendationSavedView = {
-  id: string;
-  name: string;
-  queryParams: Partial<Record<CommercialSavedViewParamKey, string>>;
-  isShared: boolean;
-  ownerUserId: string;
-  ownerEmail: string | null;
-  isMine: boolean;
-  createdAt: string | null;
-  updatedAt: string | null;
-};
-
-export function sanitizeCommercialSavedViewParams(
-  input: Record<string, string | undefined | null> | null | undefined
-): Partial<Record<CommercialSavedViewParamKey, string>> {
-  const out: Partial<Record<CommercialSavedViewParamKey, string>> = {};
-  if (!input) return out;
-  for (const key of COMMERCIAL_SAVED_VIEW_PARAM_KEYS) {
-    const raw = input[key];
-    if (typeof raw !== 'string') continue;
-    const value = raw.trim();
-    if (!value || value.length > 120) continue;
-    out[key] = value;
-  }
-  return out;
-}
-
-export function commercialSavedViewHref(
-  params: Partial<Record<CommercialSavedViewParamKey, string>>
-): string {
-  const search = new URLSearchParams();
-  for (const key of COMMERCIAL_SAVED_VIEW_PARAM_KEYS) {
-    const value = params[key];
-    if (value) search.set(key, value);
-  }
-  const qs = search.toString();
-  return qs ? `/superadmin?${qs}` : '/superadmin';
 }
 
 function parseSavedViewRow(raw: Record<string, unknown>): RecommendationSavedView {
