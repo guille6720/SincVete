@@ -3,6 +3,7 @@ import {
   getSuperadminOrgCommercial,
   listSuperadminBillingEvents,
   listSuperadminCheckoutIntents,
+  listSuperadminRecommendationAssignees,
 } from '@/actions/superadmin';
 import { SuperadminOrgDetail } from '@/components/superadmin/org-detail';
 import { SuperadminPlanRecommendationPanel } from '@/components/superadmin/plan-recommendation-panel';
@@ -33,6 +34,7 @@ export default async function SuperadminOrganizationPage({ params }: PageProps) 
       recommendationBundle,
       recommendationHistory,
       commercialMeta,
+      assignees,
     ] = await Promise.all([
       getSuperadminOrgCommercial(id),
       listSuperadminBillingEvents(id),
@@ -40,6 +42,7 @@ export default async function SuperadminOrganizationPage({ params }: PageProps) 
       getPlanRecommendationForOrganization(id).catch(() => null),
       listPlanRecommendationHistory(id).catch(() => []),
       getPlanRecommendationCommercialMeta(id).catch(() => null),
+      listSuperadminRecommendationAssignees().catch(() => []),
     ]);
 
     return (
@@ -51,6 +54,8 @@ export default async function SuperadminOrganizationPage({ params }: PageProps) 
             recommendation={recommendationBundle.recommendation}
             comparison={recommendationBundle.comparison}
             commercialMeta={commercialMeta}
+            assignees={assignees}
+            currentUserId={session.userId}
           />
         ) : null}
 

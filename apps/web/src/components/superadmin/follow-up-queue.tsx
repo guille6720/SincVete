@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { exportSuperadminFollowUpsCsv } from '@/actions/superadmin';
 import type { RecommendationFollowUpRow } from '@/lib/plan-recommendations';
@@ -13,15 +14,24 @@ function isOverdue(iso: string) {
   return new Date(iso).getTime() < Date.now();
 }
 
-export function SuperadminFollowUpQueue({ rows }: { rows: RecommendationFollowUpRow[] }) {
+export function SuperadminFollowUpQueue({
+  rows,
+  assigneeFilter = '',
+}: {
+  rows: RecommendationFollowUpRow[];
+  assigneeFilter?: string;
+}) {
+  const router = useRouter();
   const [pending, run] = usePendingAction();
   const [message, setMessage] = useState<string | null>(null);
 
-  if (rows.length === 0) return null;
+  if (rows.length === 0 && !assigneeFilter) return null;
 
   async function downloadCsv() {
     setMessage(null);
-    const result = await run(() => exportSuperadminFollowUpsCsv());
+    const form = new FormData();
+    form.set('assigneeFilter', assigneeFilter);
+    const result = await run(() => exportSuperadminFollowUpsCsv(form));
     if (!result) return;
     if (!result.success || !result.data?.csv) {
       setMessage(result.error ?? 'No se pudo exportar');
@@ -35,6 +45,14 @@ export function SuperadminFollowUpQueue({ rows }: { rows: RecommendationFollowUp
     anchor.click();
     URL.revokeObjectURL(url);
     setMessage(`${result.data.rowCount} seguimientos exportados`);
+  }
+
+  function setFilter(next: string) {
+    const params = new URLSearchParams(window.location.search);
+    if (next) params.set('assignee', next);
+    else params.delete('assignee');
+    const qs = params.toString();
+    router.push(qs ? `/superadmin?${qs}` : '/superadmin');
   }
 
   return (
@@ -57,36 +75,60 @@ export function SuperadminFollowUpQueue({ rows }: { rows: RecommendationFollowUp
             Exportar CSV
           </Button>
         </div>
+        <div className="flex flex-wrap gap-2 pt-1">
+          {(
+            [
+              ['', 'Todos'],
+              ['me', 'Míos'],
+              ['unassigned', 'Sin asignar'],
+            ] as const
+          ).map(([value, label]) => (
+            <Button
+              key={value || 'all'}
+              type="button"
+              size="sm"
+              variant={assigneeFilter === value ? 'secondary' : 'ghost'}
+              onClick={() => setFilter(value)}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
         {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
-        {rows.map((row) => {
-          const overdue = isOverdue(row.followUpAt);
-          return (
-            <div
-              key={row.organizationId}
-              className="flex flex-wrap items-center justify-between gap-2 border-b py-2 last:border-0"
-            >
-              <div>
-                <Link
-                  href={`/superadmin/organizaciones/${row.organizationId}`}
-                  className="font-medium hover:underline"
-                >
-                  {row.organizationName}
-                </Link>
-                <p className="text-xs text-muted-foreground">
-                  {row.currentPlanKey ?? 'sin plan'}
-                  {row.recommendedPlanKey ? ` → ${row.recommendedPlanKey}` : ''}
-                  {row.commercialNote ? ` · ${row.commercialNote.slice(0, 60)}` : ''}
-                </p>
+        {rows.length === 0 ? (
+          <p className="text-muted-foreground">No hay seguimientos con este filtro.</p>
+        ) : (
+          rows.map((row) => {
+            const overdue = isOverdue(row.followUpAt);
+            return (
+              <div
+                key={row.organizationId}
+                className="flex flex-wrap items-center justify-between gap-2 border-b py-2 last:border-0"
+              >
+                <div>
+                  <Link
+                    href={`/superadmin/organizaciones/${row.organizationId}`}
+                    className="font-medium hover:underline"
+                  >
+                    {row.organizationName}
+                  </Link>
+                  <p className="text-xs text-muted-foreground">
+                    {row.currentPlanKey ?? 'sin plan'}
+                    {row.recommendedPlanKey ? ` → ${row.recommendedPlanKey}` : ''}
+                    {row.assignedEmail ? ` · ${row.assignedEmail}` : ' · sin responsable'}
+                    {row.commercialNote ? ` · ${row.commercialNote.slice(0, 60)}` : ''}
+                  </p>
+                </div>
+                <Badge variant={overdue ? 'destructive' : 'warning'}>
+                  {overdue ? 'Vencido · ' : ''}
+                  {new Date(row.followUpAt).toLocaleString('es-AR')}
+                </Badge>
               </div>
-              <Badge variant={overdue ? 'destructive' : 'warning'}>
-                {overdue ? 'Vencido · ' : ''}
-                {new Date(row.followUpAt).toLocaleString('es-AR')}
-              </Badge>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </CardContent>
     </Card>
   );

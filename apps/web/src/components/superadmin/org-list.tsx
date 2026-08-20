@@ -188,6 +188,8 @@ export function SuperadminOrgList({
         >
           <option value="">Sin filtro upgrade</option>
           <option value="upgrade_recommended">Upgrade recommended</option>
+          <option value="stale">Sin movimiento (stale)</option>
+          <option value="closed_outcome">Cierre comercial</option>
           <option value="trial">Trial</option>
           <option value="legacy">Legacy</option>
           <option value="dismissed">Dismissed</option>
@@ -327,6 +329,15 @@ export function RecommendationSummaryCards({
     { label: 'Congeladas', value: summary.frozen ?? 0 },
     { label: 'Follow-ups abiertos', value: summary.followUpsOpen ?? 0 },
     { label: 'Follow-ups vencidos', value: summary.followUpsOverdue ?? 0 },
+    { label: 'Sin responsable', value: summary.unassignedRecommended ?? 0 },
+    { label: 'Asignadas', value: summary.assignedOpen ?? 0 },
+    { label: 'Asignadas a mí', value: summary.assignedToMe ?? 0 },
+    { label: 'Ganadas', value: summary.outcomeWon ?? 0 },
+    { label: 'Perdidas', value: summary.outcomeLost ?? 0 },
+    { label: 'Diferidas', value: summary.outcomeDeferred ?? 0 },
+    { label: 'No encaja', value: summary.outcomeNotAFit ?? 0 },
+    { label: 'Sin movimiento (stale)', value: summary.staleOpen ?? 0 },
+    { label: 'Sin contacto', value: summary.neverContactedOpen ?? 0 },
   ];
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

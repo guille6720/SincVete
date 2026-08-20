@@ -18,6 +18,13 @@ function eventLabel(eventType: string) {
   if (eventType === 'follow_up_cleared') return 'Seguimiento quitado';
   if (eventType === 'frozen') return 'Congelada';
   if (eventType === 'unfrozen') return 'Descongelada';
+  if (eventType === 'assigned') return 'Asignada';
+  if (eventType === 'unassigned') return 'Sin responsable';
+  if (eventType === 'outcome_set') return 'Resultado comercial';
+  if (eventType === 'outcome_cleared') return 'Resultado quitado';
+  if (eventType === 'contacted') return 'Contacto comercial';
+  if (eventType === 'tagged') return 'Etiquetada';
+  if (eventType === 'untagged') return 'Etiqueta quitada';
   return eventType;
 }
 

@@ -8,16 +8,26 @@ import {
   changeOrganizationPlan,
   dismissOrganizationPlanRecommendation,
   reviewOrganizationPlanRecommendation,
+  saveOrganizationPlanRecommendationAssignee,
   saveOrganizationPlanRecommendationFollowUp,
   saveOrganizationPlanRecommendationFreeze,
   saveOrganizationPlanRecommendationNote,
+  saveOrganizationPlanRecommendationOutcome,
+  saveOrganizationPlanRecommendationContact,
+  saveOrganizationPlanRecommendationTags,
 } from '@/actions/superadmin';
-import type { PlanRecommendationCommercialMeta } from '@/lib/plan-recommendations';
+import type {
+  CommercialRecommendationOutcome,
+  PlanRecommendationCommercialMeta,
+  RecommendationAssigneeOption,
+} from '@/lib/plan-recommendations';
+import { COMMERCIAL_OUTCOME_LABELS } from '@/lib/plan-recommendations';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { usePendingAction } from '@/lib/hooks/use-pending-action';
 
@@ -27,6 +37,8 @@ export function SuperadminPlanRecommendationPanel({
   recommendation,
   comparison,
   commercialMeta = null,
+  assignees = [],
+  currentUserId = null,
 }: {
   organizationId: string;
   organizationName: string;
@@ -37,12 +49,19 @@ export function SuperadminPlanRecommendationPanel({
     limitChanges: Array<{ label: string; from: string; to: string }>;
   } | null;
   commercialMeta?: PlanRecommendationCommercialMeta | null;
+  assignees?: RecommendationAssigneeOption[];
+  currentUserId?: string | null;
 }) {
   const router = useRouter();
   const [pending, run] = usePendingAction();
   const [message, setMessage] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const [note, setNote] = useState(commercialMeta?.commercialNote ?? '');
+  const [tagsInput, setTagsInput] = useState((commercialMeta?.commercialTags ?? []).join(', '));
+  const [assignedTo, setAssignedTo] = useState(commercialMeta?.assignedTo ?? '');
+  const [outcome, setOutcome] = useState(commercialMeta?.commercialOutcome ?? '');
+  const [outcomeNote, setOutcomeNote] = useState(commercialMeta?.commercialOutcomeNote ?? '');
+  const [contactNote, setContactNote] = useState('');
   const [followUpLocal, setFollowUpLocal] = useState(() => {
     if (!commercialMeta?.followUpAt) return '';
     const d = new Date(commercialMeta.followUpAt);
@@ -96,6 +115,25 @@ export function SuperadminPlanRecommendationPanel({
             : 'UPGRADE RECOMMENDED'}
           <Badge variant="warning">{recommendation.severity}</Badge>
           {commercialMeta?.isFrozen ? <Badge variant="destructive">Congelada</Badge> : null}
+          {commercialMeta?.assignedEmail ? (
+            <Badge variant="default">{commercialMeta.assignedEmail}</Badge>
+          ) : null}
+          {commercialMeta?.commercialOutcome ? (
+            <Badge
+              variant={
+                commercialMeta.commercialOutcome === 'won'
+                  ? 'success'
+                  : commercialMeta.commercialOutcome === 'deferred'
+                    ? 'warning'
+                    : commercialMeta.commercialOutcome === 'lost' ||
+                        commercialMeta.commercialOutcome === 'not_a_fit'
+                      ? 'destructive'
+                      : 'default'
+              }
+            >
+              {COMMERCIAL_OUTCOME_LABELS[commercialMeta.commercialOutcome]}
+            </Badge>
+          ) : null}
         </CardTitle>
         <CardDescription>
           {organizationName} está en <strong>{recommendation.currentPlan ?? 'sin plan'}</strong>
@@ -190,6 +228,255 @@ export function SuperadminPlanRecommendationPanel({
               </span>
             ) : null}
           </div>
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor="recTags">Etiquetas comerciales</Label>
+          <Input
+            id="recTags"
+            value={tagsInput}
+            onChange={(event) => setTagsInput(event.target.value)}
+            placeholder="demo, enterprise, churn-risk"
+          />
+          <div className="flex flex-wrap gap-2">
+            {(commercialMeta?.commercialTags ?? []).map((tag) => (
+              <Badge key={tag}>{tag}</Badge>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => {
+                const form = new FormData();
+                form.set('organizationId', organizationId);
+                form.set('tagMode', 'replace');
+                form.set('tags', tagsInput);
+                void run(async () => {
+                  const result = await saveOrganizationPlanRecommendationTags(form);
+                  setMessage(
+                    result.success
+                      ? 'Etiquetas guardadas'
+                      : result.error ?? 'No se pudieron guardar las etiquetas'
+                  );
+                  if (result.success) router.refresh();
+                  return result;
+                });
+              }}
+            >
+              Guardar etiquetas
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={pending}
+              onClick={() => {
+                setTagsInput('');
+                const form = new FormData();
+                form.set('organizationId', organizationId);
+                form.set('tagMode', 'replace');
+                form.set('tags', '');
+                void run(async () => {
+                  const result = await saveOrganizationPlanRecommendationTags(form);
+                  setMessage(
+                    result.success
+                      ? 'Etiquetas quitadas'
+                      : result.error ?? 'No se pudieron quitar'
+                  );
+                  if (result.success) router.refresh();
+                  return result;
+                });
+              }}
+            >
+              Quitar todas
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Separá con comas. Se normalizan a minúsculas (máx. 12).
+          </p>
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor="recAssignee">Responsable comercial</Label>
+          <div className="flex flex-wrap items-end gap-2">
+            <Select
+              id="recAssignee"
+              value={assignedTo}
+              onChange={(event) => setAssignedTo(event.target.value)}
+              className="max-w-sm"
+            >
+              <option value="">Sin asignar</option>
+              {assignees.map((admin) => (
+                <option key={admin.userId} value={admin.userId}>
+                  {admin.email}
+                </option>
+              ))}
+            </Select>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => {
+                const form = new FormData();
+                form.set('organizationId', organizationId);
+                form.set('assignedTo', assignedTo);
+                void run(async () => {
+                  const result = await saveOrganizationPlanRecommendationAssignee(form);
+                  setMessage(
+                    result.success
+                      ? assignedTo
+                        ? 'Responsable asignado'
+                        : 'Responsable quitado'
+                      : result.error ?? 'No se pudo asignar'
+                  );
+                  if (result.success) router.refresh();
+                  return result;
+                });
+              }}
+            >
+              Guardar
+            </Button>
+            {currentUserId ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={pending || assignedTo === currentUserId}
+                onClick={() => {
+                  setAssignedTo(currentUserId);
+                  const form = new FormData();
+                  form.set('organizationId', organizationId);
+                  form.set('assignedTo', currentUserId);
+                  void run(async () => {
+                    const result = await saveOrganizationPlanRecommendationAssignee(form);
+                    setMessage(
+                      result.success
+                        ? 'Asignada a vos'
+                        : result.error ?? 'No se pudo asignar'
+                    );
+                    if (result.success) router.refresh();
+                    return result;
+                  });
+                }}
+              >
+                Asignarme
+              </Button>
+            ) : null}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Solo organiza el seguimiento interno. No cambia el plan.
+          </p>
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor="recContact">Último contacto comercial</Label>
+          <div className="flex flex-wrap items-end gap-2">
+            <Input
+              id="recContact"
+              value={contactNote}
+              onChange={(event) => setContactNote(event.target.value)}
+              placeholder="Nota breve del contacto (opcional)"
+              className="max-w-lg"
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => {
+                const form = new FormData();
+                form.set('organizationId', organizationId);
+                form.set('contactNote', contactNote);
+                void run(async () => {
+                  const result = await saveOrganizationPlanRecommendationContact(form);
+                  setMessage(
+                    result.success
+                      ? 'Contacto registrado'
+                      : result.error ?? 'No se pudo registrar el contacto'
+                  );
+                  if (result.success) {
+                    setContactNote('');
+                    router.refresh();
+                  }
+                  return result;
+                });
+              }}
+            >
+              Registrar contacto
+            </Button>
+          </div>
+          {commercialMeta?.lastContactedAt ? (
+            <p className="text-xs text-muted-foreground">
+              Último: {new Date(commercialMeta.lastContactedAt).toLocaleString('es-AR')}
+              {commercialMeta.lastContactNote ? ` · ${commercialMeta.lastContactNote}` : ''}
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Todavía sin contacto. Registrar uno reinicia el reloj de stale.
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor="recOutcome">Resultado comercial</Label>
+          <div className="flex flex-wrap items-end gap-2">
+            <Select
+              id="recOutcome"
+              value={outcome}
+              onChange={(event) =>
+                setOutcome(event.target.value as CommercialRecommendationOutcome | '')
+              }
+              className="max-w-xs"
+            >
+              <option value="">Sin resultado</option>
+              {(Object.keys(COMMERCIAL_OUTCOME_LABELS) as CommercialRecommendationOutcome[]).map(
+                (key) => (
+                  <option key={key} value={key}>
+                    {COMMERCIAL_OUTCOME_LABELS[key]}
+                  </option>
+                )
+              )}
+            </Select>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => {
+                const form = new FormData();
+                form.set('organizationId', organizationId);
+                form.set('outcome', outcome);
+                form.set('outcomeNote', outcomeNote);
+                void run(async () => {
+                  const result = await saveOrganizationPlanRecommendationOutcome(form);
+                  setMessage(
+                    result.success
+                      ? outcome
+                        ? 'Resultado guardado'
+                        : 'Resultado quitado'
+                      : result.error ?? 'No se pudo guardar el resultado'
+                  );
+                  if (result.success) router.refresh();
+                  return result;
+                });
+              }}
+            >
+              Guardar resultado
+            </Button>
+          </div>
+          <Input
+            value={outcomeNote}
+            onChange={(event) => setOutcomeNote(event.target.value)}
+            placeholder="Nota del resultado (opcional)"
+            className="max-w-lg"
+          />
+          <p className="text-xs text-muted-foreground">
+            “Ganada” no sube el plan sola. Ganada / perdida / no encaja quitan el follow-up activo.
+          </p>
         </div>
 
         <div className="space-y-1">

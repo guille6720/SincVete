@@ -3158,6 +3158,17 @@ export interface Database {
           frozen_at: string | null;
           frozen_by: string | null;
           frozen_note: string | null;
+          assigned_to: string | null;
+          assigned_at: string | null;
+          assigned_by: string | null;
+          commercial_outcome: string | null;
+          commercial_outcome_at: string | null;
+          commercial_outcome_by: string | null;
+          commercial_outcome_note: string | null;
+          last_contacted_at: string | null;
+          last_contacted_by: string | null;
+          last_contact_note: string | null;
+          commercial_tags: string[];
         };
         Insert: {
           organization_id: string;
@@ -3196,6 +3207,17 @@ export interface Database {
           frozen_at?: string | null;
           frozen_by?: string | null;
           frozen_note?: string | null;
+          assigned_to?: string | null;
+          assigned_at?: string | null;
+          assigned_by?: string | null;
+          commercial_outcome?: string | null;
+          commercial_outcome_at?: string | null;
+          commercial_outcome_by?: string | null;
+          commercial_outcome_note?: string | null;
+          last_contacted_at?: string | null;
+          last_contacted_by?: string | null;
+          last_contact_note?: string | null;
+          commercial_tags?: string[];
         };
         Update: {
           organization_id?: string;
@@ -3234,6 +3256,17 @@ export interface Database {
           frozen_at?: string | null;
           frozen_by?: string | null;
           frozen_note?: string | null;
+          assigned_to?: string | null;
+          assigned_at?: string | null;
+          assigned_by?: string | null;
+          commercial_outcome?: string | null;
+          commercial_outcome_at?: string | null;
+          commercial_outcome_by?: string | null;
+          commercial_outcome_note?: string | null;
+          last_contacted_at?: string | null;
+          last_contacted_by?: string | null;
+          last_contact_note?: string | null;
+          commercial_tags?: string[];
         };
         Relationships: [];
       };
@@ -3244,6 +3277,8 @@ export interface Database {
           threshold_warning: number;
           threshold_critical: number;
           clinic_snooze_days: number;
+          stale_days: number;
+          priority_weights: Json;
           updated_at: string;
           updated_by: string | null;
         };
@@ -3253,6 +3288,8 @@ export interface Database {
           threshold_warning?: number;
           threshold_critical?: number;
           clinic_snooze_days?: number;
+          stale_days?: number;
+          priority_weights?: Json;
           updated_at?: string;
           updated_by?: string | null;
         };
@@ -3262,8 +3299,41 @@ export interface Database {
           threshold_warning?: number;
           threshold_critical?: number;
           clinic_snooze_days?: number;
+          stale_days?: number;
+          priority_weights?: Json;
           updated_at?: string;
           updated_by?: string | null;
+        };
+        Relationships: [];
+      };
+      commercial_recommendation_saved_views: {
+        Row: {
+          id: string;
+          owner_user_id: string;
+          name: string;
+          name_key: string;
+          query_params: Json;
+          is_shared: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          owner_user_id: string;
+          name: string;
+          query_params?: Json;
+          is_shared?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          owner_user_id?: string;
+          name?: string;
+          query_params?: Json;
+          is_shared?: boolean;
+          created_at?: string;
+          updated_at?: string;
         };
         Relationships: [];
       };
@@ -3616,6 +3686,28 @@ export interface Database {
           created_at: string;
         }[];
       };
+      superadmin_list_recent_recommendation_events: {
+        Args: {
+          p_limit?: number;
+          p_mine_only?: boolean;
+        };
+        Returns: {
+          id: string;
+          organization_id: string;
+          organization_name: string;
+          organization_slug: string;
+          event_type: string;
+          actor_kind: string;
+          actor_user_id: string | null;
+          actor_email: string | null;
+          current_plan_key: string | null;
+          recommended_plan_key: string | null;
+          severity: string | null;
+          score: number | null;
+          note: string | null;
+          created_at: string;
+        }[];
+      };
       superadmin_clear_idle_plan_recommendation: {
         Args: { p_organization_id: string };
         Returns: Json;
@@ -3643,7 +3735,11 @@ export interface Database {
         Returns: Json;
       };
       superadmin_list_recommendation_follow_ups: {
-        Args: { p_limit?: number };
+        Args: {
+          p_limit?: number;
+          p_assigned_to?: string | null;
+          p_unassigned_only?: boolean;
+        };
         Returns: {
           organization_id: string;
           organization_name: string;
@@ -3655,7 +3751,336 @@ export interface Database {
           usage_level: number;
           follow_up_at: string;
           commercial_note: string | null;
+          assigned_to: string | null;
+          assigned_email: string | null;
+          commercial_outcome: string | null;
         }[];
+      };
+      superadmin_list_recommendation_outcomes: {
+        Args: {
+          p_limit?: number;
+          p_outcome?: string | null;
+        };
+        Returns: {
+          organization_id: string;
+          organization_name: string;
+          organization_slug: string;
+          current_plan_key: string | null;
+          recommended_plan_key: string | null;
+          status: string;
+          severity: string;
+          usage_level: number;
+          commercial_outcome: string;
+          commercial_outcome_at: string | null;
+          commercial_outcome_note: string | null;
+          assigned_to: string | null;
+          assigned_email: string | null;
+        }[];
+      };
+      superadmin_set_plan_recommendation_outcome: {
+        Args: {
+          p_organization_id: string;
+          p_outcome?: string | null;
+          p_note?: string | null;
+        };
+        Returns: Json;
+      };
+      superadmin_list_recommendation_stale: {
+        Args: { p_limit?: number };
+        Returns: {
+          organization_id: string;
+          organization_name: string;
+          organization_slug: string;
+          current_plan_key: string | null;
+          recommended_plan_key: string | null;
+          status: string;
+          severity: string;
+          usage_level: number;
+          last_touch_at: string | null;
+          stale_days: number;
+          assigned_to: string | null;
+          assigned_email: string | null;
+          commercial_outcome: string | null;
+          last_contacted_at: string | null;
+        }[];
+      };
+      superadmin_recommendation_digest: {
+        Args: {
+          p_limit?: number;
+          p_mine_only?: boolean;
+        };
+        Returns: Json;
+      };
+      superadmin_touch_plan_recommendation_contact: {
+        Args: {
+          p_organization_id: string;
+          p_note?: string | null;
+        };
+        Returns: Json;
+      };
+      superadmin_recommendation_funnel: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      superadmin_recommendation_assignee_scorecard: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      superadmin_recommendation_aging: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      superadmin_recommendation_tag_scorecard: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      superadmin_recommendation_trends: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      superadmin_recommendation_assignee_workload: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      sanitize_commercial_saved_view_params: {
+        Args: {
+          p_params: Json;
+        };
+        Returns: Json;
+      };
+      superadmin_list_recommendation_saved_views: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          id: string;
+          name: string;
+          query_params: Json;
+          is_shared: boolean;
+          owner_user_id: string;
+          owner_email: string | null;
+          is_mine: boolean;
+          created_at: string;
+          updated_at: string;
+        }[];
+      };
+      superadmin_upsert_recommendation_saved_view: {
+        Args: {
+          p_name: string;
+          p_query_params?: Json;
+          p_is_shared?: boolean;
+          p_id?: string | null;
+        };
+        Returns: Json;
+      };
+      superadmin_delete_recommendation_saved_view: {
+        Args: {
+          p_id: string;
+        };
+        Returns: Json;
+      };
+      superadmin_list_recommendation_aging: {
+        Args: {
+          p_bucket: string;
+          p_limit?: number;
+        };
+        Returns: {
+          organization_id: string;
+          organization_name: string;
+          organization_slug: string;
+          current_plan_key: string | null;
+          recommended_plan_key: string | null;
+          status: string;
+          severity: string | null;
+          age_days: number | null;
+          last_touch_at: string | null;
+          assigned_to: string | null;
+          assigned_email: string | null;
+          commercial_tags: string[];
+          commercial_outcome: string | null;
+        }[];
+      };
+      superadmin_bulk_set_plan_recommendation_assignee: {
+        Args: {
+          p_organization_ids: string[];
+          p_assigned_to?: string | null;
+        };
+        Returns: Json;
+      };
+      superadmin_bulk_touch_plan_recommendation_contact: {
+        Args: {
+          p_organization_ids: string[];
+          p_note?: string | null;
+        };
+        Returns: Json;
+      };
+      superadmin_bulk_set_plan_recommendation_follow_up: {
+        Args: {
+          p_organization_ids: string[];
+          p_follow_up_at?: string | null;
+        };
+        Returns: Json;
+      };
+      superadmin_bulk_set_plan_recommendation_outcome: {
+        Args: {
+          p_organization_ids: string[];
+          p_outcome?: string | null;
+          p_note?: string | null;
+        };
+        Returns: Json;
+      };
+      superadmin_bulk_set_plan_recommendation_freeze: {
+        Args: {
+          p_organization_ids: string[];
+          p_frozen?: boolean;
+          p_note?: string | null;
+        };
+        Returns: Json;
+      };
+      superadmin_bulk_set_plan_recommendation_note: {
+        Args: {
+          p_organization_ids: string[];
+          p_note?: string | null;
+          p_mode?: string;
+        };
+        Returns: Json;
+      };
+      superadmin_set_plan_recommendation_tags: {
+        Args: {
+          p_organization_id: string;
+          p_tags?: string[];
+          p_mode?: string;
+        };
+        Returns: Json;
+      };
+      superadmin_bulk_set_plan_recommendation_tags: {
+        Args: {
+          p_organization_ids: string[];
+          p_tags?: string[];
+          p_mode?: string;
+        };
+        Returns: Json;
+      };
+      superadmin_list_recommendation_tag_catalog: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          tag: string;
+          org_count: number;
+        }[];
+      };
+      superadmin_list_recommendation_by_tag: {
+        Args: {
+          p_tag: string;
+          p_limit?: number;
+        };
+        Returns: {
+          organization_id: string;
+          organization_name: string;
+          organization_slug: string;
+          current_plan_key: string | null;
+          recommended_plan_key: string | null;
+          status: string;
+          severity: string | null;
+          commercial_tags: string[];
+          assigned_to: string | null;
+          assigned_email: string | null;
+          commercial_outcome: string | null;
+        }[];
+      };
+      superadmin_search_recommendation_notes: {
+        Args: {
+          p_query: string;
+          p_limit?: number;
+        };
+        Returns: {
+          organization_id: string;
+          organization_name: string;
+          organization_slug: string;
+          current_plan_key: string | null;
+          recommended_plan_key: string | null;
+          status: string;
+          severity: string | null;
+          commercial_note: string | null;
+          commercial_outcome_note: string | null;
+          last_contact_note: string | null;
+          frozen_note: string | null;
+          commercial_tags: string[];
+          assigned_to: string | null;
+          assigned_email: string | null;
+          commercial_outcome: string | null;
+          matched_in: string[];
+        }[];
+      };
+      superadmin_list_open_recommendation_pipeline: {
+        Args: {
+          p_limit?: number;
+          p_mine_only?: boolean;
+          p_sort?: string;
+        };
+        Returns: {
+          organization_id: string;
+          organization_name: string;
+          organization_slug: string;
+          current_plan_key: string | null;
+          recommended_plan_key: string | null;
+          status: string;
+          severity: string | null;
+          score: number | null;
+          usage_level: number | null;
+          age_days: number | null;
+          last_touch_at: string | null;
+          last_contacted_at: string | null;
+          follow_up_at: string | null;
+          is_frozen: boolean;
+          assigned_to: string | null;
+          assigned_email: string | null;
+          commercial_outcome: string | null;
+          commercial_tags: string[];
+          commercial_note: string | null;
+          recommended_at: string | null;
+        }[];
+      };
+      superadmin_list_recommendation_priority_queue: {
+        Args: {
+          p_limit?: number;
+          p_mine_only?: boolean;
+          p_include_frozen?: boolean;
+        };
+        Returns: {
+          organization_id: string;
+          organization_name: string;
+          organization_slug: string;
+          current_plan_key: string | null;
+          recommended_plan_key: string | null;
+          status: string;
+          severity: string | null;
+          score: number | null;
+          usage_level: number | null;
+          age_days: number | null;
+          priority: number;
+          priority_reasons: string[];
+          last_touch_at: string | null;
+          last_contacted_at: string | null;
+          follow_up_at: string | null;
+          is_frozen: boolean;
+          assigned_to: string | null;
+          assigned_email: string | null;
+          commercial_outcome: string | null;
+          commercial_tags: string[];
+          commercial_note: string | null;
+        }[];
+      };
+      superadmin_list_recommendation_assignees: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          user_id: string;
+          email: string;
+        }[];
+      };
+      superadmin_set_plan_recommendation_assignee: {
+        Args: {
+          p_organization_id: string;
+          p_assigned_to?: string | null;
+        };
+        Returns: Json;
       };
       get_recommendation_thresholds: {
         Args: Record<PropertyKey, never>;
@@ -3671,6 +4096,8 @@ export interface Database {
           p_threshold_warning?: number | null;
           p_threshold_critical?: number | null;
           p_clinic_snooze_days?: number | null;
+          p_stale_days?: number | null;
+          p_priority_weights?: Json | null;
         };
         Returns: Json;
       };
