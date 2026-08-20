@@ -10,6 +10,7 @@ import {
   bulkFreezeOrganizationPlanRecommendations,
   bulkNoteOrganizationPlanRecommendations,
   bulkOutcomeOrganizationPlanRecommendations,
+  bulkSnoozeOrganizationPlanRecommendations,
   bulkTagOrganizationPlanRecommendations,
 } from '@/actions/superadmin';
 import {
@@ -52,6 +53,8 @@ export function SuperadminCommercialBulkBoard({
   const [freezeNote, setFreezeNote] = useState(
     'Congelada en masa; el refresh no la limpia'
   );
+  const [snoozeDays, setSnoozeDays] = useState('7');
+  const [snoozeNote, setSnoozeNote] = useState('Snooze comercial masivo');
   const [commercialNote, setCommercialNote] = useState('');
   const [tagsInput, setTagsInput] = useState('');
 
@@ -196,6 +199,32 @@ export function SuperadminCommercialBulkBoard({
       frozen
         ? `Congeladas: ${result.data.updated} ok, ${result.data.errors} error`
         : `Descongeladas: ${result.data.updated} ok, ${result.data.errors} error`
+    );
+    router.refresh();
+  }
+
+  async function runSnooze(clear: boolean) {
+    if (!requireSelection()) return;
+    const days = Number(snoozeDays);
+    if (!clear && (!Number.isFinite(days) || days < 1 || days > 90)) {
+      setMessage('Snooze debe ser entre 1 y 90 días');
+      return;
+    }
+    const form = new FormData();
+    form.set('organizationIds', selectedIds.join(','));
+    if (clear) form.set('clear', '1');
+    else form.set('days', String(days));
+    form.set('note', snoozeNote);
+    const result = await run(() => bulkSnoozeOrganizationPlanRecommendations(form));
+    if (!result) return;
+    if (!result.success || !result.data) {
+      setMessage(result.error ?? 'No se pudo actualizar el snooze');
+      return;
+    }
+    setMessage(
+      clear
+        ? `Despertadas: ${result.data.updated} ok, ${result.data.errors} error`
+        : `Snooze: ${result.data.updated} ok, ${result.data.errors} error`
     );
     router.refresh();
   }
@@ -477,6 +506,50 @@ export function SuperadminCommercialBulkBoard({
             </div>
             <p className="text-xs text-muted-foreground">
               Congelar evita que el refresh masivo limpie estas recomendaciones.
+            </p>
+          </div>
+
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="bulkSnoozeDays">Snooze comercial masivo</Label>
+            <div className="flex flex-wrap gap-2">
+              <Input
+                id="bulkSnoozeDays"
+                type="number"
+                min={1}
+                max={90}
+                className="w-24"
+                value={snoozeDays}
+                onChange={(event) => setSnoozeDays(event.target.value)}
+              />
+              <Input
+                value={snoozeNote}
+                onChange={(event) => setSnoozeNote(event.target.value)}
+                placeholder="Nota de snooze (opcional)"
+                className="min-w-[200px] flex-1"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={pending}
+                onClick={() => void runSnooze(false)}
+              >
+                Snoozear
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={pending}
+                onClick={() => void runSnooze(true)}
+              >
+                Despertar
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Saca de prioridad y digest hasta la fecha. No es freeze.
             </p>
           </div>
 

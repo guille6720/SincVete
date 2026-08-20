@@ -11,6 +11,7 @@ import {
   saveOrganizationPlanRecommendationAssignee,
   saveOrganizationPlanRecommendationFollowUp,
   saveOrganizationPlanRecommendationFreeze,
+  saveOrganizationPlanRecommendationCommercialSnooze,
   saveOrganizationPlanRecommendationNote,
   saveOrganizationPlanRecommendationOutcome,
   saveOrganizationPlanRecommendationContact,
@@ -115,6 +116,7 @@ export function SuperadminPlanRecommendationPanel({
             : 'UPGRADE RECOMMENDED'}
           <Badge variant="warning">{recommendation.severity}</Badge>
           {commercialMeta?.isFrozen ? <Badge variant="destructive">Congelada</Badge> : null}
+          {commercialMeta?.isCommerciallySnoozed ? <Badge>Snooze comercial</Badge> : null}
           {commercialMeta?.assignedEmail ? (
             <Badge variant="default">{commercialMeta.assignedEmail}</Badge>
           ) : null}
@@ -581,6 +583,73 @@ export function SuperadminPlanRecommendationPanel({
               Congelar evita que el refresh masivo limpie este aviso.
             </span>
           )}
+        </div>
+
+        <div className="space-y-2">
+          <Label>Snooze comercial</Label>
+          <p className="text-xs text-muted-foreground">
+            Saca de prioridad y digest temporalmente (no es freeze ni cambia el plan).
+            {commercialMeta?.isCommerciallySnoozed && commercialMeta.commercialSnoozeUntil
+              ? ` Activo hasta ${new Date(commercialMeta.commercialSnoozeUntil).toLocaleString('es-AR')}.`
+              : ''}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {[3, 7, 14, 30].map((days) => (
+              <Button
+                key={days}
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={pending}
+                onClick={() => {
+                  const form = new FormData();
+                  form.set('organizationId', organizationId);
+                  form.set('days', String(days));
+                  form.set('note', `Snooze comercial ${days}d`);
+                  void run(async () => {
+                    const result = await saveOrganizationPlanRecommendationCommercialSnooze(form);
+                    setMessage(
+                      result.success
+                        ? `Snooze ${days}d aplicado`
+                        : result.error ?? 'No se pudo snoozear'
+                    );
+                    if (result.success) router.refresh();
+                    return result;
+                  });
+                }}
+              >
+                {days}d
+              </Button>
+            ))}
+            {commercialMeta?.isCommerciallySnoozed ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={pending}
+                onClick={() => {
+                  const form = new FormData();
+                  form.set('organizationId', organizationId);
+                  form.set('clear', '1');
+                  void run(async () => {
+                    const result = await saveOrganizationPlanRecommendationCommercialSnooze(form);
+                    setMessage(
+                      result.success
+                        ? 'Snooze comercial quitado'
+                        : result.error ?? 'No se pudo quitar el snooze'
+                    );
+                    if (result.success) router.refresh();
+                    return result;
+                  });
+                }}
+              >
+                Despertar
+              </Button>
+            ) : null}
+          </div>
+          {commercialMeta?.commercialSnoozeNote ? (
+            <p className="text-xs text-muted-foreground">{commercialMeta.commercialSnoozeNote}</p>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap gap-2">

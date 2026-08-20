@@ -3,7 +3,10 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { exportSuperadminRecommendationPriorityQueueCsv } from '@/actions/superadmin';
+import {
+  exportSuperadminRecommendationPriorityQueueCsv,
+  saveOrganizationPlanRecommendationCommercialSnooze,
+} from '@/actions/superadmin';
 import {
   COMMERCIAL_OUTCOME_LABELS,
   type RecommendationPriorityRow,
@@ -13,27 +16,38 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { usePendingAction } from '@/lib/hooks/use-pending-action';
 
+const SNOOZE_PRESETS = [3, 7, 14] as const;
+
 export function SuperadminRecommendationPriorityQueue({
   rows,
   mineOnly = false,
   includeFrozen = false,
+  includeSnoozed = false,
 }: {
   rows: RecommendationPriorityRow[];
   mineOnly?: boolean;
   includeFrozen?: boolean;
+  includeSnoozed?: boolean;
 }) {
   const router = useRouter();
   const [pending, run] = usePendingAction();
   const [message, setMessage] = useState<string | null>(null);
 
-  function updateParams(next: { mineOnly?: boolean; includeFrozen?: boolean }) {
+  function updateParams(next: {
+    mineOnly?: boolean;
+    includeFrozen?: boolean;
+    includeSnoozed?: boolean;
+  }) {
     const params = new URLSearchParams(window.location.search);
     const nextMine = next.mineOnly ?? mineOnly;
     const nextFrozen = next.includeFrozen ?? includeFrozen;
+    const nextSnoozed = next.includeSnoozed ?? includeSnoozed;
     if (nextMine) params.set('priority', 'me');
     else params.delete('priority');
     if (nextFrozen) params.set('pfrozen', '1');
     else params.delete('pfrozen');
+    if (nextSnoozed) params.set('psnooze', '1');
+    else params.delete('psnooze');
     const query = params.toString();
     router.push(query ? `/superadmin?${query}#cola-prioridad` : '/superadmin#cola-prioridad');
   }
@@ -43,6 +57,7 @@ export function SuperadminRecommendationPriorityQueue({
     const form = new FormData();
     form.set('mineOnly', mineOnly ? 'true' : 'false');
     form.set('includeFrozen', includeFrozen ? 'true' : 'false');
+    form.set('includeSnoozed', includeSnoozed ? 'true' : 'false');
     const result = await run(() => exportSuperadminRecommendationPriorityQueueCsv(form));
     if (!result) return;
     if (!result.success || !result.data?.csv) {
@@ -59,6 +74,22 @@ export function SuperadminRecommendationPriorityQueue({
     setMessage(`${result.data.rowCount} filas exportadas`);
   }
 
+  async function snooze(organizationId: string, days: number) {
+    setMessage(null);
+    const form = new FormData();
+    form.set('organizationId', organizationId);
+    form.set('days', String(days));
+    form.set('note', `Snooze comercial ${days}d desde cola de prioridad`);
+    const result = await run(() => saveOrganizationPlanRecommendationCommercialSnooze(form));
+    if (!result) return;
+    if (!result.success) {
+      setMessage(result.error ?? 'No se pudo snoozear');
+      return;
+    }
+    setMessage(`Snooze ${days}d aplicado`);
+    router.refresh();
+  }
+
   return (
     <Card id="cola-prioridad">
       <CardHeader>
@@ -66,7 +97,8 @@ export function SuperadminRecommendationPriorityQueue({
           <div>
             <CardTitle>Cola de prioridad</CardTitle>
             <CardDescription>
-              Heurística por severidad, uso, antigüedad, contacto y follow-up. No cambia planes.
+              Heurística por severidad, uso, antigüedad, contacto y follow-up. Snooze saca del
+              digest/prioridad temporalmente. No cambia planes.
             </CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -96,6 +128,15 @@ export function SuperadminRecommendationPriorityQueue({
               onClick={() => updateParams({ includeFrozen: !includeFrozen })}
             >
               {includeFrozen ? 'Con frozen' : 'Sin frozen'}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={includeSnoozed ? 'default' : 'outline'}
+              disabled={pending}
+              onClick={() => updateParams({ includeSnoozed: !includeSnoozed })}
+            >
+              {includeSnoozed ? 'Con snooze' : 'Sin snooze'}
             </Button>
             <Button
               type="button"
@@ -132,6 +173,10 @@ export function SuperadminRecommendationPriorityQueue({
                     <Badge>{row.severity}</Badge>
                   ) : null}
                   {row.isFrozen ? <Badge>frozen</Badge> : null}
+                  {row.commercialSnoozeUntil &&
+                  new Date(row.commercialSnoozeUntil).getTime() > Date.now() ? (
+                    <Badge>snooze</Badge>
+                  ) : null}
                 </div>
                 <p className="mt-1 text-muted-foreground">
                   {row.currentPlanKey ?? 'sin plan'}
@@ -154,6 +199,20 @@ export function SuperadminRecommendationPriorityQueue({
                     {row.commercialNote}
                   </p>
                 ) : null}
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {SNOOZE_PRESETS.map((days) => (
+                    <Button
+                      key={days}
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={pending}
+                      onClick={() => void snooze(row.organizationId, days)}
+                    >
+                      Snooze {days}d
+                    </Button>
+                  ))}
+                </div>
               </li>
             ))}
           </ul>

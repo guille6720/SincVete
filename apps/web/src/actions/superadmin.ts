@@ -1312,6 +1312,57 @@ export async function saveOrganizationPlanRecommendationFreeze(
   }
 }
 
+export async function saveOrganizationPlanRecommendationCommercialSnooze(
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    await requireSuperadmin();
+    const organizationId = String(formData.get('organizationId') ?? '');
+    if (!organizationId) return { success: false, error: 'Organización inválida' };
+    const clear = String(formData.get('clear') ?? '') === '1';
+    const daysRaw = Number(formData.get('days'));
+    const note = String(formData.get('note') ?? '').trim() || null;
+    const days = clear ? null : daysRaw;
+    if (!clear && (!Number.isFinite(daysRaw) || daysRaw < 1 || daysRaw > 90)) {
+      return { success: false, error: 'Snooze debe ser entre 1 y 90 días' };
+    }
+    const { setPlanRecommendationCommercialSnooze } = await import('@/lib/plan-recommendations');
+    await setPlanRecommendationCommercialSnooze(organizationId, days, note);
+    revalidateOrg(organizationId);
+    revalidatePath('/superadmin');
+    return { success: true };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function bulkSnoozeOrganizationPlanRecommendations(
+  formData: FormData
+): Promise<ActionResult<{ requested: number; updated: number; errors: number }>> {
+  try {
+    await requireSuperadmin();
+    const ids = String(formData.get('organizationIds') ?? '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean);
+    const clear = String(formData.get('clear') ?? '') === '1';
+    const daysRaw = Number(formData.get('days'));
+    const note = String(formData.get('note') ?? '').trim() || null;
+    const days = clear ? null : daysRaw;
+    if (!clear && (!Number.isFinite(daysRaw) || daysRaw < 1 || daysRaw > 90)) {
+      return { success: false, error: 'Snooze debe ser entre 1 y 90 días' };
+    }
+    const { bulkSetPlanRecommendationCommercialSnooze } = await import(
+      '@/lib/plan-recommendations'
+    );
+    const result = await bulkSetPlanRecommendationCommercialSnooze(ids, days, note);
+    revalidatePath('/superadmin');
+    return { success: true, data: result };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
 export async function saveOrganizationPlanRecommendationAssignee(
   formData: FormData
 ): Promise<ActionResult> {
@@ -1871,13 +1922,20 @@ export async function exportSuperadminOpenRecommendationPipelineCsv(
 export async function listSuperadminRecommendationPriorityQueue(options?: {
   mineOnly?: boolean;
   includeFrozen?: boolean;
+  includeSnoozed?: boolean;
 }) {
   const { listRecommendationPriorityQueue } = await import('@/lib/plan-recommendations');
   return listRecommendationPriorityQueue({
     limit: 25,
     mineOnly: options?.mineOnly ?? false,
     includeFrozen: options?.includeFrozen ?? false,
+    includeSnoozed: options?.includeSnoozed ?? false,
   });
+}
+
+export async function listSuperadminRecommendationCommercialSnoozed(mineOnly = false) {
+  const { listRecommendationCommercialSnoozed } = await import('@/lib/plan-recommendations');
+  return listRecommendationCommercialSnoozed({ limit: 40, mineOnly });
 }
 
 export async function exportSuperadminRecommendationPriorityQueueCsv(
@@ -1890,10 +1948,12 @@ export async function exportSuperadminRecommendationPriorityQueueCsv(
     );
     const mineOnly = String(formData?.get('mineOnly') ?? '') === 'true';
     const includeFrozen = String(formData?.get('includeFrozen') ?? '') === 'true';
+    const includeSnoozed = String(formData?.get('includeSnoozed') ?? '') === 'true';
     const rows = await listRecommendationPriorityQueue({
       limit: 100,
       mineOnly,
       includeFrozen,
+      includeSnoozed,
     });
     return {
       success: true,

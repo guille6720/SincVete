@@ -3169,6 +3169,10 @@ export interface Database {
           last_contacted_by: string | null;
           last_contact_note: string | null;
           commercial_tags: string[];
+          commercial_snooze_until: string | null;
+          commercial_snooze_note: string | null;
+          commercial_snoozed_at: string | null;
+          commercial_snoozed_by: string | null;
         };
         Insert: {
           organization_id: string;
@@ -3218,6 +3222,10 @@ export interface Database {
           last_contacted_by?: string | null;
           last_contact_note?: string | null;
           commercial_tags?: string[];
+          commercial_snooze_until?: string | null;
+          commercial_snooze_note?: string | null;
+          commercial_snoozed_at?: string | null;
+          commercial_snoozed_by?: string | null;
         };
         Update: {
           organization_id?: string;
@@ -3267,6 +3275,10 @@ export interface Database {
           last_contacted_by?: string | null;
           last_contact_note?: string | null;
           commercial_tags?: string[];
+          commercial_snooze_until?: string | null;
+          commercial_snooze_note?: string | null;
+          commercial_snoozed_at?: string | null;
+          commercial_snoozed_by?: string | null;
         };
         Relationships: [];
       };
@@ -4043,6 +4055,7 @@ export interface Database {
           p_limit?: number;
           p_mine_only?: boolean;
           p_include_frozen?: boolean;
+          p_include_snoozed?: boolean;
         };
         Returns: {
           organization_id: string;
@@ -4061,12 +4074,60 @@ export interface Database {
           last_contacted_at: string | null;
           follow_up_at: string | null;
           is_frozen: boolean;
+          commercial_snooze_until: string | null;
           assigned_to: string | null;
           assigned_email: string | null;
           commercial_outcome: string | null;
           commercial_tags: string[];
           commercial_note: string | null;
         }[];
+      };
+      superadmin_set_plan_recommendation_commercial_snooze: {
+        Args: {
+          p_organization_id: string;
+          p_days?: number | null;
+          p_note?: string | null;
+        };
+        Returns: Json;
+      };
+      superadmin_bulk_set_plan_recommendation_commercial_snooze: {
+        Args: {
+          p_organization_ids: string[];
+          p_days?: number | null;
+          p_note?: string | null;
+        };
+        Returns: Json;
+      };
+      superadmin_list_recommendation_commercial_snoozed: {
+        Args: {
+          p_limit?: number;
+          p_mine_only?: boolean;
+        };
+        Returns: {
+          organization_id: string;
+          organization_name: string;
+          organization_slug: string;
+          current_plan_key: string | null;
+          recommended_plan_key: string | null;
+          status: string;
+          severity: string | null;
+          commercial_snooze_until: string | null;
+          commercial_snooze_note: string | null;
+          commercial_snoozed_at: string | null;
+          snoozed_by: string | null;
+          snoozed_by_email: string | null;
+          assigned_to: string | null;
+          assigned_email: string | null;
+          commercial_tags: string[];
+          is_frozen: boolean;
+        }[];
+      };
+      recommendation_is_commercially_snoozed: {
+        Args: {
+          p_snooze_until: string | null;
+          p_now?: string;
+        };
+        Returns: boolean;
       };
       superadmin_list_recommendation_assignees: {
         Args: Record<PropertyKey, never>;

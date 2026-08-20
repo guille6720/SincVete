@@ -973,6 +973,10 @@ export type PlanRecommendationCommercialMeta = {
   lastContactedAt: string | null;
   lastContactNote: string | null;
   commercialTags: string[];
+  commercialSnoozeUntil: string | null;
+  commercialSnoozeNote: string | null;
+  commercialSnoozedAt: string | null;
+  isCommerciallySnoozed: boolean;
   status: string | null;
 };
 
@@ -1016,6 +1020,13 @@ export async function getPlanRecommendationCommercialMeta(
     commercialTags: Array.isArray(row.commercial_tags)
       ? row.commercial_tags.map((item) => String(item)).filter(Boolean)
       : [],
+    commercialSnoozeUntil:
+      typeof row.commercial_snooze_until === 'string' ? row.commercial_snooze_until : null,
+    commercialSnoozeNote:
+      typeof row.commercial_snooze_note === 'string' ? row.commercial_snooze_note : null,
+    commercialSnoozedAt:
+      typeof row.commercial_snoozed_at === 'string' ? row.commercial_snoozed_at : null,
+    isCommerciallySnoozed: Boolean(row.is_commercially_snoozed),
     status: typeof row.status === 'string' ? row.status : null,
   };
 }
@@ -1059,6 +1070,45 @@ export async function setPlanRecommendationFreeze(
     p_note: note ?? null,
   });
   if (error) throw new Error(error.message);
+}
+
+export async function setPlanRecommendationCommercialSnooze(
+  organizationId: string,
+  days: number | null,
+  note?: string | null
+): Promise<void> {
+  await requireSuperadmin();
+  const supabase = await createServerClient();
+  const { error } = await supabase.rpc('superadmin_set_plan_recommendation_commercial_snooze', {
+    p_organization_id: organizationId,
+    p_days: days,
+    p_note: note ?? null,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function bulkSetPlanRecommendationCommercialSnooze(
+  organizationIds: string[],
+  days: number | null,
+  note?: string | null
+): Promise<{ requested: number; updated: number; errors: number }> {
+  await requireSuperadmin();
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc(
+    'superadmin_bulk_set_plan_recommendation_commercial_snooze',
+    {
+      p_organization_ids: organizationIds.slice(0, 50),
+      p_days: days,
+      p_note: note ?? null,
+    }
+  );
+  if (error) throw new Error(error.message);
+  const row = (data ?? {}) as Record<string, unknown>;
+  return {
+    requested: Number(row.requested) || 0,
+    updated: Number(row.updated) || 0,
+    errors: Number(row.errors) || 0,
+  };
 }
 
 export async function setPlanRecommendationAssignee(
@@ -2720,6 +2770,7 @@ export type RecommendationPriorityRow = {
   lastContactedAt: string | null;
   followUpAt: string | null;
   isFrozen: boolean;
+  commercialSnoozeUntil: string | null;
   assignedTo: string | null;
   assignedEmail: string | null;
   commercialOutcome: CommercialRecommendationOutcome | null;
@@ -2731,6 +2782,7 @@ export async function listRecommendationPriorityQueue(options?: {
   limit?: number;
   mineOnly?: boolean;
   includeFrozen?: boolean;
+  includeSnoozed?: boolean;
 }): Promise<RecommendationPriorityRow[]> {
   await requireSuperadmin();
   const supabase = await createServerClient();
@@ -2738,6 +2790,7 @@ export async function listRecommendationPriorityQueue(options?: {
     p_limit: options?.limit ?? 25,
     p_mine_only: options?.mineOnly ?? false,
     p_include_frozen: options?.includeFrozen ?? false,
+    p_include_snoozed: options?.includeSnoozed ?? false,
   });
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => ({
@@ -2759,6 +2812,7 @@ export async function listRecommendationPriorityQueue(options?: {
     lastContactedAt: row.last_contacted_at,
     followUpAt: row.follow_up_at,
     isFrozen: Boolean(row.is_frozen),
+    commercialSnoozeUntil: row.commercial_snooze_until,
     assignedTo: row.assigned_to,
     assignedEmail: row.assigned_email,
     commercialOutcome: parseOutcome(row.commercial_outcome),
@@ -2783,6 +2837,7 @@ export function formatRecommendationPriorityQueueCsv(rows: RecommendationPriorit
     'age_days',
     'follow_up_at',
     'is_frozen',
+    'commercial_snooze_until',
     'assigned_email',
     'commercial_tags',
     'commercial_note',
@@ -2803,6 +2858,7 @@ export function formatRecommendationPriorityQueueCsv(rows: RecommendationPriorit
       row.ageDays ?? '',
       row.followUpAt ?? '',
       row.isFrozen ? 'true' : 'false',
+      row.commercialSnoozeUntil ?? '',
       row.assignedEmail ?? '',
       escape(row.commercialTags.join('|')),
       escape(row.commercialNote ?? ''),
@@ -2810,6 +2866,58 @@ export function formatRecommendationPriorityQueueCsv(rows: RecommendationPriorit
     ].join(',')
   );
   return `${header}\n${lines.join('\n')}\n`;
+}
+
+export type RecommendationCommercialSnoozeRow = {
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+  currentPlanKey: string | null;
+  recommendedPlanKey: string | null;
+  status: string;
+  severity: string | null;
+  commercialSnoozeUntil: string | null;
+  commercialSnoozeNote: string | null;
+  commercialSnoozedAt: string | null;
+  snoozedBy: string | null;
+  snoozedByEmail: string | null;
+  assignedTo: string | null;
+  assignedEmail: string | null;
+  commercialTags: string[];
+  isFrozen: boolean;
+};
+
+export async function listRecommendationCommercialSnoozed(options?: {
+  limit?: number;
+  mineOnly?: boolean;
+}): Promise<RecommendationCommercialSnoozeRow[]> {
+  await requireSuperadmin();
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc('superadmin_list_recommendation_commercial_snoozed', {
+    p_limit: options?.limit ?? 40,
+    p_mine_only: options?.mineOnly ?? false,
+  });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({
+    organizationId: row.organization_id,
+    organizationName: row.organization_name,
+    organizationSlug: row.organization_slug,
+    currentPlanKey: row.current_plan_key,
+    recommendedPlanKey: row.recommended_plan_key,
+    status: row.status,
+    severity: row.severity,
+    commercialSnoozeUntil: row.commercial_snooze_until,
+    commercialSnoozeNote: row.commercial_snooze_note,
+    commercialSnoozedAt: row.commercial_snoozed_at,
+    snoozedBy: row.snoozed_by,
+    snoozedByEmail: row.snoozed_by_email,
+    assignedTo: row.assigned_to,
+    assignedEmail: row.assigned_email,
+    commercialTags: Array.isArray(row.commercial_tags)
+      ? row.commercial_tags.map((item) => String(item))
+      : [],
+    isFrozen: Boolean(row.is_frozen),
+  }));
 }
 
 /**
@@ -3005,6 +3113,7 @@ export const COMMERCIAL_SAVED_VIEW_PARAM_KEYS = [
   'psort',
   'priority',
   'pfrozen',
+  'psnooze',
   'upgrade',
   'recommended',
 ] as const;

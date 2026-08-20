@@ -25,6 +25,7 @@ import {
   searchSuperadminRecommendationNotes,
   listSuperadminOpenRecommendationPipeline,
   listSuperadminRecommendationPriorityQueue,
+  listSuperadminRecommendationCommercialSnoozed,
   getSuperadminRecommendationSettings,
   listSuperadminRecommendationAssignees,
   listSuperadminRecommendationSavedViews,
@@ -48,6 +49,7 @@ import { SuperadminRecommendationTagsBoard } from '@/components/superadmin/recom
 import { SuperadminRecommendationNoteSearch } from '@/components/superadmin/recommendation-note-search';
 import { SuperadminRecommendationOpenPipeline } from '@/components/superadmin/recommendation-open-pipeline';
 import { SuperadminRecommendationPriorityQueue } from '@/components/superadmin/recommendation-priority-queue';
+import { SuperadminRecommendationCommercialSnoozeBoard } from '@/components/superadmin/recommendation-commercial-snooze';
 import { SuperadminRecommendationSavedViews } from '@/components/superadmin/recommendation-saved-views';
 import { SuperadminCommercialBulkBoard } from '@/components/superadmin/commercial-bulk-board';
 import { SuperadminRecommendationSettingsCard } from '@/components/superadmin/recommendation-settings';
@@ -79,6 +81,7 @@ interface PageProps {
     psort?: string;
     priority?: string;
     pfrozen?: string;
+    psnooze?: string;
   }>;
 }
 
@@ -127,6 +130,7 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
       : 'age_desc';
   const priorityMineOnly = params.priority?.trim() === 'me';
   const priorityIncludeFrozen = params.pfrozen?.trim() === '1';
+  const priorityIncludeSnoozed = params.psnooze?.trim() === '1';
 
   let followUpFilter: { assignedTo?: string | null; unassignedOnly?: boolean } = {};
   if (assigneeFilter === 'unassigned') {
@@ -164,6 +168,7 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
       noteHits,
       openPipeline,
       priorityQueue,
+      commercialSnoozed,
       assignees,
       recommendationSettings,
       savedViews,
@@ -213,7 +218,9 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
       listSuperadminRecommendationPriorityQueue({
         mineOnly: priorityMineOnly,
         includeFrozen: priorityIncludeFrozen,
+        includeSnoozed: priorityIncludeSnoozed,
       }).catch(() => []),
+      listSuperadminRecommendationCommercialSnoozed().catch(() => []),
       listSuperadminRecommendationAssignees().catch(() => []),
       getSuperadminRecommendationSettings().catch(() => null),
       listSuperadminRecommendationSavedViews().catch(() => []),
@@ -231,6 +238,7 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
       psort: pipelineSort !== 'age_desc' ? pipelineSort : undefined,
       priority: priorityMineOnly ? 'me' : undefined,
       pfrozen: priorityIncludeFrozen ? '1' : undefined,
+      psnooze: priorityIncludeSnoozed ? '1' : undefined,
       upgrade: upgradeFilter || undefined,
       recommended: recommendedPlan || undefined,
     } satisfies Partial<Record<CommercialSavedViewParamKey, string | undefined>>);
@@ -288,7 +296,9 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
           rows={priorityQueue}
           mineOnly={priorityMineOnly}
           includeFrozen={priorityIncludeFrozen}
+          includeSnoozed={priorityIncludeSnoozed}
         />
+        <SuperadminRecommendationCommercialSnoozeBoard rows={commercialSnoozed} />
         <SuperadminRecommendationFunnel funnel={funnel} />
         <SuperadminRecommendationTrends trends={trends} />
         <SuperadminRecommendationAging
@@ -353,7 +363,7 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
         <h1 className="text-xl font-semibold">Superadmin no pudo cargar los datos</h1>
         <p className="text-sm text-muted-foreground">
           Tu sesión sí es Superadmin. Falta configuración de Vercel o migraciones en Supabase
-          (incluí phase 31–59 de recomendaciones).
+          (incluí phase 31–60 de recomendaciones).
         </p>
         <p className="rounded-md bg-muted p-3 font-mono text-xs">{message}</p>
         <ol className="list-decimal space-y-2 pl-5 text-sm">
@@ -362,8 +372,8 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
             redesplegá.
           </li>
           <li>
-            En Supabase → SQL Editor, aplicá phase 31–59 (
-            <code>20260818360000</code> … <code>20260818640000</code>).
+            En Supabase → SQL Editor, aplicá phase 31–60 (
+            <code>20260818360000</code> … <code>20260818650000</code>).
           </li>
           <li>Recargá esta página.</li>
         </ol>

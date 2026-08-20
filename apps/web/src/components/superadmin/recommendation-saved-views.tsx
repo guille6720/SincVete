@@ -31,6 +31,7 @@ const PARAM_LABELS: Record<CommercialSavedViewParamKey, string> = {
   psort: 'Orden pipeline',
   priority: 'Prioridad',
   pfrozen: 'Incl. frozen',
+  psnooze: 'Incl. snooze',
   upgrade: 'Upgrade',
   recommended: 'Plan recomendado',
 };
