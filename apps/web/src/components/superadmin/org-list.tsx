@@ -280,6 +280,10 @@ export function RecommendationSummaryCards({
     { label: 'At limit', value: summary.atLimit },
     { label: 'Legacy review', value: summary.legacyReview },
     { label: 'Trial conversion', value: summary.trialConversion },
+    { label: 'Revisadas', value: summary.reviewed ?? 0 },
+    { label: 'Dismiss Superadmin', value: summary.dismissed ?? 0 },
+    { label: 'Aceptadas', value: summary.accepted ?? 0 },
+    { label: 'Dismiss clínica (activas)', value: summary.clinicDismissedActive ?? 0 },
   ];
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

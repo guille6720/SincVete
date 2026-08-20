@@ -6,7 +6,6 @@ import {
   computePlanRecommendation,
   comparePlanFeatures,
   getResolvedFeatureLimit,
-  resolveOrganizationEntitlements,
   type PlanRecommendation,
   type PlanRecommendationInput,
   type PaidPlanKey,
@@ -355,8 +354,31 @@ export async function listSuperadminOrganizationsWithRecommendations(params: {
     };
   });
 
-  const summary = buildRecommendationSummary(rows, total);
-  return { rows, total, page, pageSize, summary };
+  // Persist active recommendations so clinic soft notices can appear (best-effort, page only).
+  await Promise.all(
+    rows
+      .filter((row) => row.recommendation.shouldRecommendUpgrade && row.recommendation.status === 'recommended')
+      .map(async (row) => {
+        try {
+          await persistPlanRecommendation(row.recommendation, 'recommended');
+        } catch {
+          // Persistence optional if phase 31/32 not applied yet.
+        }
+      })
+  );
+
+  const [pageSummary, globalSummary] = await Promise.all([
+    Promise.resolve(buildRecommendationSummary(rows, total)),
+    getGlobalRecommendationSummary().catch(() => null),
+  ]);
+
+  return {
+    rows,
+    total,
+    page,
+    pageSize,
+    summary: globalSummary ?? pageSummary,
+  };
 }
 
 export type RecommendationDashboardSummary = {
@@ -368,7 +390,34 @@ export type RecommendationDashboardSummary = {
   atLimit: number;
   legacyReview: number;
   trialConversion: number;
+  reviewed?: number;
+  dismissed?: number;
+  accepted?: number;
+  clinicDismissedActive?: number;
 };
+
+export async function getGlobalRecommendationSummary(): Promise<RecommendationDashboardSummary> {
+  await requireSuperadmin();
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc('superadmin_recommendation_summary');
+  if (error) throw new Error(error.message);
+  const row = (data ?? {}) as Record<string, unknown>;
+  const num = (key: string) => Number(row[key] ?? 0) || 0;
+  return {
+    upgradeRecommended: num('upgrade_recommended'),
+    basicToPro: num('basic_to_pro'),
+    proToPremium: num('pro_to_premium'),
+    premiumToEnterprise: num('premium_to_enterprise'),
+    nearLimit: num('near_limit'),
+    atLimit: num('at_limit'),
+    legacyReview: num('legacy_rows'),
+    trialConversion: num('trial_conversion'),
+    reviewed: num('reviewed'),
+    dismissed: num('dismissed'),
+    accepted: num('accepted'),
+    clinicDismissedActive: num('clinic_dismissed_active'),
+  };
+}
 
 function buildRecommendationSummary(
   rows: SuperadminOrgRecommendationRow[],
@@ -564,68 +613,96 @@ export async function persistPlanRecommendation(
 }
 
 /**
- * Clinic-safe helper for a future owner-facing notice.
- * Does not render UI yet — returns null when no upgrade is advised.
- * Does not call Superadmin RPCs.
+ * Soft clinic notice for org managers (Configuración → Plan).
+ * Only shows Superadmin-persisted recommendations (phase 31/32).
  */
-export async function getClinicFacingPlanRecommendationHint(organizationId: string): Promise<{
+export type ClinicPlanRecommendationNotice = {
   currentPlan: string | null;
-  recommendedPlan: PaidPlanKey | null;
+  recommendedPlan: PaidPlanKey;
   reasons: string[];
-} | null> {
+  severity: string;
+  usageLevel: number;
+  fingerprint: string | null;
+};
+
+export async function getClinicFacingPlanRecommendationHint(
+  organizationId: string
+): Promise<ClinicPlanRecommendationNotice | null> {
+  void organizationId;
   try {
-    const input = await loadOrganizationEntitlementInput(organizationId);
-    if (input.schemaUnavailable) return null;
-    const entitlements = resolveOrganizationEntitlements(input);
-    // Minimal matrix from known ladder defaults when Superadmin catalog is unavailable.
-    const planIncludesFeature: PlanRecommendationInput['planIncludesFeature'] = {
-      basic: [FEATURES.OWNERS, FEATURES.PATIENTS, FEATURES.APPOINTMENTS, FEATURES.CONSULTATIONS],
-      pro: [
-        FEATURES.INVENTORY,
-        FEATURES.HOSPITALIZATION,
-        FEATURES.SURGERY,
-        FEATURES.LABORATORY,
-        FEATURES.PHARMACY,
-        FEATURES.BILLING,
-        FEATURES.CASH_REGISTER,
-        FEATURES.OWNER_PORTAL,
-        FEATURES.BASIC_REPORTS,
-      ],
-      premium: [
-        FEATURES.AI,
-        FEATURES.WHATSAPP,
-        FEATURES.CLINICAL_IMAGES,
-        FEATURES.ADVANCED_REPORTS,
-        FEATURES.AUTOMATIONS,
-      ],
-      enterprise: [FEATURES.AI, FEATURES.WHATSAPP, FEATURES.INVENTORY],
-    };
-    const grants: FeatureGrantSnapshot[] = Object.entries(entitlements).map(([featureKey, resolved]) => ({
-      featureKey,
-      enabled: resolved.enabled,
-      source: resolved.source,
-    }));
-    const recommendation = computePlanRecommendation({
-      organizationId,
-      currentPlanKey: input.planKey,
-      subscriptionStatus: input.subscriptionStatus,
-      seats: [],
-      meters: [],
-      grants,
-      activity: [],
-      accessAttempts: [],
-      planIncludesFeature,
-      planLimits: {},
-    });
-    if (!recommendation.shouldRecommendUpgrade || !recommendation.recommendedPlan) return null;
+    const supabase = await createServerClient();
+    const { data, error } = await supabase.rpc('list_own_plan_recommendation_notice');
+    if (error || !data || typeof data !== 'object' || Array.isArray(data)) {
+      return null;
+    }
+    const row = data as Record<string, unknown>;
+    const recommended = typeof row.recommended_plan_key === 'string' ? row.recommended_plan_key : null;
+    if (!recommended || !(PLAN_UPGRADE_LADDER as readonly string[]).includes(recommended)) {
+      return null;
+    }
+    const reasonsRaw = row.reasons;
+    const reasons = Array.isArray(reasonsRaw) ? reasonsRaw.map((item) => String(item)) : [];
     return {
-      currentPlan: recommendation.currentPlan,
-      recommendedPlan: recommendation.recommendedPlan,
-      reasons: recommendation.reasons,
+      currentPlan: typeof row.current_plan_key === 'string' ? row.current_plan_key : null,
+      recommendedPlan: recommended as PaidPlanKey,
+      reasons,
+      severity: typeof row.severity === 'string' ? row.severity : 'info',
+      usageLevel: Number(row.usage_level ?? 0) || 0,
+      fingerprint: typeof row.fingerprint === 'string' ? row.fingerprint : null,
     };
   } catch {
     return null;
   }
+}
+
+export type PlanRecommendationHistoryEvent = {
+  id: string;
+  eventType: string;
+  actorKind: string;
+  actorUserId: string | null;
+  currentPlanKey: string | null;
+  recommendedPlanKey: string | null;
+  severity: string | null;
+  score: number | null;
+  usageLevel: number | null;
+  reasons: string[];
+  fingerprint: string | null;
+  note: string | null;
+  createdAt: string;
+};
+
+export async function listPlanRecommendationHistory(
+  organizationId: string,
+  limit = 50
+): Promise<PlanRecommendationHistoryEvent[]> {
+  await requireSuperadmin();
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc('superadmin_list_plan_recommendation_events', {
+    p_organization_id: organizationId,
+    p_limit: limit,
+  });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    eventType: row.event_type,
+    actorKind: row.actor_kind,
+    actorUserId: row.actor_user_id,
+    currentPlanKey: row.current_plan_key,
+    recommendedPlanKey: row.recommended_plan_key,
+    severity: row.severity,
+    score: row.score,
+    usageLevel: row.usage_level === null ? null : Number(row.usage_level),
+    reasons: Array.isArray(row.reasons) ? row.reasons.map((item) => String(item)) : [],
+    fingerprint: row.fingerprint,
+    note: row.note,
+    createdAt: row.created_at,
+  }));
+}
+
+export async function dismissClinicPlanRecommendationNotice(): Promise<void> {
+  const supabase = await createServerClient();
+  const { error } = await supabase.rpc('dismiss_own_plan_recommendation_notice');
+  if (error) throw new Error(error.message);
 }
 
 export type { CommercialPlanKey };

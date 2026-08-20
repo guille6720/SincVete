@@ -11,6 +11,7 @@ import {
   startPlanCheckout,
   type PlanBillingState,
 } from '@/actions/plan-billing';
+import { ClinicUpgradeRecommendationNotice } from '@/components/settings/clinic-upgrade-notice';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -174,6 +175,10 @@ export function PlanBillingPanel({
         </div>
       ) : null}
       {message ? <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm">{message}</p> : null}
+
+      {state.upgradeNotice ? (
+        <ClinicUpgradeRecommendationNotice notice={state.upgradeNotice} />
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -360,7 +365,7 @@ export function PlanBillingPanel({
         </p>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div id="planes-disponibles" className="grid gap-4 md:grid-cols-2">
         {state.plans.map((plan) => {
           const current = state.current.planKey === plan.key;
           const monthly = formatArsAmount(plan.pricing.monthlyAmount);

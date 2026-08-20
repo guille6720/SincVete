@@ -7,7 +7,11 @@ import {
 import { SuperadminOrgDetail } from '@/components/superadmin/org-detail';
 import { SuperadminPlanRecommendationPanel } from '@/components/superadmin/plan-recommendation-panel';
 import { getSessionContext } from '@/lib/session';
-import { getPlanRecommendationForOrganization } from '@/lib/plan-recommendations';
+import {
+  getPlanRecommendationForOrganization,
+  listPlanRecommendationHistory,
+} from '@/lib/plan-recommendations';
+import { SuperadminRecommendationHistory } from '@/components/superadmin/recommendation-history';
 import { formatMeteredUsage } from '@sincvete/shared';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -21,12 +25,14 @@ export default async function SuperadminOrganizationPage({ params }: PageProps) 
   if (!session?.isPlatformAdmin) redirect('/dashboard');
 
   try {
-    const [data, events, checkoutIntents, recommendationBundle] = await Promise.all([
-      getSuperadminOrgCommercial(id),
-      listSuperadminBillingEvents(id),
-      listSuperadminCheckoutIntents(id),
-      getPlanRecommendationForOrganization(id).catch(() => null),
-    ]);
+    const [data, events, checkoutIntents, recommendationBundle, recommendationHistory] =
+      await Promise.all([
+        getSuperadminOrgCommercial(id),
+        listSuperadminBillingEvents(id),
+        listSuperadminCheckoutIntents(id),
+        getPlanRecommendationForOrganization(id).catch(() => null),
+        listPlanRecommendationHistory(id).catch(() => []),
+      ]);
 
     return (
       <div className="space-y-6">
@@ -38,6 +44,8 @@ export default async function SuperadminOrganizationPage({ params }: PageProps) 
             comparison={recommendationBundle.comparison}
           />
         ) : null}
+
+        <SuperadminRecommendationHistory events={recommendationHistory} />
 
         <Card id="recomendacion-uso">
           <CardHeader>

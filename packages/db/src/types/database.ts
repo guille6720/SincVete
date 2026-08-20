@@ -3142,6 +3142,9 @@ export interface Database {
           metadata: Json;
           created_at: string;
           updated_at: string;
+          clinic_dismissed_at: string | null;
+          clinic_dismissed_fingerprint: string | null;
+          clinic_dismissed_by: string | null;
         };
         Insert: {
           organization_id: string;
@@ -3164,6 +3167,9 @@ export interface Database {
           metadata?: Json;
           created_at?: string;
           updated_at?: string;
+          clinic_dismissed_at?: string | null;
+          clinic_dismissed_fingerprint?: string | null;
+          clinic_dismissed_by?: string | null;
         };
         Update: {
           organization_id?: string;
@@ -3186,6 +3192,60 @@ export interface Database {
           metadata?: Json;
           created_at?: string;
           updated_at?: string;
+          clinic_dismissed_at?: string | null;
+          clinic_dismissed_fingerprint?: string | null;
+          clinic_dismissed_by?: string | null;
+        };
+        Relationships: [];
+      };
+      organization_plan_recommendation_events: {
+        Row: {
+          id: string;
+          organization_id: string;
+          event_type: string;
+          actor_kind: string;
+          actor_user_id: string | null;
+          current_plan_key: string | null;
+          recommended_plan_key: string | null;
+          severity: string | null;
+          score: number | null;
+          usage_level: number | null;
+          reasons: Json;
+          fingerprint: string | null;
+          note: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          event_type: string;
+          actor_kind?: string;
+          actor_user_id?: string | null;
+          current_plan_key?: string | null;
+          recommended_plan_key?: string | null;
+          severity?: string | null;
+          score?: number | null;
+          usage_level?: number | null;
+          reasons?: Json;
+          fingerprint?: string | null;
+          note?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          event_type?: string;
+          actor_kind?: string;
+          actor_user_id?: string | null;
+          current_plan_key?: string | null;
+          recommended_plan_key?: string | null;
+          severity?: string | null;
+          score?: number | null;
+          usage_level?: number | null;
+          reasons?: Json;
+          fingerprint?: string | null;
+          note?: string | null;
+          created_at?: string;
         };
         Relationships: [];
       };
@@ -3453,6 +3513,39 @@ export interface Database {
           p_event_type?: string;
         };
         Returns: string;
+      };
+      list_own_plan_recommendation_notice: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      dismiss_own_plan_recommendation_notice: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      superadmin_recommendation_summary: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      superadmin_list_plan_recommendation_events: {
+        Args: {
+          p_organization_id: string;
+          p_limit?: number;
+        };
+        Returns: {
+          id: string;
+          event_type: string;
+          actor_kind: string;
+          actor_user_id: string | null;
+          current_plan_key: string | null;
+          recommended_plan_key: string | null;
+          severity: string | null;
+          score: number | null;
+          usage_level: number | null;
+          reasons: Json;
+          fingerprint: string | null;
+          note: string | null;
+          created_at: string;
+        }[];
       };
       superadmin_get_org_commercial: {
         Args: { p_organization_id: string };
