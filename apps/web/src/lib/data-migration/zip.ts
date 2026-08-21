@@ -3,6 +3,7 @@ import 'server-only';
 import {
   DATA_MIGRATION_FORMAT,
   DATA_MIGRATION_FORMAT_VERSION,
+  buildBranchTemplateCsv,
   buildClinicalTemplateCsv,
   buildLabOrderTemplateCsv,
   buildOwnerTemplateCsv,
@@ -13,6 +14,7 @@ import {
   buildVaccinationTemplateCsv,
   buildHospitalizationTemplateCsv,
   buildAppointmentTemplateCsv,
+  buildConsultationTemplateCsv,
   buildInventoryProductTemplateCsv,
   buildInvoiceTemplateCsv,
   buildPaymentTemplateCsv,
@@ -24,6 +26,7 @@ import JSZip from 'jszip';
 
 export type ParsedMigrationZip = {
   manifest: MigrationZipManifest;
+  branchesCsv: string | null;
   ownersCsv: string | null;
   patientsCsv: string | null;
   clinicalCsv: string | null;
@@ -33,6 +36,7 @@ export type ParsedMigrationZip = {
   prescriptionsCsv: string | null;
   hospitalizationsCsv: string | null;
   appointmentsCsv: string | null;
+  consultationsCsv: string | null;
   inventoryProductsCsv: string | null;
   invoicesCsv: string | null;
   paymentsCsv: string | null;
@@ -62,6 +66,7 @@ export async function parseSyncveteMigrationZip(buffer: ArrayBuffer): Promise<Pa
     throw new Error('manifest.json inválido (format debe ser syncvete-migration)');
   }
 
+  const branches = findEntry(zip, ['branches.csv', 'data/branches.csv']);
   const owners = findEntry(zip, ['owners.csv', 'data/owners.csv']);
   const patients = findEntry(zip, ['patients.csv', 'data/patients.csv']);
   const clinical = findEntry(zip, [
@@ -79,6 +84,7 @@ export async function parseSyncveteMigrationZip(buffer: ArrayBuffer): Promise<Pa
     'data/hospitalizations.csv',
   ]);
   const appointments = findEntry(zip, ['appointments.csv', 'data/appointments.csv']);
+  const consultations = findEntry(zip, ['consultations.csv', 'data/consultations.csv']);
   const inventoryProducts = findEntry(zip, [
     'inventory_products.csv',
     'data/inventory_products.csv',
@@ -101,6 +107,7 @@ export async function parseSyncveteMigrationZip(buffer: ArrayBuffer): Promise<Pa
 
   return {
     manifest,
+    branchesCsv: branches ? await branches.async('string') : null,
     ownersCsv: owners ? await owners.async('string') : null,
     patientsCsv: patients ? await patients.async('string') : null,
     clinicalCsv: clinical ? await clinical.async('string') : null,
@@ -110,6 +117,7 @@ export async function parseSyncveteMigrationZip(buffer: ArrayBuffer): Promise<Pa
     prescriptionsCsv: prescriptions ? await prescriptions.async('string') : null,
     hospitalizationsCsv: hospitalizations ? await hospitalizations.async('string') : null,
     appointmentsCsv: appointments ? await appointments.async('string') : null,
+    consultationsCsv: consultations ? await consultations.async('string') : null,
     inventoryProductsCsv: inventoryProducts ? await inventoryProducts.async('string') : null,
     invoicesCsv: invoices ? await invoices.async('string') : null,
     paymentsCsv: payments ? await payments.async('string') : null,
@@ -121,6 +129,7 @@ export async function buildSampleMigrationZip(sourceSystem = 'VetLegacy'): Promi
   const zip = new JSZip();
   const manifest = buildSampleMigrationManifest(sourceSystem);
   zip.file('manifest.json', JSON.stringify(manifest, null, 2));
+  zip.file('branches.csv', buildBranchTemplateCsv());
   zip.file('owners.csv', buildOwnerTemplateCsv());
   zip.file('patients.csv', buildPatientTemplateCsv());
   zip.file('clinical_records.csv', buildClinicalTemplateCsv());
@@ -130,6 +139,7 @@ export async function buildSampleMigrationZip(sourceSystem = 'VetLegacy'): Promi
   zip.file('prescriptions.csv', buildPrescriptionTemplateCsv());
   zip.file('hospitalizations.csv', buildHospitalizationTemplateCsv());
   zip.file('appointments.csv', buildAppointmentTemplateCsv());
+  zip.file('consultations.csv', buildConsultationTemplateCsv());
   zip.file('inventory_products.csv', buildInventoryProductTemplateCsv());
   zip.file('invoices.csv', buildInvoiceTemplateCsv());
   zip.file('payments.csv', buildPaymentTemplateCsv());
@@ -145,10 +155,11 @@ export async function buildSampleMigrationZip(sourceSystem = 'VetLegacy'): Promi
       `version=${DATA_MIGRATION_FORMAT_VERSION}`,
       '',
       'Orden recomendado:',
-      '1) owners.csv',
-      '2) patients.csv',
-      '3) clinical_records.csv / vaccinations.csv / lab_orders.csv / surgeries.csv / prescriptions.csv',
-      '4) attachments/<external_patient_id>/*.(jpg|png|pdf|webp|gif)',
+      '1) branches.csv',
+      '2) owners.csv',
+      '3) patients.csv',
+      '4) clinical_records.csv / vaccinations.csv / lab_orders.csv / surgeries.csv / prescriptions.csv',
+      '5) attachments/<external_patient_id>/*.(jpg|png|pdf|webp|gif)',
       '',
     ].join('\n')
   );
@@ -160,6 +171,7 @@ export function summarizeZipContents(parsed: ParsedMigrationZip) {
   return {
     sourceSystem: parsed.manifest.sourceSystem ?? null,
     version: parsed.manifest.version,
+    branches: countRows(parsed.branchesCsv),
     owners: countRows(parsed.ownersCsv),
     patients: countRows(parsed.patientsCsv),
     clinicalRecords: countRows(parsed.clinicalCsv),
@@ -169,6 +181,7 @@ export function summarizeZipContents(parsed: ParsedMigrationZip) {
     prescriptions: countRows(parsed.prescriptionsCsv),
     hospitalizations: countRows(parsed.hospitalizationsCsv),
     appointments: countRows(parsed.appointmentsCsv),
+    consultations: countRows(parsed.consultationsCsv),
     inventoryProducts: countRows(parsed.inventoryProductsCsv),
     invoices: countRows(parsed.invoicesCsv),
     payments: countRows(parsed.paymentsCsv),

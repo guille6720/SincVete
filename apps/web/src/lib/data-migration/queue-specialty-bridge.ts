@@ -9,6 +9,7 @@ import {
   mapRow,
   parseCsv,
   parseImportDate,
+  resolveImportBranchId,
   type ConflictPolicy,
   type DateLocale,
   type IdempotencyMode,
@@ -27,6 +28,7 @@ const SPECIALTY: SpecialtyEntity[] = [
   'prescriptions',
   'hospitalizations',
   'appointments',
+  'consultations',
   'inventory_products',
   'invoices',
   'payments',
@@ -65,6 +67,7 @@ export async function commitCoreEntitySlice(input: {
   idempotencyMode?: IdempotencyMode;
   ownerIdByExternal: Record<string, string>;
   patientIdByExternal: Record<string, string>;
+  branchIdByExternal?: Record<string, string>;
   branchId: string;
   offset: number;
   limit: number;
@@ -100,7 +103,76 @@ export async function commitCoreEntitySlice(input: {
     return data?.id ? String(data.id) : null;
   }
 
-  if (input.entity === 'owners') {
+  function parseBranchIsActive(value: string | null | undefined): boolean {
+    if (!value || !String(value).trim()) return true;
+    const v = String(value).trim().toLowerCase();
+    if (['false', '0', 'no', 'inactive', 'inactivo', 'inactiva'].includes(v)) return false;
+    return true;
+  }
+
+  if (input.entity === 'branches') {
+    for (let i = 0; i < slice.length; i++) {
+      const mapped = mapRow(slice[i]!, input.mapping);
+      const externalBranchId = mapped.external_branch_id ?? '';
+      const code = (mapped.code ?? '').trim().toUpperCase();
+      const rowSourceSystem = mapped.source_system || sourceSystem;
+      if (!mapped.name || !code || !externalBranchId) {
+        failed += 1;
+        continue;
+      }
+      const existingId = skipExisting
+        ? await (async () => {
+            const { data } = await service
+              .from('branches')
+              .select('id')
+              .eq('organization_id', input.organizationId)
+              .eq('source_system', rowSourceSystem)
+              .eq('source_record_id', externalBranchId)
+              .is('deleted_at', null)
+              .maybeSingle();
+            return data?.id ? String(data.id) : null;
+          })()
+        : null;
+      if (existingId) {
+        idMap[externalBranchId] = existingId;
+        skipped += 1;
+        continue;
+      }
+      const { data, error } = await service
+        .from('branches')
+        .insert({
+          organization_id: input.organizationId,
+          name: mapped.name.trim(),
+          code,
+          address: mapped.address || null,
+          phone: mapped.phone || null,
+          email: mapped.email || null,
+          timezone: mapped.timezone?.trim() || 'America/Argentina/Buenos_Aires',
+          is_active: parseBranchIsActive(mapped.is_active),
+          is_main: false,
+          import_batch_id: input.batchId,
+          source_system: rowSourceSystem,
+          source_record_id: externalBranchId,
+          imported_at: nowIso,
+          imported_by: userId,
+        })
+        .select('id')
+        .single();
+      if (error || !data) {
+        failed += 1;
+        continue;
+      }
+      imported += 1;
+      idMap[externalBranchId] = String(data.id);
+      await service.from('data_import_created_rows').insert({
+        batch_id: input.batchId,
+        organization_id: input.organizationId,
+        entity_type: 'branches',
+        entity_id: data.id,
+        external_id: externalBranchId,
+      });
+    }
+  } else if (input.entity === 'owners') {
     for (let i = 0; i < slice.length; i++) {
       const raw = slice[i]!;
       const mapped = mapRow(raw, input.mapping);
@@ -125,6 +197,15 @@ export async function commitCoreEntitySlice(input: {
         failed += 1;
         continue;
       }
+      const branchResolved = resolveImportBranchId({
+        externalBranchId: mapped.external_branch_id || null,
+        branchIdByExternal: input.branchIdByExternal,
+        defaultBranchId: input.branchId,
+      });
+      if (!branchResolved.ok) {
+        failed += 1;
+        continue;
+      }
       const existingId = await existingSource('owners', externalOwnerId);
       if (existingId) {
         idMap[externalOwnerId] = existingId;
@@ -135,7 +216,7 @@ export async function commitCoreEntitySlice(input: {
         .from('owners')
         .insert({
           organization_id: input.organizationId,
-          branch_id: input.branchId,
+          branch_id: branchResolved.branchId,
           full_name: mapped.full_name,
           document_type: mapped.document_type || null,
           document_number: mapped.document_number || null,
@@ -199,6 +280,15 @@ export async function commitCoreEntitySlice(input: {
         failed += 1;
         continue;
       }
+      const branchResolved = resolveImportBranchId({
+        externalBranchId: mapped.external_branch_id || null,
+        branchIdByExternal: input.branchIdByExternal,
+        defaultBranchId: input.branchId,
+      });
+      if (!branchResolved.ok) {
+        failed += 1;
+        continue;
+      }
       const existingId = await existingSource('patients', externalPatientId);
       if (existingId) {
         idMap[externalPatientId] = existingId;
@@ -209,7 +299,7 @@ export async function commitCoreEntitySlice(input: {
         .from('patients')
         .insert({
           organization_id: input.organizationId,
-          branch_id: input.branchId,
+          branch_id: branchResolved.branchId,
           owner_id: ownerId,
           name: mapped.name,
           species: normalizeSpecies(mapped.species ?? ''),
@@ -260,6 +350,15 @@ export async function commitCoreEntitySlice(input: {
         failed += 1;
         continue;
       }
+      const branchResolved = resolveImportBranchId({
+        externalBranchId: mapped.external_branch_id || null,
+        branchIdByExternal: input.branchIdByExternal,
+        defaultBranchId: input.branchId,
+      });
+      if (!branchResolved.ok) {
+        failed += 1;
+        continue;
+      }
       const externalClinicalId = mapped.external_clinical_record_id ?? '';
       const existingId = await existingSource('clinical_entries', externalClinicalId);
       if (existingId) {
@@ -270,7 +369,7 @@ export async function commitCoreEntitySlice(input: {
         .from('clinical_entries')
         .insert({
           organization_id: input.organizationId,
-          branch_id: input.branchId,
+          branch_id: branchResolved.branchId,
           patient_id: patient.id,
           owner_id: patient.owner_id,
           entry_date: `${date.isoDate}T12:00:00.000Z`,
@@ -324,6 +423,15 @@ export async function commitCoreEntitySlice(input: {
         failed += 1;
         continue;
       }
+      const branchResolved = resolveImportBranchId({
+        externalBranchId: mapped.external_branch_id || null,
+        branchIdByExternal: input.branchIdByExternal,
+        defaultBranchId: input.branchId,
+      });
+      if (!branchResolved.ok) {
+        failed += 1;
+        continue;
+      }
       const externalVaccinationId = mapped.external_vaccination_id ?? '';
       const existingId = await existingSource('vaccinations', externalVaccinationId);
       if (existingId) {
@@ -334,7 +442,7 @@ export async function commitCoreEntitySlice(input: {
         .from('vaccinations')
         .insert({
           organization_id: input.organizationId,
-          branch_id: input.branchId,
+          branch_id: branchResolved.branchId,
           patient_id: patient.id,
           owner_id: patient.owner_id,
           vaccine_name: mapped.vaccine_name!.trim(),
@@ -429,6 +537,8 @@ export async function processNextQueuedImportChunk(options?: {
       patientIdByExternal?: Record<string, string>;
       productIdByExternal?: Record<string, string>;
       invoiceIdByExternal?: Record<string, string>;
+      appointmentIdByExternal?: Record<string, string>;
+      branchIdByExternal?: Record<string, string>;
     };
     const entity = String(metadata.entity ?? '');
     const branchId = String(metadata.branchId ?? '');
@@ -519,6 +629,8 @@ export async function processNextQueuedImportChunk(options?: {
           ownerIdByExternal: metadata.ownerIdByExternal ?? {},
           productIdByExternal: metadata.productIdByExternal ?? {},
           invoiceIdByExternal: metadata.invoiceIdByExternal ?? {},
+          appointmentIdByExternal: metadata.appointmentIdByExternal ?? {},
+          branchIdByExternal: metadata.branchIdByExternal ?? {},
           organizationId,
           branchId,
           batchId,
@@ -542,6 +654,7 @@ export async function processNextQueuedImportChunk(options?: {
           idempotencyMode: (batch.idempotency_mode as IdempotencyMode) ?? 'off',
           ownerIdByExternal: metadata.ownerIdByExternal ?? {},
           patientIdByExternal: metadata.patientIdByExternal ?? {},
+          branchIdByExternal: metadata.branchIdByExternal ?? {},
           branchId,
           offset: range.offset,
           limit: range.size,

@@ -1,9 +1,10 @@
 /** SyncVete data import/export — pure helpers (no DB I/O). */
 
-export const DATA_MIGRATION_FORMAT_VERSION = '1.0';
+export const DATA_MIGRATION_FORMAT_VERSION = '1.3';
 export const DATA_MIGRATION_FORMAT = 'syncvete-migration';
 
 export const IMPORT_TYPES = [
+  'branches',
   'owners',
   'patients',
   'clinical_entries',
@@ -13,6 +14,7 @@ export const IMPORT_TYPES = [
   'prescriptions',
   'hospitalizations',
   'appointments',
+  'consultations',
   'inventory_products',
   'invoices',
   'payments',
@@ -23,6 +25,7 @@ export const IMPORT_TYPES = [
 export type ImportType = (typeof IMPORT_TYPES)[number];
 
 export const IMPORT_TYPE_LABELS: Record<ImportType, string> = {
+  branches: 'Sucursales',
   owners: 'Propietarios',
   patients: 'Pacientes',
   clinical_entries: 'Historias clínicas',
@@ -32,6 +35,7 @@ export const IMPORT_TYPE_LABELS: Record<ImportType, string> = {
   prescriptions: 'Recetas / farmacia',
   hospitalizations: 'Internaciones',
   appointments: 'Agenda / citas',
+  consultations: 'Consultas',
   inventory_products: 'Inventario / farmacia',
   invoices: 'Facturas (con ítems)',
   payments: 'Pagos (sin caja)',
@@ -41,6 +45,7 @@ export const IMPORT_TYPE_LABELS: Record<ImportType, string> = {
 };
 
 export const IMPORT_ENTITY_TYPES = [
+  'branches',
   'owners',
   'patients',
   'clinical_entries',
@@ -50,6 +55,7 @@ export const IMPORT_ENTITY_TYPES = [
   'prescriptions',
   'hospitalizations',
   'appointments',
+  'consultations',
   'inventory_products',
   'invoices',
   'payments',
@@ -65,6 +71,7 @@ export const MAX_EXPORT_ARTIFACT_BYTES = 200 * 1024 * 1024;
 
 /** Ordered steps for guided full clinic migration (fase 6). */
 export const FULL_MIGRATION_STEPS = [
+  'branches',
   'owners',
   'patients',
   'clinical_entries',
@@ -74,6 +81,7 @@ export const FULL_MIGRATION_STEPS = [
   'prescriptions',
   'hospitalizations',
   'appointments',
+  'consultations',
   'inventory_products',
   'invoices',
   'payments',
@@ -82,19 +90,21 @@ export const FULL_MIGRATION_STEPS = [
 export type FullMigrationStep = (typeof FULL_MIGRATION_STEPS)[number];
 
 export const FULL_MIGRATION_STEP_LABELS: Record<FullMigrationStep, string> = {
-  owners: '1. Propietarios',
-  patients: '2. Pacientes',
-  clinical_entries: '3. Historias clínicas',
-  vaccinations: '4. Vacunaciones',
-  lab_orders: '5. Laboratorio',
-  surgeries: '6. Cirugías',
-  prescriptions: '7. Recetas',
-  hospitalizations: '8. Internaciones',
-  appointments: '9. Agenda / citas',
-  inventory_products: '10. Inventario',
-  invoices: '11. Facturas',
-  payments: '12. Pagos',
-  attachments: '13. Adjuntos ZIP',
+  branches: '1. Sucursales',
+  owners: '2. Propietarios',
+  patients: '3. Pacientes',
+  clinical_entries: '4. Historias clínicas',
+  vaccinations: '5. Vacunaciones',
+  lab_orders: '6. Laboratorio',
+  surgeries: '7. Cirugías',
+  prescriptions: '8. Recetas',
+  hospitalizations: '9. Internaciones',
+  appointments: '10. Agenda / citas',
+  consultations: '11. Consultas',
+  inventory_products: '12. Inventario',
+  invoices: '13. Facturas',
+  payments: '14. Pagos',
+  attachments: '15. Adjuntos ZIP',
 };
 
 export function nextFullMigrationStep(current: FullMigrationStep): FullMigrationStep | null {
@@ -121,6 +131,7 @@ export const DATA_MIGRATION_AUDIT_ACTIONS = {
   exportDownloaded: 'data_export.downloaded',
   locksReleased: 'data_migration.locks_released',
   orphansPruned: 'data_migration.orphans_pruned',
+  cutoverPackDownloaded: 'data_migration.cutover_pack_downloaded',
 } as const;
 
 export const IDEMPOTENCY_MODES = ['off', 'skip_existing_source'] as const;
@@ -132,6 +143,7 @@ export const IDEMPOTENCY_MODE_LABELS: Record<IdempotencyMode, string> = {
 };
 
 export const EXPORT_TYPES = [
+  'branches',
   'owners',
   'patients',
   'clinical_entries',
@@ -141,15 +153,21 @@ export const EXPORT_TYPES = [
   'prescriptions',
   'hospitalizations',
   'appointments',
+  'consultations',
   'inventory_products',
   'invoices',
   'payments',
+  'cash_sessions',
+  'reminder_logs',
+  'whatsapp_messages',
+  'audit_logs',
   'patient_clinical',
   'full_clinic',
 ] as const;
 export type ExportType = (typeof EXPORT_TYPES)[number];
 
 export const EXPORT_TYPE_LABELS: Record<ExportType, string> = {
+  branches: 'Sucursales',
   owners: 'Propietarios',
   patients: 'Pacientes',
   clinical_entries: 'Historias clínicas',
@@ -159,9 +177,14 @@ export const EXPORT_TYPE_LABELS: Record<ExportType, string> = {
   prescriptions: 'Recetas (con ítems)',
   hospitalizations: 'Internaciones',
   appointments: 'Agenda / citas',
+  consultations: 'Consultas',
   inventory_products: 'Inventario / farmacia',
   invoices: 'Facturas (con ítems y pagos)',
   payments: 'Pagos',
+  cash_sessions: 'Caja (sesiones + movimientos)',
+  reminder_logs: 'Recordatorios (historial)',
+  whatsapp_messages: 'WhatsApp (historial)',
+  audit_logs: 'Auditoría (historial)',
   patient_clinical: 'Historia de un paciente',
   full_clinic: 'Exportación completa de la clínica',
 };
@@ -215,6 +238,106 @@ export type ImportFieldDef = {
   aliases: string[];
 };
 
+/** Optional multi-branch mapping (Phase 23+). Empty → session/default branch. */
+export const EXTERNAL_BRANCH_IMPORT_FIELD: ImportFieldDef = {
+  key: 'external_branch_id',
+  label: 'ID externo sucursal',
+  aliases: ['external_branch_id', 'branch_id', 'id_sucursal', 'sucursal_id'],
+};
+
+export function resolveImportBranchId(input: {
+  externalBranchId: string | null | undefined;
+  branchIdByExternal?: Record<string, string>;
+  defaultBranchId: string;
+}): { ok: true; branchId: string } | { ok: false; reason: 'unmapped_branch' } {
+  const ext = (input.externalBranchId ?? '').trim();
+  if (!ext) return { ok: true, branchId: input.defaultBranchId };
+  const mapped = input.branchIdByExternal?.[ext];
+  if (!mapped) return { ok: false, reason: 'unmapped_branch' };
+  return { ok: true, branchId: mapped };
+}
+
+export function pushUnmappedBranchIssue(
+  issues: Array<{
+    rowNumber: number;
+    entityType: string;
+    field?: string;
+    code: string;
+    message: string;
+    severity: 'error' | 'warning';
+    recommendedAction?: string;
+    sourceReference?: string;
+  }>,
+  rowNumber: number,
+  entityType: string,
+  externalBranchId: string | null | undefined,
+  knownBranchExternalIds?: Set<string>
+): void {
+  const ext = (externalBranchId ?? '').trim();
+  if (!ext) return;
+  if (!knownBranchExternalIds || !knownBranchExternalIds.has(ext)) {
+    issues.push({
+      rowNumber,
+      entityType,
+      field: 'external_branch_id',
+      code: 'unmapped_branch',
+      message: 'Sucursal externa no mapeada; importá sucursales primero o quitá external_branch_id',
+      severity: 'error',
+    });
+  }
+}
+
+export const BRANCH_IMPORT_FIELDS: ImportFieldDef[] = [
+  {
+    key: 'external_branch_id',
+    label: 'ID externo sucursal',
+    required: true,
+    aliases: ['external_branch_id', 'branch_id', 'id_sucursal', 'sucursal_id'],
+  },
+  {
+    key: 'name',
+    label: 'Nombre',
+    required: true,
+    aliases: ['name', 'nombre', 'sucursal', 'branch_name'],
+  },
+  {
+    key: 'code',
+    label: 'Código',
+    required: true,
+    aliases: ['code', 'codigo', 'código', 'sku_sucursal'],
+  },
+  {
+    key: 'address',
+    label: 'Dirección',
+    aliases: ['address', 'direccion', 'dirección'],
+  },
+  {
+    key: 'phone',
+    label: 'Teléfono',
+    aliases: ['phone', 'telefono', 'teléfono'],
+  },
+  {
+    key: 'email',
+    label: 'Email',
+    aliases: ['email', 'correo'],
+  },
+  {
+    key: 'timezone',
+    label: 'Zona horaria',
+    aliases: ['timezone', 'tz', 'zona_horaria'],
+  },
+  {
+    key: 'is_active',
+    label: 'Activa',
+    aliases: ['is_active', 'activa', 'activo'],
+  },
+  {
+    key: 'source_system',
+    label: 'Sistema origen',
+    aliases: ['source_system', 'sistema', 'origen'],
+  },
+];
+
 export const OWNER_IMPORT_FIELDS: ImportFieldDef[] = [
   {
     key: 'external_owner_id',
@@ -222,6 +345,7 @@ export const OWNER_IMPORT_FIELDS: ImportFieldDef[] = [
     required: true,
     aliases: ['external_owner_id', 'owner_id', 'id_externo', 'codigo', 'código'],
   },
+  EXTERNAL_BRANCH_IMPORT_FIELD,
   {
     key: 'full_name',
     label: 'Nombre completo',
@@ -288,6 +412,7 @@ export const PATIENT_IMPORT_FIELDS: ImportFieldDef[] = [
     required: true,
     aliases: ['external_owner_id', 'owner_id', 'id_propietario', 'propietario_id'],
   },
+  EXTERNAL_BRANCH_IMPORT_FIELD,
   {
     key: 'name',
     label: 'Nombre paciente',
@@ -355,6 +480,7 @@ export const CLINICAL_IMPORT_FIELDS: ImportFieldDef[] = [
     required: true,
     aliases: ['external_patient_id', 'patient_id', 'id_paciente'],
   },
+  EXTERNAL_BRANCH_IMPORT_FIELD,
   {
     key: 'original_date',
     label: 'Fecha original',
@@ -421,6 +547,7 @@ export const VACCINATION_IMPORT_FIELDS: ImportFieldDef[] = [
     required: true,
     aliases: ['external_patient_id', 'patient_id', 'id_paciente'],
   },
+  EXTERNAL_BRANCH_IMPORT_FIELD,
   {
     key: 'vaccine_name',
     label: 'Vacuna',
@@ -478,6 +605,7 @@ export const LAB_ORDER_IMPORT_FIELDS: ImportFieldDef[] = [
     required: true,
     aliases: ['external_patient_id', 'patient_id', 'id_paciente'],
   },
+  EXTERNAL_BRANCH_IMPORT_FIELD,
   {
     key: 'ordered_at',
     label: 'Fecha solicitud',
@@ -540,6 +668,7 @@ export const SURGERY_IMPORT_FIELDS: ImportFieldDef[] = [
     required: true,
     aliases: ['external_patient_id', 'patient_id', 'id_paciente'],
   },
+  EXTERNAL_BRANCH_IMPORT_FIELD,
   {
     key: 'scheduled_at',
     label: 'Fecha cirugía',
@@ -597,6 +726,7 @@ export const PRESCRIPTION_IMPORT_FIELDS: ImportFieldDef[] = [
     required: true,
     aliases: ['external_patient_id', 'patient_id', 'id_paciente'],
   },
+  EXTERNAL_BRANCH_IMPORT_FIELD,
   {
     key: 'prescribed_at',
     label: 'Fecha prescrita',
@@ -671,6 +801,7 @@ export const HOSPITALIZATION_IMPORT_FIELDS: ImportFieldDef[] = [
     required: true,
     aliases: ['external_patient_id', 'patient_id', 'id_paciente'],
   },
+  EXTERNAL_BRANCH_IMPORT_FIELD,
   {
     key: 'admitted_at',
     label: 'Fecha ingreso',
@@ -738,6 +869,7 @@ export const APPOINTMENT_IMPORT_FIELDS: ImportFieldDef[] = [
     required: true,
     aliases: ['external_patient_id', 'patient_id', 'id_paciente'],
   },
+  EXTERNAL_BRANCH_IMPORT_FIELD,
   {
     key: 'starts_at',
     label: 'Inicio',
@@ -783,6 +915,7 @@ export const INVENTORY_PRODUCT_IMPORT_FIELDS: ImportFieldDef[] = [
     required: true,
     aliases: ['external_product_id', 'product_id', 'id_producto', 'sku_externo'],
   },
+  EXTERNAL_BRANCH_IMPORT_FIELD,
   {
     key: 'name',
     label: 'Nombre',
@@ -848,6 +981,7 @@ export const INVOICE_IMPORT_FIELDS: ImportFieldDef[] = [
     required: true,
     aliases: ['external_invoice_id', 'invoice_id', 'id_factura', 'factura'],
   },
+  EXTERNAL_BRANCH_IMPORT_FIELD,
   {
     key: 'external_owner_id',
     label: 'ID externo propietario',
@@ -973,6 +1107,93 @@ export const PAYMENT_IMPORT_FIELDS: ImportFieldDef[] = [
     key: 'reference',
     label: 'Referencia',
     aliases: ['reference', 'referencia', 'comprobante', 'tx'],
+  },
+  {
+    key: 'notes',
+    label: 'Notas',
+    aliases: ['notes', 'notas', 'observaciones'],
+  },
+  {
+    key: 'source_system',
+    label: 'Sistema origen',
+    aliases: ['source_system', 'sistema', 'origen'],
+  },
+];
+
+export const CONSULTATION_IMPORT_FIELDS: ImportFieldDef[] = [
+  {
+    key: 'external_consultation_id',
+    label: 'ID externo consulta',
+    required: true,
+    aliases: ['external_consultation_id', 'consultation_id', 'id_consulta'],
+  },
+  {
+    key: 'external_patient_id',
+    label: 'ID externo paciente',
+    required: true,
+    aliases: ['external_patient_id', 'patient_id', 'id_paciente'],
+  },
+  EXTERNAL_BRANCH_IMPORT_FIELD,
+  {
+    key: 'external_appointment_id',
+    label: 'ID externo cita',
+    aliases: ['external_appointment_id', 'appointment_id', 'id_cita', 'id_turno'],
+  },
+  {
+    key: 'started_at',
+    label: 'Inicio',
+    required: true,
+    aliases: ['started_at', 'inicio', 'fecha_hora', 'fecha'],
+  },
+  {
+    key: 'completed_at',
+    label: 'Fin',
+    aliases: ['completed_at', 'fin', 'cierre'],
+  },
+  {
+    key: 'status',
+    label: 'Estado',
+    aliases: ['status', 'estado'],
+  },
+  {
+    key: 'title',
+    label: 'Título',
+    aliases: ['title', 'titulo', 'título', 'motivo'],
+  },
+  {
+    key: 'anamnesis',
+    label: 'Anamnesis',
+    aliases: ['anamnesis', 'historia'],
+  },
+  {
+    key: 'physical_exam',
+    label: 'Examen físico',
+    aliases: ['physical_exam', 'examen', 'examen_fisico', 'examen_físico'],
+  },
+  {
+    key: 'diagnosis',
+    label: 'Diagnóstico',
+    aliases: ['diagnosis', 'diagnostico', 'diagnóstico'],
+  },
+  {
+    key: 'treatment',
+    label: 'Tratamiento',
+    aliases: ['treatment', 'tratamiento'],
+  },
+  {
+    key: 'plan',
+    label: 'Plan',
+    aliases: ['plan', 'plan_seguimiento'],
+  },
+  {
+    key: 'weight_kg',
+    label: 'Peso (kg)',
+    aliases: ['weight_kg', 'peso', 'weight'],
+  },
+  {
+    key: 'temperature_c',
+    label: 'Temperatura (°C)',
+    aliases: ['temperature_c', 'temperatura', 'temp'],
   },
   {
     key: 'notes',
@@ -1192,6 +1413,7 @@ export type RowConflictDecision = {
 export type OwnerImportRow = {
   rowNumber: number;
   externalOwnerId: string;
+  externalBranchId: string | null;
   fullName: string;
   documentType: string | null;
   documentNumber: string | null;
@@ -1208,6 +1430,7 @@ export type PatientImportRow = {
   rowNumber: number;
   externalPatientId: string;
   externalOwnerId: string;
+  externalBranchId: string | null;
   name: string;
   species: string;
   breed: string | null;
@@ -1224,6 +1447,7 @@ export type ClinicalImportRow = {
   rowNumber: number;
   externalClinicalId: string;
   externalPatientId: string;
+  externalBranchId: string | null;
   originalDate: string;
   originalVeterinarian: string | null;
   recordType: string;
@@ -1254,6 +1478,7 @@ export function validateOwnerRows(
     existingEmails?: Set<string>;
     documentToId?: Map<string, string>;
     emailToId?: Map<string, string>;
+    knownBranchExternalIds?: Set<string>;
   }
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
@@ -1329,6 +1554,13 @@ export function validateOwnerRows(
         matchInternalId: options.emailToId?.get(row.email.toLowerCase()),
       });
     }
+    pushUnmappedBranchIssue(
+      issues,
+      row.rowNumber,
+      'owners',
+      row.externalBranchId,
+      options?.knownBranchExternalIds
+    );
   }
   return issues;
 }
@@ -1340,6 +1572,7 @@ export function validatePatientRows(
     existingMicrochips?: Set<string>;
     microchipToId?: Map<string, string>;
     locale?: DateLocale;
+    knownBranchExternalIds?: Set<string>;
   }
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
@@ -1437,13 +1670,24 @@ export function validatePatientRows(
         matchInternalId: options.microchipToId?.get(row.microchip),
       });
     }
+    pushUnmappedBranchIssue(
+      issues,
+      row.rowNumber,
+      'patients',
+      row.externalBranchId,
+      options?.knownBranchExternalIds
+    );
   }
   return issues;
 }
 
 export function validateClinicalRows(
   rows: ClinicalImportRow[],
-  options?: { knownPatientExternalIds?: Set<string>; locale?: DateLocale }
+  options?: {
+    knownPatientExternalIds?: Set<string>;
+    knownBranchExternalIds?: Set<string>;
+    locale?: DateLocale;
+  }
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const locale = options?.locale ?? 'es-AR';
@@ -1482,6 +1726,13 @@ export function validateClinicalRows(
         sourceReference: row.externalPatientId,
       });
     }
+    pushUnmappedBranchIssue(
+      issues,
+      row.rowNumber,
+      'clinical_entries',
+      row.externalBranchId,
+      options?.knownBranchExternalIds
+    );
     const parsed = parseImportDate(row.originalDate, locale);
     if (!parsed.ok) {
       issues.push({
@@ -1498,12 +1749,104 @@ export function validateClinicalRows(
   return issues;
 }
 
+export type BranchImportRow = {
+  rowNumber: number;
+  externalBranchId: string;
+  name: string;
+  code: string;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  timezone: string | null;
+  isActive: string | null;
+  sourceSystem: string | null;
+};
+
+export function validateBranchRows(rows: BranchImportRow[]): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const seenId = new Set<string>();
+  const seenCode = new Set<string>();
+  for (const row of rows) {
+    if (!row.externalBranchId) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'branches',
+        field: 'external_branch_id',
+        code: 'required',
+        message: 'Falta ID externo de sucursal',
+        severity: 'error',
+      });
+    } else if (seenId.has(row.externalBranchId)) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'branches',
+        field: 'external_branch_id',
+        code: 'duplicate_in_file',
+        message: 'ID externo duplicado en el archivo',
+        severity: 'error',
+      });
+    } else {
+      seenId.add(row.externalBranchId);
+    }
+    if (!row.name || row.name.trim().length < 2) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'branches',
+        field: 'name',
+        code: 'required',
+        message: 'Falta nombre de sucursal',
+        severity: 'error',
+      });
+    }
+    const code = (row.code ?? '').trim().toUpperCase();
+    if (!code) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'branches',
+        field: 'code',
+        code: 'required',
+        message: 'Falta código de sucursal',
+        severity: 'error',
+      });
+    } else if (seenCode.has(code)) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'branches',
+        field: 'code',
+        code: 'duplicate_in_file',
+        message: 'Código duplicado en el archivo',
+        severity: 'error',
+      });
+    } else {
+      seenCode.add(code);
+    }
+  }
+  return issues;
+}
+
+export function buildBranchTemplateCsv(): string {
+  return toCsv(BRANCH_IMPORT_FIELDS.map((f) => f.key), [
+    {
+      external_branch_id: 'BR-001',
+      name: 'Sede Centro',
+      code: 'CENTRO',
+      address: 'Av. Principal 100',
+      phone: '1140000000',
+      email: 'centro@clinica.example',
+      timezone: 'America/Argentina/Buenos_Aires',
+      is_active: 'true',
+      source_system: 'legacy',
+    },
+  ]);
+}
+
 export function buildOwnerTemplateCsv(): string {
   return toCsv(
     OWNER_IMPORT_FIELDS.map((f) => f.key),
     [
       {
         external_owner_id: 'OWN-001',
+        external_branch_id: 'BR-001',
         full_name: 'Juan Perez',
         document_type: 'DNI',
         document_number: '30111222',
@@ -1526,6 +1869,7 @@ export function buildPatientTemplateCsv(): string {
       {
         external_patient_id: 'PAT-001',
         external_owner_id: 'OWN-001',
+        external_branch_id: 'BR-001',
         name: 'Rocky',
         species: 'Canino',
         breed: 'Labrador',
@@ -1548,6 +1892,7 @@ export function buildClinicalTemplateCsv(): string {
       {
         external_clinical_record_id: 'CLI-001',
         external_patient_id: 'PAT-001',
+        external_branch_id: 'BR-001',
         original_date: '2024-05-14',
         original_veterinarian: 'Dr. Juan Lopez',
         record_type: 'consulta',
@@ -1567,6 +1912,7 @@ export type VaccinationImportRow = {
   rowNumber: number;
   externalVaccinationId: string;
   externalPatientId: string;
+  externalBranchId: string | null;
   vaccineName: string;
   administeredAt: string;
   nextDueAt: string | null;
@@ -1579,7 +1925,11 @@ export type VaccinationImportRow = {
 
 export function validateVaccinationRows(
   rows: VaccinationImportRow[],
-  options?: { knownPatientExternalIds?: Set<string>; locale?: DateLocale }
+  options?: {
+    knownPatientExternalIds?: Set<string>;
+    knownBranchExternalIds?: Set<string>;
+    locale?: DateLocale;
+  }
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const locale = options?.locale ?? 'es-AR';
@@ -1630,6 +1980,13 @@ export function validateVaccinationRows(
         sourceReference: row.externalPatientId,
       });
     }
+    pushUnmappedBranchIssue(
+      issues,
+      row.rowNumber,
+      'vaccinations',
+      row.externalBranchId,
+      options?.knownBranchExternalIds
+    );
     if (!row.vaccineName || row.vaccineName.trim().length < 2) {
       issues.push({
         rowNumber: row.rowNumber,
@@ -1675,6 +2032,7 @@ export function buildVaccinationTemplateCsv(): string {
       {
         external_vaccination_id: 'VAC-001',
         external_patient_id: 'PAT-001',
+        external_branch_id: 'BR-001',
         vaccine_name: 'Antirrábica',
         administered_at: '2024-03-01',
         next_due_at: '2025-03-01',
@@ -1725,6 +2083,7 @@ export function buildSampleMigrationManifest(sourceSystem = 'VetLegacy'): Migrat
     createdAt: new Date().toISOString(),
     sourceSystem,
     entities: {
+      branches: 1,
       owners: 1,
       patients: 1,
       clinicalRecords: 1,
@@ -1734,6 +2093,7 @@ export function buildSampleMigrationManifest(sourceSystem = 'VetLegacy'): Migrat
       prescriptions: 1,
       hospitalizations: 1,
       appointments: 1,
+      consultations: 1,
       inventoryProducts: 1,
       invoices: 1,
       payments: 1,
@@ -1745,6 +2105,7 @@ export type LabOrderImportRow = {
   rowNumber: number;
   externalLabOrderId: string;
   externalPatientId: string;
+  externalBranchId: string | null;
   orderedAt: string;
   title: string;
   tests: string | null;
@@ -1760,6 +2121,7 @@ export type SurgeryImportRow = {
   rowNumber: number;
   externalSurgeryId: string;
   externalPatientId: string;
+  externalBranchId: string | null;
   scheduledAt: string;
   procedureName: string;
   diagnosis: string | null;
@@ -1774,6 +2136,7 @@ export type PrescriptionImportRow = {
   rowNumber: number;
   externalPrescriptionId: string;
   externalPatientId: string;
+  externalBranchId: string | null;
   prescribedAt: string;
   medicationName: string;
   dose: string;
@@ -1821,7 +2184,11 @@ function pushMissingPatient(
 
 export function validateLabOrderRows(
   rows: LabOrderImportRow[],
-  options?: { knownPatientExternalIds?: Set<string>; locale?: DateLocale }
+  options?: {
+    knownPatientExternalIds?: Set<string>;
+    knownBranchExternalIds?: Set<string>;
+    locale?: DateLocale;
+  }
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const locale = options?.locale ?? 'es-AR';
@@ -1855,6 +2222,13 @@ export function validateLabOrderRows(
       row.externalPatientId,
       options?.knownPatientExternalIds
     );
+    pushUnmappedBranchIssue(
+      issues,
+      row.rowNumber,
+      'lab_orders',
+      row.externalBranchId,
+      options?.knownBranchExternalIds
+    );
     if (!row.title || row.title.trim().length < 2) {
       issues.push({
         rowNumber: row.rowNumber,
@@ -1881,7 +2255,11 @@ export function validateLabOrderRows(
 
 export function validateSurgeryRows(
   rows: SurgeryImportRow[],
-  options?: { knownPatientExternalIds?: Set<string>; locale?: DateLocale }
+  options?: {
+    knownPatientExternalIds?: Set<string>;
+    knownBranchExternalIds?: Set<string>;
+    locale?: DateLocale;
+  }
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const locale = options?.locale ?? 'es-AR';
@@ -1915,6 +2293,13 @@ export function validateSurgeryRows(
       row.externalPatientId,
       options?.knownPatientExternalIds
     );
+    pushUnmappedBranchIssue(
+      issues,
+      row.rowNumber,
+      'surgeries',
+      row.externalBranchId,
+      options?.knownBranchExternalIds
+    );
     if (!row.procedureName || row.procedureName.trim().length < 2) {
       issues.push({
         rowNumber: row.rowNumber,
@@ -1941,7 +2326,11 @@ export function validateSurgeryRows(
 
 export function validatePrescriptionRows(
   rows: PrescriptionImportRow[],
-  options?: { knownPatientExternalIds?: Set<string>; locale?: DateLocale }
+  options?: {
+    knownPatientExternalIds?: Set<string>;
+    knownBranchExternalIds?: Set<string>;
+    locale?: DateLocale;
+  }
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const locale = options?.locale ?? 'es-AR';
@@ -1974,6 +2363,13 @@ export function validatePrescriptionRows(
       'prescriptions',
       row.externalPatientId,
       options?.knownPatientExternalIds
+    );
+    pushUnmappedBranchIssue(
+      issues,
+      row.rowNumber,
+      'prescriptions',
+      row.externalBranchId,
+      options?.knownBranchExternalIds
     );
     if (!row.medicationName) {
       issues.push({
@@ -2024,6 +2420,7 @@ export function buildLabOrderTemplateCsv(): string {
     {
       external_lab_order_id: 'LAB-001',
       external_patient_id: 'PAT-001',
+      external_branch_id: 'BR-001',
       ordered_at: '2024-06-01',
       title: 'Hemograma',
       tests: 'Hemograma|Glucemia',
@@ -2042,6 +2439,7 @@ export function buildSurgeryTemplateCsv(): string {
     {
       external_surgery_id: 'SUR-001',
       external_patient_id: 'PAT-001',
+      external_branch_id: 'BR-001',
       scheduled_at: '2024-07-10',
       procedure_name: 'Ovariohisterectomía',
       diagnosis: 'Electiva',
@@ -2059,6 +2457,7 @@ export function buildPrescriptionTemplateCsv(): string {
     {
       external_prescription_id: 'RX-001',
       external_patient_id: 'PAT-001',
+      external_branch_id: 'BR-001',
       prescribed_at: '2024-08-01',
       medication_name: 'Amoxicilina',
       dose: '250 mg',
@@ -2123,6 +2522,7 @@ export type HospitalizationImportRow = {
   rowNumber: number;
   externalHospitalizationId: string;
   externalPatientId: string;
+  externalBranchId: string | null;
   admittedAt: string;
   dischargedAt: string | null;
   reason: string;
@@ -2137,7 +2537,11 @@ export type HospitalizationImportRow = {
 
 export function validateHospitalizationRows(
   rows: HospitalizationImportRow[],
-  options?: { knownPatientExternalIds?: Set<string>; locale?: DateLocale }
+  options?: {
+    knownPatientExternalIds?: Set<string>;
+    knownBranchExternalIds?: Set<string>;
+    locale?: DateLocale;
+  }
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const locale = options?.locale ?? 'es-AR';
@@ -2170,6 +2574,13 @@ export function validateHospitalizationRows(
       'hospitalizations',
       row.externalPatientId,
       options?.knownPatientExternalIds
+    );
+    pushUnmappedBranchIssue(
+      issues,
+      row.rowNumber,
+      'hospitalizations',
+      row.externalBranchId,
+      options?.knownBranchExternalIds
     );
     if (!row.reason || row.reason.trim().length < 2) {
       issues.push({
@@ -2210,6 +2621,7 @@ export function buildHospitalizationTemplateCsv(): string {
     {
       external_hospitalization_id: 'HOSP-001',
       external_patient_id: 'PAT-001',
+      external_branch_id: 'BR-001',
       admitted_at: '2024-09-01',
       discharged_at: '2024-09-05',
       reason: 'Gastroenteritis',
@@ -2228,6 +2640,7 @@ export type AppointmentImportRow = {
   rowNumber: number;
   externalAppointmentId: string;
   externalPatientId: string;
+  externalBranchId: string | null;
   startsAt: string;
   endsAt: string | null;
   appointmentType: string | null;
@@ -2239,7 +2652,11 @@ export type AppointmentImportRow = {
 
 export function validateAppointmentRows(
   rows: AppointmentImportRow[],
-  options?: { knownPatientExternalIds?: Set<string>; locale?: DateLocale }
+  options?: {
+    knownPatientExternalIds?: Set<string>;
+    knownBranchExternalIds?: Set<string>;
+    locale?: DateLocale;
+  }
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const locale = options?.locale ?? 'es-AR';
@@ -2272,6 +2689,13 @@ export function validateAppointmentRows(
       'appointments',
       row.externalPatientId,
       options?.knownPatientExternalIds
+    );
+    pushUnmappedBranchIssue(
+      issues,
+      row.rowNumber,
+      'appointments',
+      row.externalBranchId,
+      options?.knownBranchExternalIds
     );
     const starts = parseImportDateTime(row.startsAt, locale);
     if (!starts.ok) {
@@ -2352,6 +2776,7 @@ export function buildAppointmentTemplateCsv(): string {
     {
       external_appointment_id: 'APT-001',
       external_patient_id: 'PAT-001',
+      external_branch_id: 'BR-001',
       starts_at: '2024-10-01 10:00',
       ends_at: '2024-10-01 10:30',
       appointment_type: 'consulta',
@@ -2363,9 +2788,143 @@ export function buildAppointmentTemplateCsv(): string {
   ]);
 }
 
+export type ConsultationImportRow = {
+  rowNumber: number;
+  externalConsultationId: string;
+  externalPatientId: string;
+  externalBranchId: string | null;
+  externalAppointmentId: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  status: string | null;
+  title: string | null;
+  anamnesis: string | null;
+  physicalExam: string | null;
+  diagnosis: string | null;
+  treatment: string | null;
+  plan: string | null;
+  weightKg: string | null;
+  temperatureC: string | null;
+  notes: string | null;
+  sourceSystem: string | null;
+};
+
+export function validateConsultationRows(
+  rows: ConsultationImportRow[],
+  options?: {
+    knownPatientExternalIds?: Set<string>;
+    knownBranchExternalIds?: Set<string>;
+    locale?: DateLocale;
+  }
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const known = options?.knownPatientExternalIds;
+  const locale = options?.locale ?? 'es-AR';
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (!row.externalConsultationId) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'consultations',
+        field: 'external_consultation_id',
+        code: 'required',
+        message: 'Falta ID externo de consulta',
+        severity: 'error',
+      });
+    } else if (seen.has(row.externalConsultationId)) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'consultations',
+        field: 'external_consultation_id',
+        code: 'duplicate_in_file',
+        message: 'ID externo duplicado en el archivo',
+        severity: 'error',
+      });
+    } else {
+      seen.add(row.externalConsultationId);
+    }
+    if (!row.externalPatientId) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'consultations',
+        field: 'external_patient_id',
+        code: 'required',
+        message: 'Falta ID externo de paciente',
+        severity: 'error',
+      });
+    } else if (known && !known.has(row.externalPatientId)) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'consultations',
+        field: 'external_patient_id',
+        code: 'unknown_patient',
+        message: 'Paciente externo no mapeado',
+        severity: 'error',
+      });
+    }
+    pushUnmappedBranchIssue(
+      issues,
+      row.rowNumber,
+      'consultations',
+      row.externalBranchId,
+      options?.knownBranchExternalIds
+    );
+    const started = parseImportDateTime(row.startedAt, locale);
+    if (!started.ok) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'consultations',
+        field: 'started_at',
+        code: 'invalid_datetime',
+        message: 'Fecha/hora de inicio inválida',
+        severity: 'error',
+      });
+    }
+    if (row.completedAt) {
+      const completed = parseImportDateTime(row.completedAt, locale);
+      if (!completed.ok) {
+        issues.push({
+          rowNumber: row.rowNumber,
+          entityType: 'consultations',
+          field: 'completed_at',
+          code: 'invalid_datetime',
+          message: 'Fecha/hora de fin inválida',
+          severity: 'error',
+        });
+      }
+    }
+  }
+  return issues;
+}
+
+export function buildConsultationTemplateCsv(): string {
+  return toCsv(CONSULTATION_IMPORT_FIELDS.map((f) => f.key), [
+    {
+      external_consultation_id: 'CON-001',
+      external_patient_id: 'PAT-001',
+      external_branch_id: 'BR-001',
+      external_appointment_id: 'APT-001',
+      started_at: '2024-10-01 10:05',
+      completed_at: '2024-10-01 10:35',
+      status: 'completada',
+      title: 'Control anual',
+      anamnesis: 'Sin síntomas',
+      physical_exam: 'Buen estado general',
+      diagnosis: 'Sano',
+      treatment: '',
+      plan: 'Control en 1 año',
+      weight_kg: '12.5',
+      temperature_c: '38.2',
+      notes: '',
+      source_system: 'legacy',
+    },
+  ]);
+}
+
 export type InventoryProductImportRow = {
   rowNumber: number;
   externalProductId: string;
+  externalBranchId: string | null;
   name: string;
   sku: string | null;
   category: string | null;
@@ -2379,7 +2938,10 @@ export type InventoryProductImportRow = {
   sourceSystem: string | null;
 };
 
-export function validateInventoryProductRows(rows: InventoryProductImportRow[]): ValidationIssue[] {
+export function validateInventoryProductRows(
+  rows: InventoryProductImportRow[],
+  options?: { knownBranchExternalIds?: Set<string> }
+): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const seen = new Set<string>();
   for (const row of rows) {
@@ -2404,6 +2966,13 @@ export function validateInventoryProductRows(rows: InventoryProductImportRow[]):
     } else {
       seen.add(row.externalProductId);
     }
+    pushUnmappedBranchIssue(
+      issues,
+      row.rowNumber,
+      'inventory_products',
+      row.externalBranchId,
+      options?.knownBranchExternalIds
+    );
     if (!row.name || row.name.trim().length < 2) {
       issues.push({
         rowNumber: row.rowNumber,
@@ -2442,6 +3011,7 @@ export function buildInventoryProductTemplateCsv(): string {
   return toCsv(INVENTORY_PRODUCT_IMPORT_FIELDS.map((f) => f.key), [
     {
       external_product_id: 'PROD-001',
+      external_branch_id: 'BR-001',
       name: 'Amoxicilina 250mg',
       sku: 'AMOX-250',
       category: 'medicamento',
@@ -2460,6 +3030,7 @@ export function buildInventoryProductTemplateCsv(): string {
 export type InvoiceImportRow = {
   rowNumber: number;
   externalInvoiceId: string;
+  externalBranchId: string | null;
   externalOwnerId: string | null;
   externalPatientId: string | null;
   number: string | null;
@@ -2485,6 +3056,7 @@ export function validateInvoiceRows(
   options?: {
     knownOwnerExternalIds?: Set<string>;
     knownPatientExternalIds?: Set<string>;
+    knownBranchExternalIds?: Set<string>;
   }
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
@@ -2501,6 +3073,13 @@ export function validateInvoiceRows(
         severity: 'error',
       });
     }
+    pushUnmappedBranchIssue(
+      issues,
+      row.rowNumber,
+      'invoices',
+      row.externalBranchId,
+      options?.knownBranchExternalIds
+    );
     if (!row.externalOwnerId && !row.externalPatientId) {
       issues.push({
         rowNumber: row.rowNumber,
@@ -2574,6 +3153,7 @@ export function buildInvoiceTemplateCsv(): string {
   return toCsv(INVOICE_IMPORT_FIELDS.map((f) => f.key), [
     {
       external_invoice_id: 'INV-001',
+      external_branch_id: 'BR-001',
       external_owner_id: 'OWN-001',
       external_patient_id: 'PAT-001',
       number: 'A-0001',
@@ -3020,5 +3600,68 @@ export function buildBillingReconcileCsv(
       'note',
     ],
     out
+  );
+}
+
+/** Phase 26: human-readable cutover freeze pack README (bundled in ZIP). */
+export type CutoverPackSummaryInput = {
+  organizationId: string;
+  generatedAt: string;
+  readyForGolive: boolean;
+  checklistScoreOk: number;
+  checklistScoreTotal: number;
+  orphanCreatedTotal: number;
+  orphanIdMapTotal: number;
+  stuckImports: number;
+  stuckExports: number;
+  billingMismatch: number;
+  billingPaidWithoutPayments: number;
+  formatVersion?: string;
+};
+
+export function buildCutoverPackReadme(input: CutoverPackSummaryInput): string {
+  const stuck = input.stuckImports + input.stuckExports;
+  const orphans = input.orphanCreatedTotal + input.orphanIdMapTotal;
+  const lines = [
+    'SyncVete — Paquete cutover (freeze)',
+    `Formato: ${DATA_MIGRATION_FORMAT} ${input.formatVersion ?? DATA_MIGRATION_FORMAT_VERSION} · multi-sede owners/patients`,
+    `Organización: ${input.organizationId}`,
+    `Tipos de exportación disponibles: ${EXPORT_TYPES.length}`,
+    `Generado: ${input.generatedAt}`,
+    '',
+    `Listo para go-live: ${input.readyForGolive ? 'SÍ' : 'NO — revisar pendientes'}`,
+    `Checklist: ${input.checklistScoreOk}/${input.checklistScoreTotal} OK`,
+    `Huérfanos (created + id-map): ${orphans}`,
+    `Locks trabados: ${stuck}`,
+    `Facturas paid sin pagos: ${input.billingPaidWithoutPayments}`,
+    `Desvíos paid_amount vs pagos: ${input.billingMismatch}`,
+    '',
+    'Contenido del ZIP:',
+    '- README.txt (este archivo)',
+    '- integrity.csv',
+    '- checklist.csv',
+    '- billing_reconcile.csv',
+    '',
+    'Solo lectura: no modifica datos, planes ni caja.',
+    'Revisá fail/warn del checklist antes del cutover.',
+  ];
+  return `${lines.join('\n')}\n`;
+}
+
+export function isCutoverPackReady(input: {
+  readyForGolive: boolean;
+  orphanCreatedTotal: number;
+  orphanIdMapTotal: number;
+  stuckImports: number;
+  stuckExports: number;
+  billingMismatch: number;
+}): boolean {
+  return (
+    input.readyForGolive &&
+    input.orphanCreatedTotal === 0 &&
+    input.orphanIdMapTotal === 0 &&
+    input.stuckImports === 0 &&
+    input.stuckExports === 0 &&
+    input.billingMismatch === 0
   );
 }

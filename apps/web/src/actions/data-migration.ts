@@ -5,7 +5,9 @@ import {
   DEFAULT_IMPORT_CHUNK_SIZE,
   IDEMPOTENCY_MODES,
   buildAppointmentTemplateCsv,
+  buildConsultationTemplateCsv,
   buildBatchErrorsReportCsv,
+  buildBranchTemplateCsv,
   buildClinicalTemplateCsv,
   buildHospitalizationTemplateCsv,
   buildIdMapReportCsv,
@@ -15,6 +17,9 @@ import {
   buildPaymentTemplateCsv,
   buildMigrationChecklistCsv,
   buildBillingReconcileCsv,
+  buildCutoverPackReadme,
+  DATA_MIGRATION_AUDIT_ACTIONS,
+  isCutoverPackReady,
   summarizeMigrationChecklist,
   buildLabOrderTemplateCsv,
   buildOwnerTemplateCsv,
@@ -55,8 +60,10 @@ import { buildSampleMigrationZip, parseSyncveteMigrationZip, summarizeZipContent
 import { workbookFirstSheetToCsv } from '@/lib/data-migration/xlsx';
 import { importZipAttachmentsChunk } from '@/lib/data-migration/attachments';
 import { createServerClient } from '@/lib/supabase/server';
+import JSZip from 'jszip';
 
 const IMPORT_ENTITIES = [
+  'branches',
   'owners',
   'patients',
   'clinical_entries',
@@ -66,6 +73,7 @@ const IMPORT_ENTITIES = [
   'prescriptions',
   'hospitalizations',
   'appointments',
+  'consultations',
   'inventory_products',
   'invoices',
   'payments',
@@ -117,6 +125,12 @@ export async function downloadImportTemplate(
   try {
     await requireImportAccess();
     const kind = String(formData.get('kind') ?? '');
+    if (kind === 'branches') {
+      return {
+        success: true,
+        data: { filename: 'SyncVete-Branches-Template.csv', csv: buildBranchTemplateCsv() },
+      };
+    }
     if (kind === 'owners') {
       return {
         success: true,
@@ -183,6 +197,15 @@ export async function downloadImportTemplate(
         data: {
           filename: 'SyncVete-Appointments-Template.csv',
           csv: buildAppointmentTemplateCsv(),
+        },
+      };
+    }
+    if (kind === 'consultations') {
+      return {
+        success: true,
+        data: {
+          filename: 'SyncVete-Consultations-Template.csv',
+          csv: buildConsultationTemplateCsv(),
         },
       };
     }
@@ -310,6 +333,9 @@ export async function validateDataImport(formData: FormData): Promise<
     const invoiceIdByExternal = JSON.parse(
       String(formData.get('invoiceIdByExternal') ?? '{}')
     ) as Record<string, string>;
+    const branchIdByExternal = JSON.parse(
+      String(formData.get('branchIdByExternal') ?? '{}')
+    ) as Record<string, string>;
     const mapping = JSON.parse(mappingJson) as Record<string, string | null>;
     if (!entity) return { success: false, error: 'Entidad inválida' };
     const result = await dryRunImport({
@@ -321,6 +347,7 @@ export async function validateDataImport(formData: FormData): Promise<
       knownPatientExternalIds: knownPatients,
       knownInvoiceExternalIds: knownInvoices,
       invoiceIdByExternal,
+      branchIdByExternal,
     });
     return { success: true, data: result };
   } catch (error) {
@@ -361,6 +388,12 @@ export async function commitDataImport(formData: FormData): Promise<
     ) as Record<string, string>;
     const invoiceIdByExternal = JSON.parse(
       String(formData.get('invoiceIdByExternal') ?? '{}')
+    ) as Record<string, string>;
+    const appointmentIdByExternal = JSON.parse(
+      String(formData.get('appointmentIdByExternal') ?? '{}')
+    ) as Record<string, string>;
+    const branchIdByExternal = JSON.parse(
+      String(formData.get('branchIdByExternal') ?? '{}')
     ) as Record<string, string>;
     const sourceSystem = String(formData.get('sourceSystem') ?? '').trim() || null;
     const offset = Number(formData.get('offset') ?? 0) || 0;
@@ -410,6 +443,8 @@ export async function commitDataImport(formData: FormData): Promise<
       patientIdByExternal,
       productIdByExternal,
       invoiceIdByExternal,
+      appointmentIdByExternal,
+      branchIdByExternal,
       branchId: branch.id,
       offset,
       chunkSize,
@@ -424,6 +459,8 @@ export async function commitDataImport(formData: FormData): Promise<
     revalidatePath('/cirugias');
     revalidatePath('/farmacia');
     revalidatePath('/internacion');
+    revalidatePath('/agenda');
+    revalidatePath('/consultas');
     revalidatePath('/facturacion');
     return { success: true, data: result };
   } catch (error) {
@@ -457,6 +494,12 @@ export async function queueDataImportAction(formData: FormData): Promise<
     ) as Record<string, string>;
     const invoiceIdByExternal = JSON.parse(
       String(formData.get('invoiceIdByExternal') ?? '{}')
+    ) as Record<string, string>;
+    const appointmentIdByExternal = JSON.parse(
+      String(formData.get('appointmentIdByExternal') ?? '{}')
+    ) as Record<string, string>;
+    const branchIdByExternal = JSON.parse(
+      String(formData.get('branchIdByExternal') ?? '{}')
     ) as Record<string, string>;
     const sourceSystem = String(formData.get('sourceSystem') ?? '').trim() || null;
     const rowDecisions = JSON.parse(
@@ -494,6 +537,8 @@ export async function queueDataImportAction(formData: FormData): Promise<
       patientIdByExternal,
       productIdByExternal,
       invoiceIdByExternal,
+      appointmentIdByExternal,
+      branchIdByExternal,
       branchId: branch.id,
       rowDecisions,
     });
@@ -601,6 +646,7 @@ export async function downloadSampleMigrationZipAction(): Promise<
 export async function inspectMigrationZipAction(formData: FormData): Promise<
   ActionResult<{
     summary: Record<string, number | string | null>;
+    branchesCsv: string | null;
     ownersCsv: string | null;
     patientsCsv: string | null;
     clinicalCsv: string | null;
@@ -610,6 +656,7 @@ export async function inspectMigrationZipAction(formData: FormData): Promise<
     prescriptionsCsv: string | null;
     hospitalizationsCsv: string | null;
     appointmentsCsv: string | null;
+    consultationsCsv: string | null;
     inventoryProductsCsv: string | null;
     invoicesCsv: string | null;
     paymentsCsv: string | null;
@@ -627,6 +674,7 @@ export async function inspectMigrationZipAction(formData: FormData): Promise<
       success: true,
       data: {
         summary: summarizeZipContents(parsed),
+        branchesCsv: parsed.branchesCsv,
         ownersCsv: parsed.ownersCsv,
         patientsCsv: parsed.patientsCsv,
         clinicalCsv: parsed.clinicalCsv,
@@ -636,6 +684,7 @@ export async function inspectMigrationZipAction(formData: FormData): Promise<
         prescriptionsCsv: parsed.prescriptionsCsv,
         hospitalizationsCsv: parsed.hospitalizationsCsv,
         appointmentsCsv: parsed.appointmentsCsv,
+        consultationsCsv: parsed.consultationsCsv,
         inventoryProductsCsv: parsed.inventoryProductsCsv,
         invoicesCsv: parsed.invoicesCsv,
         paymentsCsv: parsed.paymentsCsv,
@@ -1563,6 +1612,136 @@ export async function downloadBillingReconcileAction(): Promise<
       data: {
         csv,
         filename: `conciliacion-facturacion-${new Date().toISOString().slice(0, 10)}.csv`,
+      },
+    };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function downloadCutoverPackAction(): Promise<
+  ActionResult<{ filename: string; contentType: string; base64: string; ready: boolean }>
+> {
+  try {
+    const canImport = await canPermissionAndFeature('data:import', FEATURES.DATA_IMPORT_EXPORT);
+    const canExport = await canPermissionAndFeature('data:export', FEATURES.DATA_IMPORT_EXPORT);
+    if (!canImport && !canExport) {
+      return { success: false, error: 'No tenés permisos para esta acción' };
+    }
+    const session = canImport ? await requireImportAccess() : await requireExportAccess();
+
+    const [integrityResult, checklistResult, billingResult] = await Promise.all([
+      getDataMigrationIntegrityAction(),
+      getDataMigrationChecklistAction(),
+      getBillingReconcileAction(),
+    ]);
+
+    if (!integrityResult.success || !integrityResult.data) {
+      return { success: false, error: integrityResult.error ?? 'No se pudo leer integridad' };
+    }
+    if (!checklistResult.success || !checklistResult.data) {
+      return { success: false, error: checklistResult.error ?? 'No se pudo leer checklist' };
+    }
+    if (!billingResult.success || !billingResult.data) {
+      return { success: false, error: billingResult.error ?? 'No se pudo leer conciliación' };
+    }
+
+    const integrity = integrityResult.data;
+    const checklist = checklistResult.data;
+    const billing = billingResult.data;
+    const generatedAt = new Date().toISOString();
+    const organizationId =
+      integrity.organizationId || checklist.organizationId || billing.organizationId;
+
+    const integrityCsv = buildIntegrityReportCsv({
+      organizationId: integrity.organizationId,
+      generatedAt: integrity.generatedAt,
+      imports: integrity.imports,
+      exports: integrity.exports,
+      createdRowsTracked: integrity.createdRowsTracked,
+      idMapEntries: integrity.idMapEntries,
+      orphansCreated: integrity.orphansCreated,
+      orphansIdMap: integrity.orphansIdMap,
+      stuckImports: integrity.stuckImports,
+      stuckExports: integrity.stuckExports,
+    });
+    const checklistCsv = buildMigrationChecklistCsv(checklist.items, {
+      organizationId: checklist.organizationId,
+      generatedAt: checklist.generatedAt,
+      readyForGolive: checklist.readyForGolive,
+    });
+    const billingCsv = buildBillingReconcileCsv(
+      billing.rows.map((row) => ({
+        invoiceId: row.invoiceId,
+        invoiceNumber: row.invoiceNumber,
+        status: row.status,
+        total: row.total,
+        paidAmount: row.paidAmount,
+        balance: row.balance,
+        paymentsSum: row.paymentsSum,
+        paymentsCount: row.paymentsCount,
+        delta: row.delta,
+      })),
+      {
+        organizationId: billing.organizationId,
+        generatedAt: billing.generatedAt,
+        summary: {
+          invoices: billing.summary.invoices,
+          payments: billing.summary.payments,
+          paid_without_payment_rows: billing.summary.paidWithoutPaymentRows,
+          payments_without_invoice: billing.summary.paymentsWithoutInvoice,
+          paid_amount_vs_payments_mismatch: billing.summary.paidAmountVsPaymentsMismatch,
+        },
+      }
+    );
+
+    const ready = isCutoverPackReady({
+      readyForGolive: checklist.readyForGolive,
+      orphanCreatedTotal: integrity.orphanCreatedTotal,
+      orphanIdMapTotal: integrity.orphanIdMapTotal,
+      stuckImports: integrity.stuckImports,
+      stuckExports: integrity.stuckExports,
+      billingMismatch: billing.summary.paidAmountVsPaymentsMismatch,
+    });
+
+    const readme = buildCutoverPackReadme({
+      organizationId,
+      generatedAt,
+      readyForGolive: checklist.readyForGolive,
+      checklistScoreOk: checklist.scoreOk,
+      checklistScoreTotal: checklist.scoreTotal,
+      orphanCreatedTotal: integrity.orphanCreatedTotal,
+      orphanIdMapTotal: integrity.orphanIdMapTotal,
+      stuckImports: integrity.stuckImports,
+      stuckExports: integrity.stuckExports,
+      billingMismatch: billing.summary.paidAmountVsPaymentsMismatch,
+      billingPaidWithoutPayments: billing.summary.paidWithoutPaymentRows,
+    });
+
+    const zip = new JSZip();
+    zip.file('README.txt', readme);
+    zip.file('integrity.csv', integrityCsv);
+    zip.file('checklist.csv', checklistCsv);
+    zip.file('billing_reconcile.csv', billingCsv);
+    const zipBytes = await zip.generateAsync({ type: 'nodebuffer' });
+    const filename = `cutover-pack-${generatedAt.slice(0, 10)}.zip`;
+
+    await logDataMigrationAudit({
+      organizationId: session.organizationId,
+      userId: session.userId,
+      action: DATA_MIGRATION_AUDIT_ACTIONS.cutoverPackDownloaded,
+      entityType: 'data_migration',
+      entityId: session.organizationId,
+      newData: { ready, filename },
+    });
+
+    return {
+      success: true,
+      data: {
+        filename,
+        contentType: 'application/zip',
+        base64: Buffer.from(zipBytes).toString('base64'),
+        ready,
       },
     };
   } catch (error) {

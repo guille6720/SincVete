@@ -2,6 +2,7 @@ import 'server-only';
 
 import {
   APPOINTMENT_IMPORT_FIELDS,
+  CONSULTATION_IMPORT_FIELDS,
   HOSPITALIZATION_IMPORT_FIELDS,
   INVENTORY_PRODUCT_IMPORT_FIELDS,
   INVOICE_IMPORT_FIELDS,
@@ -12,7 +13,9 @@ import {
   mapRow,
   parseImportDate,
   parseImportDateTime,
+  resolveImportBranchId,
   validateAppointmentRows,
+  validateConsultationRows,
   validateHospitalizationRows,
   validateInventoryProductRows,
   validateInvoiceRows,
@@ -21,6 +24,7 @@ import {
   validatePrescriptionRows,
   validateSurgeryRows,
   type AppointmentImportRow,
+  type ConsultationImportRow,
   type DateLocale,
   type HospitalizationImportRow,
   type IdempotencyMode,
@@ -40,6 +44,7 @@ export type SpecialtyEntity =
   | 'prescriptions'
   | 'hospitalizations'
   | 'appointments'
+  | 'consultations'
   | 'inventory_products'
   | 'invoices'
   | 'payments';
@@ -67,6 +72,7 @@ export function fieldsForSpecialty(entity: SpecialtyEntity) {
   if (entity === 'surgeries') return SURGERY_IMPORT_FIELDS;
   if (entity === 'hospitalizations') return HOSPITALIZATION_IMPORT_FIELDS;
   if (entity === 'appointments') return APPOINTMENT_IMPORT_FIELDS;
+  if (entity === 'consultations') return CONSULTATION_IMPORT_FIELDS;
   if (entity === 'inventory_products') return INVENTORY_PRODUCT_IMPORT_FIELDS;
   if (entity === 'invoices') return INVOICE_IMPORT_FIELDS;
   if (entity === 'payments') return PAYMENT_IMPORT_FIELDS;
@@ -83,6 +89,7 @@ export function asLabOrderRows(
       rowNumber: index + 2,
       externalLabOrderId: mapped.external_lab_order_id ?? '',
       externalPatientId: mapped.external_patient_id ?? '',
+      externalBranchId: mapped.external_branch_id || null,
       orderedAt: mapped.ordered_at ?? '',
       title: mapped.title ?? '',
       tests: mapped.tests || null,
@@ -106,6 +113,7 @@ export function asSurgeryRows(
       rowNumber: index + 2,
       externalSurgeryId: mapped.external_surgery_id ?? '',
       externalPatientId: mapped.external_patient_id ?? '',
+      externalBranchId: mapped.external_branch_id || null,
       scheduledAt: mapped.scheduled_at ?? '',
       procedureName: mapped.procedure_name ?? '',
       diagnosis: mapped.diagnosis || null,
@@ -128,6 +136,7 @@ export function asPrescriptionRows(
       rowNumber: index + 2,
       externalPrescriptionId: mapped.external_prescription_id ?? '',
       externalPatientId: mapped.external_patient_id ?? '',
+      externalBranchId: mapped.external_branch_id || null,
       prescribedAt: mapped.prescribed_at ?? '',
       medicationName: mapped.medication_name ?? '',
       dose: mapped.dose ?? '',
@@ -153,6 +162,7 @@ export function asHospitalizationRows(
       rowNumber: index + 2,
       externalHospitalizationId: mapped.external_hospitalization_id ?? '',
       externalPatientId: mapped.external_patient_id ?? '',
+      externalBranchId: mapped.external_branch_id || null,
       admittedAt: mapped.admitted_at ?? '',
       dischargedAt: mapped.discharged_at || null,
       reason: mapped.reason ?? '',
@@ -184,6 +194,36 @@ export function asAppointmentRows(
       title: mapped.title || null,
       notes: mapped.notes || null,
       sourceSystem: mapped.source_system || null,
+      externalBranchId: mapped.external_branch_id || null,
+    };
+  });
+}
+
+export function asConsultationRows(
+  rawRows: Record<string, string>[],
+  mapping: Record<string, string | null>
+): ConsultationImportRow[] {
+  return rawRows.map((raw, index) => {
+    const mapped = mapRow(raw, mapping);
+    return {
+      rowNumber: index + 2,
+      externalConsultationId: mapped.external_consultation_id ?? '',
+      externalPatientId: mapped.external_patient_id ?? '',
+      externalAppointmentId: mapped.external_appointment_id || null,
+      startedAt: mapped.started_at ?? '',
+      completedAt: mapped.completed_at || null,
+      status: mapped.status || null,
+      title: mapped.title || null,
+      anamnesis: mapped.anamnesis || null,
+      physicalExam: mapped.physical_exam || null,
+      diagnosis: mapped.diagnosis || null,
+      treatment: mapped.treatment || null,
+      plan: mapped.plan || null,
+      weightKg: mapped.weight_kg || null,
+      temperatureC: mapped.temperature_c || null,
+      notes: mapped.notes || null,
+      sourceSystem: mapped.source_system || null,
+      externalBranchId: mapped.external_branch_id || null,
     };
   });
 }
@@ -208,6 +248,7 @@ export function asInventoryProductRows(
       manufacturer: mapped.manufacturer || null,
       notes: mapped.notes || null,
       sourceSystem: mapped.source_system || null,
+      externalBranchId: mapped.external_branch_id || null,
     };
   });
 }
@@ -239,6 +280,7 @@ export function asInvoiceRows(
       externalProductId: mapped.external_product_id || null,
       notes: mapped.notes || null,
       sourceSystem: mapped.source_system || null,
+      externalBranchId: mapped.external_branch_id || null,
     };
   });
 }
@@ -272,16 +314,22 @@ export function validateSpecialtyRows(
     knownOwnerExternalIds?: string[];
     knownInvoiceExternalIds?: string[];
     invoicePaidAmountByExternal?: Map<string, number>;
+    knownBranchExternalIds?: Set<string>;
     locale?: DateLocale;
   }
 ): { issues: ValidationIssue[]; readyCount: number; rows: unknown[] } {
   const known = new Set(options.knownPatientExternalIds ?? []);
   const knownOwners = new Set(options.knownOwnerExternalIds ?? []);
   const knownInvoices = new Set(options.knownInvoiceExternalIds ?? []);
+  const knownBranchExternalIds = options.knownBranchExternalIds;
   const locale = options.locale ?? 'es-AR';
   if (entity === 'lab_orders') {
     const rows = asLabOrderRows(rawRows, mapping);
-    const issues = validateLabOrderRows(rows, { knownPatientExternalIds: known, locale });
+    const issues = validateLabOrderRows(rows, {
+      knownPatientExternalIds: known,
+      knownBranchExternalIds,
+      locale,
+    });
     const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
     return {
       issues,
@@ -291,7 +339,11 @@ export function validateSpecialtyRows(
   }
   if (entity === 'surgeries') {
     const rows = asSurgeryRows(rawRows, mapping);
-    const issues = validateSurgeryRows(rows, { knownPatientExternalIds: known, locale });
+    const issues = validateSurgeryRows(rows, {
+      knownPatientExternalIds: known,
+      knownBranchExternalIds,
+      locale,
+    });
     const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
     return {
       issues,
@@ -301,7 +353,11 @@ export function validateSpecialtyRows(
   }
   if (entity === 'hospitalizations') {
     const rows = asHospitalizationRows(rawRows, mapping);
-    const issues = validateHospitalizationRows(rows, { knownPatientExternalIds: known, locale });
+    const issues = validateHospitalizationRows(rows, {
+      knownPatientExternalIds: known,
+      knownBranchExternalIds,
+      locale,
+    });
     const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
     return {
       issues,
@@ -311,7 +367,25 @@ export function validateSpecialtyRows(
   }
   if (entity === 'appointments') {
     const rows = asAppointmentRows(rawRows, mapping);
-    const issues = validateAppointmentRows(rows, { knownPatientExternalIds: known, locale });
+    const issues = validateAppointmentRows(rows, {
+      knownPatientExternalIds: known,
+      knownBranchExternalIds,
+      locale,
+    });
+    const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
+    return {
+      issues,
+      readyCount: rows.filter((r) => !errorRows.has(r.rowNumber)).length,
+      rows,
+    };
+  }
+  if (entity === 'consultations') {
+    const rows = asConsultationRows(rawRows, mapping);
+    const issues = validateConsultationRows(rows, {
+      knownPatientExternalIds: known,
+      knownBranchExternalIds,
+      locale,
+    });
     const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
     return {
       issues,
@@ -321,7 +395,7 @@ export function validateSpecialtyRows(
   }
   if (entity === 'inventory_products') {
     const rows = asInventoryProductRows(rawRows, mapping);
-    const issues = validateInventoryProductRows(rows);
+    const issues = validateInventoryProductRows(rows, { knownBranchExternalIds });
     const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
     return {
       issues,
@@ -334,6 +408,7 @@ export function validateSpecialtyRows(
     const issues = validateInvoiceRows(rows, {
       knownOwnerExternalIds: knownOwners.size > 0 ? knownOwners : undefined,
       knownPatientExternalIds: known.size > 0 ? known : undefined,
+      knownBranchExternalIds,
     });
     const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
     return {
@@ -356,7 +431,11 @@ export function validateSpecialtyRows(
     };
   }
   const rows = asPrescriptionRows(rawRows, mapping);
-  const issues = validatePrescriptionRows(rows, { knownPatientExternalIds: known, locale });
+  const issues = validatePrescriptionRows(rows, {
+    knownPatientExternalIds: known,
+    knownBranchExternalIds,
+    locale,
+  });
   const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
   return {
     issues,
@@ -424,6 +503,8 @@ export async function commitSpecialtySlice(input: {
   ownerIdByExternal?: Record<string, string>;
   productIdByExternal?: Record<string, string>;
   invoiceIdByExternal?: Record<string, string>;
+  appointmentIdByExternal?: Record<string, string>;
+  branchIdByExternal?: Record<string, string>;
   organizationId: string;
   branchId: string;
   batchId: string;
@@ -485,12 +566,21 @@ export async function commitSpecialtySlice(input: {
         failed += 1;
         continue;
       }
+      const branchResolved = resolveImportBranchId({
+        externalBranchId: row.externalBranchId,
+        branchIdByExternal: input.branchIdByExternal,
+        defaultBranchId: input.branchId,
+      });
+      if (!branchResolved.ok) {
+        failed += 1;
+        continue;
+      }
       const hasResult = Boolean(row.interpretation?.trim());
       const { data, error } = await input.supabase
         .from('lab_orders')
         .insert({
           organization_id: input.organizationId,
-          branch_id: input.branchId,
+          branch_id: branchResolved.branchId,
           patient_id: patient.id,
           owner_id: patient.owner_id,
           ordered_by: input.userId,
@@ -590,11 +680,20 @@ export async function commitSpecialtySlice(input: {
         failed += 1;
         continue;
       }
+      const branchResolved = resolveImportBranchId({
+        externalBranchId: row.externalBranchId,
+        branchIdByExternal: input.branchIdByExternal,
+        defaultBranchId: input.branchId,
+      });
+      if (!branchResolved.ok) {
+        failed += 1;
+        continue;
+      }
       const { data, error } = await input.supabase
         .from('surgeries')
         .insert({
           organization_id: input.organizationId,
-          branch_id: input.branchId,
+          branch_id: branchResolved.branchId,
           patient_id: patient.id,
           owner_id: patient.owner_id,
           surgeon_id: input.userId,
@@ -690,11 +789,20 @@ export async function commitSpecialtySlice(input: {
             : statusRaw === 'observacion' || statusRaw === 'observación'
               ? 'observacion'
               : 'alta';
+      const branchResolved = resolveImportBranchId({
+        externalBranchId: row.externalBranchId,
+        branchIdByExternal: input.branchIdByExternal,
+        defaultBranchId: input.branchId,
+      });
+      if (!branchResolved.ok) {
+        failed += 1;
+        continue;
+      }
       const { data, error } = await input.supabase
         .from('hospitalizations')
         .insert({
           organization_id: input.organizationId,
-          branch_id: input.branchId,
+          branch_id: branchResolved.branchId,
           patient_id: patient.id,
           owner_id: patient.owner_id,
           veterinarian_id: input.userId,
@@ -789,6 +897,15 @@ export async function commitSpecialtySlice(input: {
         failed += 1;
         continue;
       }
+      const branchResolved = resolveImportBranchId({
+        externalBranchId: row.externalBranchId,
+        branchIdByExternal: input.branchIdByExternal,
+        defaultBranchId: input.branchId,
+      });
+      if (!branchResolved.ok) {
+        failed += 1;
+        continue;
+      }
       const typeRaw = (row.appointmentType ?? '').trim().toLowerCase();
       const appointmentType =
         typeRaw === 'vacunacion' || typeRaw === 'vacunación'
@@ -819,7 +936,7 @@ export async function commitSpecialtySlice(input: {
         .from('appointments')
         .insert({
           organization_id: input.organizationId,
-          branch_id: input.branchId,
+          branch_id: branchResolved.branchId,
           patient_id: patient.id,
           owner_id: patient.owner_id,
           starts_at: starts.iso,
@@ -854,6 +971,140 @@ export async function commitSpecialtySlice(input: {
         organization_id: input.organizationId,
         entity_type: 'appointments',
         external_id: row.externalAppointmentId,
+        internal_id: data.id,
+      });
+    }
+    return { imported, failed, skipped, idMap };
+  }
+
+  if (input.entity === 'consultations') {
+    const consultationRows = asConsultationRows(slice, input.mapping).map((row, idx) => ({
+      ...row,
+      rowNumber: input.offset + idx + 2,
+    }));
+    const appointmentMap = input.appointmentIdByExternal ?? {};
+    for (const row of consultationRows) {
+      const patientId = input.patientIdByExternal[row.externalPatientId];
+      const started = parseImportDateTime(row.startedAt, input.locale);
+      const completed = row.completedAt ? parseImportDateTime(row.completedAt, input.locale) : null;
+      if (!patientId || !started.ok || (row.completedAt && (!completed || !completed.ok))) {
+        failed += 1;
+        continue;
+      }
+      const sourceSystem = row.sourceSystem ?? input.sourceSystem ?? '';
+      if (skipExisting) {
+        const existingId = await findSpecialtyBySource({
+          supabase: input.supabase,
+          table: 'consultations',
+          organizationId: input.organizationId,
+          sourceSystem,
+          sourceRecordId: row.externalConsultationId,
+        });
+        if (existingId) {
+          idMap[row.externalConsultationId] = existingId;
+          skipped += 1;
+          await input.supabase.from('data_import_id_map').insert({
+            batch_id: input.batchId,
+            organization_id: input.organizationId,
+            entity_type: 'consultations',
+            external_id: row.externalConsultationId,
+            internal_id: existingId,
+          });
+          continue;
+        }
+      }
+      const { data: patient } = await input.supabase
+        .from('patients')
+        .select('id, owner_id')
+        .eq('id', patientId)
+        .eq('organization_id', input.organizationId)
+        .maybeSingle();
+      if (!patient) {
+        failed += 1;
+        continue;
+      }
+      const branchResolved = resolveImportBranchId({
+        externalBranchId: row.externalBranchId,
+        branchIdByExternal: input.branchIdByExternal,
+        defaultBranchId: input.branchId,
+      });
+      if (!branchResolved.ok) {
+        failed += 1;
+        continue;
+      }
+      const appointmentId = row.externalAppointmentId
+        ? appointmentMap[row.externalAppointmentId] ?? null
+        : null;
+      const statusRaw = (row.status ?? '').trim().toLowerCase();
+      const status =
+        statusRaw === 'en_curso' || statusRaw === 'en curso'
+          ? 'en_curso'
+          : statusRaw === 'completada'
+            ? 'completada'
+            : statusRaw === 'cancelada'
+              ? 'cancelada'
+              : statusRaw === 'en_espera' || statusRaw === 'en espera'
+                ? 'en_espera'
+                : completed && completed.ok
+                  ? 'completada'
+                  : 'en_espera';
+      const weightKg =
+        row.weightKg != null && row.weightKg !== '' && !Number.isNaN(Number(String(row.weightKg).replace(',', '.')))
+          ? Number(String(row.weightKg).replace(',', '.'))
+          : null;
+      const temperatureC =
+        row.temperatureC != null &&
+        row.temperatureC !== '' &&
+        !Number.isNaN(Number(String(row.temperatureC).replace(',', '.')))
+          ? Number(String(row.temperatureC).replace(',', '.'))
+          : null;
+      const { data, error } = await input.supabase
+        .from('consultations')
+        .insert({
+          organization_id: input.organizationId,
+          branch_id: branchResolved.branchId,
+          patient_id: patient.id,
+          owner_id: patient.owner_id,
+          appointment_id: appointmentId,
+          veterinarian_id: input.userId,
+          status,
+          started_at: started.iso,
+          completed_at: completed && completed.ok ? completed.iso : null,
+          title: row.title?.trim() || null,
+          anamnesis: row.anamnesis?.trim() || null,
+          physical_exam: row.physicalExam?.trim() || null,
+          diagnosis: row.diagnosis?.trim() || null,
+          treatment: row.treatment?.trim() || null,
+          plan: row.plan?.trim() || null,
+          weight_kg: weightKg,
+          temperature_c: temperatureC,
+          notes: row.notes?.trim() || null,
+          import_batch_id: input.batchId,
+          source_system: row.sourceSystem ?? input.sourceSystem,
+          source_record_id: row.externalConsultationId,
+          imported_at: nowIso,
+          imported_by: input.userId,
+        })
+        .select('id')
+        .single();
+      if (error || !data) {
+        failed += 1;
+        continue;
+      }
+      imported += 1;
+      idMap[row.externalConsultationId] = data.id;
+      await input.supabase.from('data_import_created_rows').insert({
+        batch_id: input.batchId,
+        organization_id: input.organizationId,
+        entity_type: 'consultations',
+        entity_id: data.id,
+        external_id: row.externalConsultationId,
+      });
+      await input.supabase.from('data_import_id_map').insert({
+        batch_id: input.batchId,
+        organization_id: input.organizationId,
+        entity_type: 'consultations',
+        external_id: row.externalConsultationId,
         internal_id: data.id,
       });
     }
@@ -899,6 +1150,15 @@ export async function commitSpecialtySlice(input: {
           continue;
         }
       }
+      const branchResolved = resolveImportBranchId({
+        externalBranchId: row.externalBranchId,
+        branchIdByExternal: input.branchIdByExternal,
+        defaultBranchId: input.branchId,
+      });
+      if (!branchResolved.ok) {
+        failed += 1;
+        continue;
+      }
       const catRaw = (row.category ?? '').trim().toLowerCase();
       const category =
         catRaw === 'vacuna'
@@ -943,7 +1203,7 @@ export async function commitSpecialtySlice(input: {
         .from('inventory_products')
         .insert({
           organization_id: input.organizationId,
-          branch_id: input.branchId,
+          branch_id: branchResolved.branchId,
           name: row.name.trim(),
           sku: row.sku?.trim() || null,
           category,
@@ -1064,6 +1324,15 @@ export async function commitSpecialtySlice(input: {
           }
         }
         if (!invoiceId) {
+        const branchResolved = resolveImportBranchId({
+          externalBranchId: row.externalBranchId,
+          branchIdByExternal: input.branchIdByExternal,
+          defaultBranchId: input.branchId,
+        });
+        if (!branchResolved.ok) {
+          failed += 1;
+          continue;
+        }
         const issued = row.issuedAt ? parseImportDate(row.issuedAt, input.locale) : null;
         const statusRaw = (row.status ?? '').trim().toLowerCase();
         const status =
@@ -1083,7 +1352,7 @@ export async function commitSpecialtySlice(input: {
           .from('invoices')
           .insert({
             organization_id: input.organizationId,
-            branch_id: input.branchId,
+            branch_id: branchResolved.branchId,
             owner_id: ownerId,
             patient_id: patientId ?? null,
             created_by: input.userId,
@@ -1299,11 +1568,20 @@ export async function commitSpecialtySlice(input: {
       failed += 1;
       continue;
     }
+    const branchResolved = resolveImportBranchId({
+      externalBranchId: row.externalBranchId,
+      branchIdByExternal: input.branchIdByExternal,
+      defaultBranchId: input.branchId,
+    });
+    if (!branchResolved.ok) {
+      failed += 1;
+      continue;
+    }
     const { data, error } = await input.supabase
       .from('prescriptions')
       .insert({
         organization_id: input.organizationId,
-        branch_id: input.branchId,
+        branch_id: branchResolved.branchId,
         patient_id: patient.id,
         owner_id: patient.owner_id,
         prescribed_by: input.userId,

@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
   autoMapColumns,
+  buildBranchTemplateCsv,
   buildOwnerTemplateCsv,
+  buildPatientTemplateCsv,
   buildVaccinationTemplateCsv,
+  CLINICAL_IMPORT_FIELDS,
   chunkRange,
   guessMimeFromFilename,
   normalizeDocument,
   OWNER_IMPORT_FIELDS,
+  PATIENT_IMPORT_FIELDS,
   parseCsv,
   parseImportDate,
   parseMigrationAttachmentPath,
@@ -20,6 +24,8 @@ import {
   buildBatchErrorsReportCsv,
   unresolvedConflictRows,
   EXPORT_TYPE_LABELS,
+  EXPORT_TYPES,
+  IMPORT_TYPES,
   MAX_IMPORT_CSV_BYTES,
   MAX_IMPORT_ZIP_BYTES,
   buildIntegrityReportCsv,
@@ -27,7 +33,9 @@ import {
   sumOrphanCounts,
   parseImportDateTime,
   validateAppointmentRows,
+  validateConsultationRows,
   buildAppointmentTemplateCsv,
+  buildConsultationTemplateCsv,
   buildInventoryProductTemplateCsv,
   validateInventoryProductRows,
   buildInvoiceTemplateCsv,
@@ -35,14 +43,156 @@ import {
   buildPaymentTemplateCsv,
   validatePaymentRows,
   buildBillingReconcileCsv,
+  buildCutoverPackReadme,
   buildMigrationChecklistCsv,
+  DATA_MIGRATION_AUDIT_ACTIONS,
+  isCutoverPackReady,
   summarizeMigrationChecklist,
+  validateBranchRows,
   validateClinicalRows,
   validateLabOrderRows,
   validateOwnerRows,
   validatePatientRows,
   validateVaccinationRows,
+  resolveImportBranchId,
+  DATA_MIGRATION_FORMAT_VERSION,
+  buildSampleMigrationManifest,
 } from '../constants/data-migration';
+
+describe('data-migration branch-aware imports (phase 23)', () => {
+  it('resolveImportBranchId uses default, mapped id, or fails unmapped', () => {
+    expect(
+      resolveImportBranchId({
+        externalBranchId: null,
+        branchIdByExternal: { 'BR-001': 'uuid-1' },
+        defaultBranchId: 'default-branch',
+      })
+    ).toEqual({ ok: true, branchId: 'default-branch' });
+
+    expect(
+      resolveImportBranchId({
+        externalBranchId: 'BR-001',
+        branchIdByExternal: { 'BR-001': 'uuid-1' },
+        defaultBranchId: 'default-branch',
+      })
+    ).toEqual({ ok: true, branchId: 'uuid-1' });
+
+    expect(
+      resolveImportBranchId({
+        externalBranchId: 'BR-404',
+        branchIdByExternal: { 'BR-001': 'uuid-1' },
+        defaultBranchId: 'default-branch',
+      })
+    ).toEqual({ ok: false, reason: 'unmapped_branch' });
+  });
+
+  it('validateAppointmentRows flags unmapped external_branch_id and accepts mapped', () => {
+    const baseRow = {
+      externalAppointmentId: 'A1',
+      externalPatientId: 'P1',
+      startsAt: '2024-10-01 10:00',
+      endsAt: '2024-10-01 10:30',
+      appointmentType: 'consulta',
+      status: 'programada',
+      title: 'Control',
+      notes: null,
+      sourceSystem: 'legacy',
+    };
+    const unmapped = validateAppointmentRows(
+      [{ rowNumber: 2, ...baseRow, externalBranchId: 'BR-404' }],
+      { knownPatientExternalIds: new Set(['P1']), knownBranchExternalIds: new Set(['BR-001']), locale: 'es-AR' }
+    );
+    expect(unmapped.some((i) => i.code === 'unmapped_branch')).toBe(true);
+
+    const mapped = validateAppointmentRows(
+      [{ rowNumber: 2, ...baseRow, externalBranchId: 'BR-001' }],
+      { knownPatientExternalIds: new Set(['P1']), knownBranchExternalIds: new Set(['BR-001']), locale: 'es-AR' }
+    );
+    expect(mapped.filter((i) => i.severity === 'error')).toHaveLength(0);
+  });
+
+  it('uses migration format version 1.3', () => {
+    expect(DATA_MIGRATION_FORMAT_VERSION).toBe('1.3');
+    expect(buildSampleMigrationManifest().version).toBe('1.3');
+  });
+});
+
+describe('data-migration branch-aware owners/patients (phase 30)', () => {
+  it('OWNER_IMPORT_FIELDS and PATIENT_IMPORT_FIELDS include external_branch_id', () => {
+    expect(OWNER_IMPORT_FIELDS.some((f) => f.key === 'external_branch_id')).toBe(true);
+    expect(PATIENT_IMPORT_FIELDS.some((f) => f.key === 'external_branch_id')).toBe(true);
+  });
+
+  it('validateOwnerRows flags unmapped external_branch_id', () => {
+    const issues = validateOwnerRows(
+      [
+        {
+          rowNumber: 2,
+          externalOwnerId: 'OWN-001',
+          externalBranchId: 'BR-404',
+          fullName: 'Juan Perez',
+          documentType: null,
+          documentNumber: null,
+          phone: null,
+          email: null,
+          address: null,
+          city: null,
+          province: null,
+          postalCode: null,
+          notes: null,
+        },
+      ],
+      { knownBranchExternalIds: new Set(['BR-001']) }
+    );
+    expect(issues.some((i) => i.code === 'unmapped_branch')).toBe(true);
+  });
+
+  it('buildOwnerTemplateCsv and buildPatientTemplateCsv include external_branch_id sample', () => {
+    expect(buildOwnerTemplateCsv()).toContain('external_branch_id');
+    expect(buildOwnerTemplateCsv()).toContain('BR-001');
+    expect(buildPatientTemplateCsv()).toContain('external_branch_id');
+    expect(buildPatientTemplateCsv()).toContain('BR-001');
+  });
+});
+
+describe('data-migration branch-aware clinical imports (phase 25)', () => {
+  it('CLINICAL_IMPORT_FIELDS includes external_branch_id', () => {
+    expect(CLINICAL_IMPORT_FIELDS.some((f) => f.key === 'external_branch_id')).toBe(true);
+  });
+
+  it('validateVaccinationRows flags unmapped external_branch_id', () => {
+    const issues = validateVaccinationRows(
+      [
+        {
+          rowNumber: 2,
+          externalVaccinationId: 'VAC-001',
+          externalPatientId: 'PAT-001',
+          externalBranchId: 'BR-404',
+          vaccineName: 'Antirrábica',
+          administeredAt: '2024-03-01',
+          nextDueAt: null,
+          manufacturer: null,
+          lotNumber: null,
+          originalVeterinarian: null,
+          notes: null,
+          sourceSystem: 'VetLegacy',
+        },
+      ],
+      {
+        knownPatientExternalIds: new Set(['PAT-001']),
+        knownBranchExternalIds: new Set(['BR-001']),
+        locale: 'es-AR',
+      }
+    );
+    expect(issues.some((i) => i.code === 'unmapped_branch')).toBe(true);
+  });
+
+  it('buildVaccinationTemplateCsv includes external_branch_id sample', () => {
+    const csv = buildVaccinationTemplateCsv();
+    expect(csv).toContain('external_branch_id');
+    expect(csv).toContain('BR-001');
+  });
+});
 
 describe('data-migration parseCsv', () => {
   it('parses quoted CSV with accents', () => {
@@ -99,6 +249,7 @@ describe('data-migration owner validation', () => {
       {
         rowNumber: 2,
         externalOwnerId: 'OWN-001',
+        externalBranchId: null,
         fullName: 'Juan Perez',
         documentType: 'DNI',
         documentNumber: '30111222',
@@ -119,6 +270,7 @@ describe('data-migration owner validation', () => {
       {
         rowNumber: 2,
         externalOwnerId: '',
+        externalBranchId: null,
         fullName: '',
         documentType: null,
         documentNumber: null,
@@ -141,6 +293,7 @@ describe('data-migration owner validation', () => {
         {
           rowNumber: 2,
           externalOwnerId: 'OWN-001',
+          externalBranchId: null,
           fullName: 'Juan Perez',
           documentType: 'DNI',
           documentNumber: '30.111.222',
@@ -167,6 +320,7 @@ describe('data-migration patient validation', () => {
           rowNumber: 2,
           externalPatientId: 'PAT-001',
           externalOwnerId: 'OWN-MISSING',
+          externalBranchId: null,
           name: 'Rocky',
           species: 'Canino',
           breed: null,
@@ -191,6 +345,7 @@ describe('data-migration patient validation', () => {
           rowNumber: 2,
           externalPatientId: 'PAT-001',
           externalOwnerId: 'OWN-001',
+          externalBranchId: null,
           name: 'Rocky',
           species: 'Canino',
           breed: null,
@@ -220,6 +375,7 @@ describe('data-migration clinical validation', () => {
           rowNumber: 2,
           externalClinicalId: 'CLI-001',
           externalPatientId: 'PAT-X',
+          externalBranchId: null,
           originalDate: '03/04/2024',
           originalVeterinarian: 'Dr. Lopez',
           recordType: 'consulta',
@@ -261,6 +417,7 @@ describe('data-migration vaccination validation', () => {
           rowNumber: 2,
           externalVaccinationId: 'VAC-001',
           externalPatientId: 'PAT-404',
+          externalBranchId: null,
           vaccineName: 'Antirrábica',
           administeredAt: 'no-date',
           nextDueAt: null,
@@ -303,6 +460,7 @@ describe('data-migration specialty + chunks', () => {
           rowNumber: 2,
           externalLabOrderId: 'LAB-1',
           externalPatientId: 'PAT-X',
+          externalBranchId: 'BR-404',
           orderedAt: '2024-01-01',
           title: 'Hemograma',
           tests: 'Hemograma',
@@ -314,9 +472,14 @@ describe('data-migration specialty + chunks', () => {
           sourceSystem: null,
         },
       ],
-      { knownPatientExternalIds: new Set(['PAT-001']), locale: 'iso' }
+      {
+        knownPatientExternalIds: new Set(['PAT-001']),
+        knownBranchExternalIds: new Set(['BR-001']),
+        locale: 'iso',
+      }
     );
     expect(issues.some((i) => i.code === 'missing_patient')).toBe(true);
+    expect(issues.some((i) => i.code === 'unmapped_branch')).toBe(true);
   });
 
   it('parses attachment paths and chunks ranges', () => {
@@ -363,11 +526,15 @@ describe('data-migration specialty + chunks', () => {
   });
 
   it('orders full migration guide steps', () => {
+    expect(nextFullMigrationStep('branches')).toBe('owners');
     expect(nextFullMigrationStep('owners')).toBe('patients');
     expect(nextFullMigrationStep('attachments')).toBeNull();
+    expect(previousFullMigrationStep('owners')).toBe('branches');
     expect(previousFullMigrationStep('patients')).toBe('owners');
-    expect(FULL_MIGRATION_STEPS).toHaveLength(13);
+    expect(FULL_MIGRATION_STEPS).toHaveLength(15);
+    expect(FULL_MIGRATION_STEPS).toContain('branches');
     expect(FULL_MIGRATION_STEPS).toContain('appointments');
+    expect(FULL_MIGRATION_STEPS).toContain('consultations');
     expect(FULL_MIGRATION_STEPS).toContain('inventory_products');
     expect(FULL_MIGRATION_STEPS).toContain('invoices');
     expect(FULL_MIGRATION_STEPS).toContain('payments');
@@ -405,8 +572,28 @@ describe('data-migration specialty + chunks', () => {
   });
 
   it('labels specialty exports with items', () => {
+    expect(EXPORT_TYPE_LABELS.branches).toMatch(/sucursal/i);
     expect(EXPORT_TYPE_LABELS.prescriptions).toMatch(/ítems/i);
     expect(EXPORT_TYPE_LABELS.lab_orders).toMatch(/ítems/i);
+  });
+
+  it('validates branch rows and template csv', () => {
+    const issues = validateBranchRows([
+      {
+        rowNumber: 2,
+        externalBranchId: 'BR-001',
+        name: 'Sede Centro',
+        code: 'CENTRO',
+        address: null,
+        phone: null,
+        email: null,
+        timezone: null,
+        isActive: 'true',
+        sourceSystem: 'legacy',
+      },
+    ]);
+    expect(issues.filter((i) => i.severity === 'error')).toHaveLength(0);
+    expect(buildBranchTemplateCsv()).toContain('external_branch_id');
   });
 
   it('parses appointment datetimes and validates rows', () => {
@@ -430,7 +617,10 @@ describe('data-migration specialty + chunks', () => {
       { knownPatientExternalIds: new Set(['P1']), locale: 'es-AR' }
     );
     expect(issues.filter((i) => i.severity === 'error')).toHaveLength(0);
-    expect(buildAppointmentTemplateCsv()).toContain('external_appointment_id');
+    const template = buildAppointmentTemplateCsv();
+    expect(template).toContain('external_appointment_id');
+    expect(template).toContain('external_branch_id');
+    expect(template).toContain('BR-001');
   });
 
   it('validates inventory product rows', () => {
@@ -533,9 +723,68 @@ describe('data-migration specialty + chunks', () => {
 
   it('labels appointments export', () => {
     expect(EXPORT_TYPE_LABELS.appointments).toMatch(/agenda|citas/i);
+    expect(EXPORT_TYPE_LABELS.consultations).toMatch(/consulta/i);
     expect(EXPORT_TYPE_LABELS.inventory_products).toMatch(/inventario/i);
     expect(EXPORT_TYPE_LABELS.invoices).toMatch(/factura/i);
     expect(EXPORT_TYPE_LABELS.payments).toMatch(/pago/i);
+    expect(EXPORT_TYPE_LABELS.cash_sessions).toMatch(/caja/i);
+  });
+
+  it('cash_sessions is export-only (phase 24)', () => {
+    expect(EXPORT_TYPES).toContain('cash_sessions');
+    expect(EXPORT_TYPE_LABELS.cash_sessions).toBeDefined();
+    expect(IMPORT_TYPES).not.toContain('cash_sessions');
+    expect(FULL_MIGRATION_STEPS).not.toContain('cash_sessions');
+  });
+
+  it('reminder_logs is export-only (phase 27)', () => {
+    expect(EXPORT_TYPES).toContain('reminder_logs');
+    expect(EXPORT_TYPE_LABELS.reminder_logs).toBeDefined();
+    expect(IMPORT_TYPES).not.toContain('reminder_logs');
+    expect(FULL_MIGRATION_STEPS).not.toContain('reminder_logs');
+  });
+
+  it('whatsapp_messages is export-only (phase 28)', () => {
+    expect(EXPORT_TYPES).toContain('whatsapp_messages');
+    expect(EXPORT_TYPE_LABELS.whatsapp_messages).toBeDefined();
+    expect(IMPORT_TYPES).not.toContain('whatsapp_messages');
+    expect(FULL_MIGRATION_STEPS).not.toContain('whatsapp_messages');
+  });
+
+  it('audit_logs is export-only (phase 29)', () => {
+    expect(EXPORT_TYPES).toContain('audit_logs');
+    expect(EXPORT_TYPE_LABELS.audit_logs).toBeDefined();
+    expect(IMPORT_TYPES).not.toContain('audit_logs');
+    expect(FULL_MIGRATION_STEPS).not.toContain('audit_logs');
+  });
+
+  it('validates consultation rows', () => {
+    const issues = validateConsultationRows(
+      [
+        {
+          rowNumber: 2,
+          externalConsultationId: 'CON-001',
+          externalPatientId: 'PAT-001',
+          externalAppointmentId: 'APT-001',
+          startedAt: '2024-10-01 10:05',
+          completedAt: '2024-10-01 10:35',
+          status: 'completada',
+          title: 'Control',
+          anamnesis: null,
+          physicalExam: null,
+          diagnosis: null,
+          treatment: null,
+          plan: null,
+          weightKg: null,
+          temperatureC: null,
+          notes: null,
+          sourceSystem: 'legacy',
+        },
+      ],
+      { knownPatientExternalIds: new Set(['PAT-001']), locale: 'es-AR' }
+    );
+    expect(issues.filter((i) => i.severity === 'error')).toHaveLength(0);
+    expect(buildConsultationTemplateCsv()).toContain('external_consultation_id');
   });
 
   it('warns appointment overlaps in file', () => {
@@ -585,6 +834,63 @@ describe('data-migration specialty + chunks', () => {
   it('defines upload size caps', () => {
     expect(MAX_IMPORT_CSV_BYTES).toBe(25 * 1024 * 1024);
     expect(MAX_IMPORT_ZIP_BYTES).toBe(80 * 1024 * 1024);
+  });
+
+  it('builds cutover pack readme with org and go-live', () => {
+    const readme = buildCutoverPackReadme({
+      organizationId: 'org-cutover-1',
+      generatedAt: '2026-08-21T12:00:00Z',
+      readyForGolive: true,
+      checklistScoreOk: 8,
+      checklistScoreTotal: 8,
+      orphanCreatedTotal: 0,
+      orphanIdMapTotal: 0,
+      stuckImports: 0,
+      stuckExports: 0,
+      billingMismatch: 0,
+      billingPaidWithoutPayments: 0,
+    });
+    expect(readme).toContain('org-cutover-1');
+    expect(readme.toLowerCase()).toContain('go-live');
+  });
+
+  it('isCutoverPackReady when all clear or blocked on issues', () => {
+    expect(
+      isCutoverPackReady({
+        readyForGolive: true,
+        orphanCreatedTotal: 0,
+        orphanIdMapTotal: 0,
+        stuckImports: 0,
+        stuckExports: 0,
+        billingMismatch: 0,
+      })
+    ).toBe(true);
+    expect(
+      isCutoverPackReady({
+        readyForGolive: true,
+        orphanCreatedTotal: 1,
+        orphanIdMapTotal: 0,
+        stuckImports: 0,
+        stuckExports: 0,
+        billingMismatch: 0,
+      })
+    ).toBe(false);
+    expect(
+      isCutoverPackReady({
+        readyForGolive: true,
+        orphanCreatedTotal: 0,
+        orphanIdMapTotal: 0,
+        stuckImports: 0,
+        stuckExports: 0,
+        billingMismatch: 2,
+      })
+    ).toBe(false);
+  });
+
+  it('defines cutover pack audit action', () => {
+    expect(DATA_MIGRATION_AUDIT_ACTIONS.cutoverPackDownloaded).toBe(
+      'data_migration.cutover_pack_downloaded'
+    );
   });
 
   it('builds integrity and id-map reports', () => {

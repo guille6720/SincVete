@@ -319,8 +319,13 @@ export function UserManual({ toolbar }: { toolbar?: ReactNode }) {
         </p>
         <ul className="sv-steps">
           <li>
-            <strong>Orden recomendado:</strong> propietarios → pacientes → historias → vacunas → especialidades →
+            <strong>Orden recomendado:</strong> sucursales → propietarios → pacientes → historias → vacunas → especialidades →
             adjuntos.
+          </li>
+          <li>
+            <strong>Sucursales:</strong> exportá e importá sucursales (CSV con `external_branch_id`, `code`, `name`).
+            Van primero en la migración guiada. Nunca se promueve una sucursal importada a principal (`is_main` queda en
+            false); activá/desactivá con `is_active`.
           </li>
           <li>
             <strong>Dry-run:</strong> validá antes de confirmar. Descargá el reporte CSV si hay avisos o errores.
@@ -348,14 +353,29 @@ export function UserManual({ toolbar }: { toolbar?: ReactNode }) {
             stale y podar mapas huérfanos (simulá primero).
           </li>
           <li>
+            <strong>Multi-sede:</strong> en propietarios, pacientes, historias clínicas, vacunas, laboratorio,
+            cirugías, recetas, internaciones, agenda, consultas, inventario y facturas podés usar la columna
+            opcional `external_branch_id` para asignar cada fila a una sucursal. Importá sucursales antes; si el
+            ID no está mapeado, la fila falla (no se usa la sucursal por defecto en silencio).
+          </li>
+          <li>
             <strong>Agenda:</strong> exportá e importá citas (CSV con `starts_at`/`ends_at`). En la
-            migración guiada van después de internaciones y antes de adjuntos. El dry-run avisa
+            migración guiada van después de internaciones y antes de consultas. El dry-run avisa
             solapamientos del mismo paciente en el archivo.
+          </li>
+          <li>
+            <strong>Consultas:</strong> exportá e importá consultas SOAP (CSV con `started_at`/`completed_at`).
+            Podés vincular `external_appointment_id` si importaste citas antes. En la migración guiada
+            van después de agenda y antes de inventario.
           </li>
           <li>
             <strong>Checklist go-live:</strong> en el historial de importación podés correr un
             checklist (propietarios, pacientes, citas 30d, vacunas, inventario, locks/huérfanos) y
             descargarlo en CSV.
+          </li>
+          <li>
+            <strong>Paquete cutover:</strong> antes del go-live descargá el ZIP de cutover (integridad,
+            checklist y conciliación de facturación). Es solo lectura: no modifica datos, planes ni caja.
           </li>
           <li>
             <strong>Inventario:</strong> exportá e importá productos (CSV con SKU/categoría/stock). En
@@ -365,6 +385,22 @@ export function UserManual({ toolbar }: { toolbar?: ReactNode }) {
             <strong>Facturas:</strong> exportá e importá facturas con ítems. Los pagos se importan
             aparte (histórico, sin caja) y también se pueden exportar solos. Usá la conciliación de
             facturación para comparar `paid_amount` vs suma de pagos antes del go-live.
+          </li>
+          <li>
+            <strong>Caja:</strong> exportá sesiones de caja históricas con sus movimientos. No se
+            importa caja (no reabre sesiones ni crea movimientos).
+          </li>
+          <li>
+            <strong>Recordatorios:</strong> exportá el historial de <code>reminder_logs</code> (envíos
+            y estados). No se importa — evita reenviar notificaciones o WhatsApp.
+          </li>
+          <li>
+            <strong>WhatsApp:</strong> exportá el historial de <code>whatsapp_messages</code> (mensajes
+            enviados). No se importa — evita reenviar mensajes o recrear efectos secundarios.
+          </li>
+          <li>
+            <strong>Auditoría:</strong> exportá el historial de <code>audit_logs</code> (acciones y
+            cambios). No se importa — no reescribe la pista de auditoría.
           </li>
           <li>
             <strong>Rollback:</strong> solo revierte filas creadas por ese lote (no toca datos previos).

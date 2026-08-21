@@ -31,6 +31,7 @@ import {
   downloadIntegrityReportAction,
   downloadMigrationChecklistAction,
   downloadBillingReconcileAction,
+  downloadCutoverPackAction,
   downloadSampleMigrationZipAction,
   downloadValidationReportAction,
   getDataMigrationChecklistAction,
@@ -110,11 +111,14 @@ export function DataMigrationPanel({
     issues: ValidationIssue[];
   } | null>(null);
   const [ownerIdByExternal, setOwnerIdByExternal] = useState<Record<string, string>>({});
+  const [branchIdByExternal, setBranchIdByExternal] = useState<Record<string, string>>({});
   const [patientIdByExternal, setPatientIdByExternal] = useState<Record<string, string>>({});
   const [productIdByExternal, setProductIdByExternal] = useState<Record<string, string>>({});
   const [invoiceIdByExternal, setInvoiceIdByExternal] = useState<Record<string, string>>({});
+  const [appointmentIdByExternal, setAppointmentIdByExternal] = useState<Record<string, string>>({});
   const [importReport, setImportReport] = useState<string | null>(null);
   const [zipPack, setZipPack] = useState<{
+    branchesCsv: string | null;
     ownersCsv: string | null;
     patientsCsv: string | null;
     clinicalCsv: string | null;
@@ -124,6 +128,7 @@ export function DataMigrationPanel({
     prescriptionsCsv: string | null;
     hospitalizationsCsv: string | null;
     appointmentsCsv: string | null;
+    consultationsCsv: string | null;
     inventoryProductsCsv: string | null;
     invoicesCsv: string | null;
     paymentsCsv: string | null;
@@ -138,7 +143,7 @@ export function DataMigrationPanel({
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [queuedBatchId, setQueuedBatchId] = useState<string | null>(null);
-  const [guideStep, setGuideStep] = useState<FullMigrationStep>('owners');
+  const [guideStep, setGuideStep] = useState<FullMigrationStep>('branches');
 
   const [importHistory, setImportHistory] = useState<Array<Record<string, unknown>>>([]);
   const [exportHistory, setExportHistory] = useState<Array<Record<string, unknown>>>([]);
@@ -150,6 +155,7 @@ export function DataMigrationPanel({
       if (guideStep === 'attachments') return 'owners' as const;
       return guideStep;
     }
+    if (importType === 'branches') return 'branches' as const;
     if (importType === 'patients') return 'patients' as const;
     if (importType === 'clinical_entries') return 'clinical_entries' as const;
     if (importType === 'vaccinations') return 'vaccinations' as const;
@@ -158,6 +164,7 @@ export function DataMigrationPanel({
     if (importType === 'prescriptions') return 'prescriptions' as const;
     if (importType === 'hospitalizations') return 'hospitalizations' as const;
     if (importType === 'appointments') return 'appointments' as const;
+    if (importType === 'consultations') return 'consultations' as const;
     if (importType === 'inventory_products') return 'inventory_products' as const;
     if (importType === 'invoices') return 'invoices' as const;
     if (importType === 'payments') return 'payments' as const;
@@ -167,6 +174,7 @@ export function DataMigrationPanel({
 
   async function onDownloadTemplate(
     kind:
+      | 'branches'
       | 'owners'
       | 'patients'
       | 'clinical_entries'
@@ -176,6 +184,7 @@ export function DataMigrationPanel({
       | 'prescriptions'
       | 'hospitalizations'
       | 'appointments'
+      | 'consultations'
       | 'inventory_products'
       | 'invoices'
       | 'payments'
@@ -242,6 +251,7 @@ export function DataMigrationPanel({
         return;
       }
       setZipPack({
+        branchesCsv: result.data.branchesCsv,
         ownersCsv: result.data.ownersCsv,
         patientsCsv: result.data.patientsCsv,
         clinicalCsv: result.data.clinicalCsv,
@@ -251,15 +261,21 @@ export function DataMigrationPanel({
         prescriptionsCsv: result.data.prescriptionsCsv,
         hospitalizationsCsv: result.data.hospitalizationsCsv,
         appointmentsCsv: result.data.appointmentsCsv,
+        consultationsCsv: result.data.consultationsCsv,
         inventoryProductsCsv: result.data.inventoryProductsCsv,
         invoicesCsv: result.data.invoicesCsv,
         paymentsCsv: result.data.paymentsCsv,
       });
       const summary = result.data.summary;
       setMessage(
-        `ZIP SyncVete · owners ${summary.owners} · patients ${summary.patients} · clinical ${summary.clinicalRecords} · vacunas ${summary.vaccinations} · lab ${summary.labOrders} · cirugías ${summary.surgeries} · recetas ${summary.prescriptions} · internaciones ${summary.hospitalizations} · agenda ${summary.appointments} · inventario ${summary.inventoryProducts} · facturas ${summary.invoices} · pagos ${summary.payments} · adjuntos ${summary.attachments}`
+        `ZIP SyncVete · sucursales ${summary.branches ?? 0} · owners ${summary.owners} · patients ${summary.patients} · clinical ${summary.clinicalRecords} · vacunas ${summary.vaccinations} · lab ${summary.labOrders} · cirugías ${summary.surgeries} · recetas ${summary.prescriptions} · internaciones ${summary.hospitalizations} · agenda ${summary.appointments} · consultas ${summary.consultations} · inventario ${summary.inventoryProducts} · facturas ${summary.invoices} · pagos ${summary.payments} · adjuntos ${summary.attachments}`
       );
-      if (result.data.ownersCsv) {
+      if (result.data.branchesCsv) {
+        setImportType('full_migration');
+        setGuideStep('branches');
+        setCsvText(result.data.branchesCsv);
+        setSourceFilename('branches.csv');
+      } else if (result.data.ownersCsv) {
         setImportType('owners');
         setCsvText(result.data.ownersCsv);
         setSourceFilename('owners.csv');
@@ -317,6 +333,7 @@ export function DataMigrationPanel({
     form.set('knownPatientExternalIds', Object.keys(patientIdByExternal).join(','));
     form.set('knownInvoiceExternalIds', Object.keys(invoiceIdByExternal).join(','));
     form.set('invoiceIdByExternal', JSON.stringify(invoiceIdByExternal));
+    form.set('branchIdByExternal', JSON.stringify(branchIdByExternal));
     const result = await run(() => validateDataImport(form));
     if (!result?.success || !result.data) {
       setMessage(result?.error ?? 'Validación fallida');
@@ -377,9 +394,11 @@ export function DataMigrationPanel({
       form.set('csvText', csvText);
       form.set('mapping', JSON.stringify(mapping));
       form.set('ownerIdByExternal', JSON.stringify(ownerIdByExternal));
+      form.set('branchIdByExternal', JSON.stringify(branchIdByExternal));
       form.set('patientIdByExternal', JSON.stringify(patientIdByExternal));
       form.set('productIdByExternal', JSON.stringify(productIdByExternal));
       form.set('invoiceIdByExternal', JSON.stringify(invoiceIdByExternal));
+      form.set('appointmentIdByExternal', JSON.stringify(appointmentIdByExternal));
       form.set('sourceSystem', sourceSystem);
       form.set('offset', String(offset));
       form.set('chunkSize', String(DEFAULT_IMPORT_CHUNK_SIZE));
@@ -402,6 +421,9 @@ export function DataMigrationPanel({
       );
     }
 
+    if (entity === 'branches') {
+      setBranchIdByExternal((prev) => ({ ...prev, ...mergedIdMap }));
+    }
     if (entity === 'owners') {
       setOwnerIdByExternal((prev) => ({ ...prev, ...mergedIdMap }));
     }
@@ -413,6 +435,9 @@ export function DataMigrationPanel({
     }
     if (entity === 'invoices') {
       setInvoiceIdByExternal((prev) => ({ ...prev, ...mergedIdMap }));
+    }
+    if (entity === 'appointments') {
+      setAppointmentIdByExternal((prev) => ({ ...prev, ...mergedIdMap }));
     }
     setImportReport(`Import ${lastStatus}: ${totalImported} ok · ${totalFailed} fallidos`);
     setMessage(null);
@@ -430,9 +455,11 @@ export function DataMigrationPanel({
     form.set('csvText', csvText);
     form.set('mapping', JSON.stringify(mapping));
     form.set('ownerIdByExternal', JSON.stringify(ownerIdByExternal));
+    form.set('branchIdByExternal', JSON.stringify(branchIdByExternal));
     form.set('patientIdByExternal', JSON.stringify(patientIdByExternal));
     form.set('productIdByExternal', JSON.stringify(productIdByExternal));
     form.set('invoiceIdByExternal', JSON.stringify(invoiceIdByExternal));
+    form.set('appointmentIdByExternal', JSON.stringify(appointmentIdByExternal));
     form.set('sourceSystem', sourceSystem);
     form.set('rowDecisions', JSON.stringify(rowDecisions));
     form.set('validationIssues', JSON.stringify(validation.issues));
@@ -626,6 +653,20 @@ export function DataMigrationPanel({
     setMessage('Conciliación de facturación descargada');
   }
 
+  async function onDownloadCutoverPack() {
+    const result = await run(() => downloadCutoverPackAction());
+    if (!result?.success || !result.data) {
+      setMessage(result?.error ?? 'No se pudo descargar paquete cutover');
+      return;
+    }
+    downloadBase64(result.data.filename, result.data.contentType, result.data.base64);
+    setMessage(
+      result.data.ready
+        ? 'Paquete cutover descargado · listo para go-live'
+        : 'Paquete cutover descargado · revisar pendientes'
+    );
+  }
+
   async function onDownloadBatchErrors(id: string) {
     const form = new FormData();
     form.set('batchId', id);
@@ -793,7 +834,9 @@ export function DataMigrationPanel({
           <CardHeader>
             <CardTitle>Importar datos</CardTitle>
             <CardDescription>
-              Fase 20: export de pagos y conciliación paid_amount vs pagos.
+              Hito 1.3: multi-sede también en propietarios y pacientes (vía `external_branch_id` + mapa de
+              sucursales; importá sucursales primero). Historias, vacunas, lab, cirugías, recetas e internaciones
+              ya lo soportaban.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -816,7 +859,10 @@ export function DataMigrationPanel({
                             // keep importType as full_migration; entity derives from guideStep
                           }
                           if (zipPack) {
-                            if (step === 'owners' && zipPack.ownersCsv) {
+                            if (step === 'branches' && zipPack.branchesCsv) {
+                              setCsvText(zipPack.branchesCsv);
+                              setSourceFilename('branches.csv');
+                            } else if (step === 'owners' && zipPack.ownersCsv) {
                               setCsvText(zipPack.ownersCsv);
                               setSourceFilename('owners.csv');
                             } else if (step === 'patients' && zipPack.patientsCsv) {
@@ -843,6 +889,9 @@ export function DataMigrationPanel({
                             } else if (step === 'appointments' && zipPack.appointmentsCsv) {
                               setCsvText(zipPack.appointmentsCsv);
                               setSourceFilename('appointments.csv');
+                            } else if (step === 'consultations' && zipPack.consultationsCsv) {
+                              setCsvText(zipPack.consultationsCsv);
+                              setSourceFilename('consultations.csv');
                             } else if (step === 'inventory_products' && zipPack.inventoryProductsCsv) {
                               setCsvText(zipPack.inventoryProductsCsv);
                               setSourceFilename('inventory_products.csv');
@@ -869,7 +918,52 @@ export function DataMigrationPanel({
                     disabled={!nextFullMigrationStep(guideStep)}
                     onClick={() => {
                       const next = nextFullMigrationStep(guideStep);
-                      if (next) setGuideStep(next);
+                      if (!next) return;
+                      setGuideStep(next);
+                      if (!zipPack) return;
+                      if (next === 'branches' && zipPack.branchesCsv) {
+                        setCsvText(zipPack.branchesCsv);
+                        setSourceFilename('branches.csv');
+                      } else if (next === 'owners' && zipPack.ownersCsv) {
+                        setCsvText(zipPack.ownersCsv);
+                        setSourceFilename('owners.csv');
+                      } else if (next === 'patients' && zipPack.patientsCsv) {
+                        setCsvText(zipPack.patientsCsv);
+                        setSourceFilename('patients.csv');
+                      } else if (next === 'clinical_entries' && zipPack.clinicalCsv) {
+                        setCsvText(zipPack.clinicalCsv);
+                        setSourceFilename('clinical_records.csv');
+                      } else if (next === 'vaccinations' && zipPack.vaccinationsCsv) {
+                        setCsvText(zipPack.vaccinationsCsv);
+                        setSourceFilename('vaccinations.csv');
+                      } else if (next === 'lab_orders' && zipPack.labOrdersCsv) {
+                        setCsvText(zipPack.labOrdersCsv);
+                        setSourceFilename('lab_orders.csv');
+                      } else if (next === 'surgeries' && zipPack.surgeriesCsv) {
+                        setCsvText(zipPack.surgeriesCsv);
+                        setSourceFilename('surgeries.csv');
+                      } else if (next === 'prescriptions' && zipPack.prescriptionsCsv) {
+                        setCsvText(zipPack.prescriptionsCsv);
+                        setSourceFilename('prescriptions.csv');
+                      } else if (next === 'hospitalizations' && zipPack.hospitalizationsCsv) {
+                        setCsvText(zipPack.hospitalizationsCsv);
+                        setSourceFilename('hospitalizations.csv');
+                      } else if (next === 'appointments' && zipPack.appointmentsCsv) {
+                        setCsvText(zipPack.appointmentsCsv);
+                        setSourceFilename('appointments.csv');
+                      } else if (next === 'consultations' && zipPack.consultationsCsv) {
+                        setCsvText(zipPack.consultationsCsv);
+                        setSourceFilename('consultations.csv');
+                      } else if (next === 'inventory_products' && zipPack.inventoryProductsCsv) {
+                        setCsvText(zipPack.inventoryProductsCsv);
+                        setSourceFilename('inventory_products.csv');
+                      } else if (next === 'invoices' && zipPack.invoicesCsv) {
+                        setCsvText(zipPack.invoicesCsv);
+                        setSourceFilename('invoices.csv');
+                      } else if (next === 'payments' && zipPack.paymentsCsv) {
+                        setCsvText(zipPack.paymentsCsv);
+                        setSourceFilename('payments.csv');
+                      }
                     }}
                   >
                     Siguiente paso
@@ -901,7 +995,10 @@ export function DataMigrationPanel({
                     setHeaders([]);
                     setMapping({});
                     if (!zipPack) return;
-                    if (next === 'owners' && zipPack.ownersCsv) {
+                    if (next === 'branches' && zipPack.branchesCsv) {
+                      setCsvText(zipPack.branchesCsv);
+                      setSourceFilename('branches.csv');
+                    } else if (next === 'owners' && zipPack.ownersCsv) {
                       setCsvText(zipPack.ownersCsv);
                       setSourceFilename('owners.csv');
                     } else if (next === 'patients' && zipPack.patientsCsv) {
@@ -928,6 +1025,9 @@ export function DataMigrationPanel({
                     } else if (next === 'appointments' && zipPack.appointmentsCsv) {
                       setCsvText(zipPack.appointmentsCsv);
                       setSourceFilename('appointments.csv');
+                    } else if (next === 'consultations' && zipPack.consultationsCsv) {
+                      setCsvText(zipPack.consultationsCsv);
+                      setSourceFilename('consultations.csv');
                     } else if (next === 'inventory_products' && zipPack.inventoryProductsCsv) {
                       setCsvText(zipPack.inventoryProductsCsv);
                       setSourceFilename('inventory_products.csv');
@@ -967,6 +1067,9 @@ export function DataMigrationPanel({
             </div>
 
             <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadTemplate('branches')}>
+                Plantilla sucursales
+              </Button>
               <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadTemplate('owners')}>
                 Plantilla propietarios
               </Button>
@@ -993,6 +1096,9 @@ export function DataMigrationPanel({
               </Button>
               <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadTemplate('appointments')}>
                 Plantilla agenda
+              </Button>
+              <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadTemplate('consultations')}>
+                Plantilla consultas
               </Button>
               <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadTemplate('inventory_products')}>
                 Plantilla inventario
@@ -1172,8 +1278,12 @@ export function DataMigrationPanel({
           <CardHeader>
             <CardTitle>Exportar datos</CardTitle>
             <CardDescription>
-              CSV/JSON/XLSX/ZIP + módulos specialty. Opcional: rango de fechas y encolar para
-              background. ZIP completo incluye lab/cirugía/recetas/internación.
+              Fase 24: export de caja (sesiones + movimientos). Solo lectura — no hay import de caja.
+              Fase 27: export de recordatorios (historial). Solo lectura — no hay import (no reenvía
+              WhatsApp).               Fase 28: export de WhatsApp (historial). Solo lectura — no hay import (no
+              reenvía mensajes). Fase 29: export de auditoría (historial). Solo lectura — no hay import
+              (pista inmutable). CSV/JSON/XLSX/ZIP + módulos specialty. Opcional: rango de fechas y encolar
+              para background. ZIP completo incluye lab/cirugía/recetas/internación.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1249,6 +1359,9 @@ export function DataMigrationPanel({
             ) : null}
           </CardHeader>
           <CardContent className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              Fase 26: Paquete cutover: ZIP con integridad + checklist + conciliación (solo lectura).
+            </p>
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => void refreshIntegrity()}>
                 Actualizar integridad
@@ -1282,6 +1395,15 @@ export function DataMigrationPanel({
                 onClick={() => void onDownloadBillingReconcile()}
               >
                 Conciliación facturación
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending}
+                onClick={() => void onDownloadCutoverPack()}
+              >
+                Paquete cutover
               </Button>
               <Button
                 type="button"

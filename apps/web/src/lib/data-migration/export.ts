@@ -187,6 +187,138 @@ async function fetchInvoicePayments(
   return data ?? [];
 }
 
+async function fetchCashSessions(
+  organizationId: string,
+  bounds?: DateBounds,
+  db?: Awaited<ReturnType<typeof migrationDb>>
+) {
+  const supabase = db ?? (await migrationDb());
+  let query = supabase
+    .from('cash_sessions')
+    .select(
+      'id, branch_id, opened_by, closed_by, status, opening_amount, expected_cash, counted_cash, difference, notes, close_notes, opened_at, closed_at, created_at'
+    )
+    .eq('organization_id', organizationId)
+    .is('deleted_at', null)
+    .order('opened_at', { ascending: true })
+    .limit(5000);
+  if (bounds) query = applyDateFilter(query, 'opened_at', bounds);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+async function fetchCashMovements(
+  organizationId: string,
+  sessionIds: string[],
+  db?: Awaited<ReturnType<typeof migrationDb>>
+) {
+  if (sessionIds.length === 0) return [];
+  const supabase = db ?? (await migrationDb());
+  const { data, error } = await supabase
+    .from('cash_movements')
+    .select(
+      'id, cash_session_id, payment_id, recorded_by, kind, method, amount, notes, created_at'
+    )
+    .eq('organization_id', organizationId)
+    .is('deleted_at', null)
+    .in('cash_session_id', sessionIds.slice(0, 2000))
+    .order('created_at', { ascending: true })
+    .limit(20000);
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+async function fetchReminderLogs(
+  organizationId: string,
+  bounds?: DateBounds,
+  db?: Awaited<ReturnType<typeof migrationDb>>
+) {
+  const supabase = db ?? (await migrationDb());
+  let query = supabase
+    .from('reminder_logs')
+    .select(
+      'id, branch_id, reminder_type, related_id, owner_id, patient_id, channel, status, due_on, whatsapp_message_id, sent_by, sent_at, created_at'
+    )
+    .eq('organization_id', organizationId)
+    .is('deleted_at', null)
+    .order('sent_at', { ascending: true })
+    .limit(20000);
+  if (bounds) query = applyDateFilter(query, 'sent_at', bounds);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+async function fetchWhatsAppMessages(
+  organizationId: string,
+  bounds?: DateBounds,
+  db?: Awaited<ReturnType<typeof migrationDb>>
+) {
+  const supabase = db ?? (await migrationDb());
+  let query = supabase
+    .from('whatsapp_messages')
+    .select(
+      'id, branch_id, owner_id, patient_id, related_type, related_id, template_key, phone_e164, body, sent_by, created_at'
+    )
+    .eq('organization_id', organizationId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: true })
+    .limit(20000);
+  if (bounds) query = applyDateFilter(query, 'created_at', bounds);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+const AUDIT_LOG_CSV_HEADERS = [
+  'id',
+  'branch_id',
+  'user_id',
+  'action',
+  'entity_type',
+  'entity_id',
+  'old_data',
+  'new_data',
+  'ip_address',
+  'user_agent',
+  'created_at',
+] as const;
+
+function auditLogsForCsv(rows: Array<Record<string, unknown>>) {
+  return rows.map((row) => ({
+    ...row,
+    old_data:
+      row.old_data != null && typeof row.old_data === 'object'
+        ? JSON.stringify(row.old_data)
+        : (row.old_data ?? ''),
+    new_data:
+      row.new_data != null && typeof row.new_data === 'object'
+        ? JSON.stringify(row.new_data)
+        : (row.new_data ?? ''),
+  }));
+}
+
+async function fetchAuditLogs(
+  organizationId: string,
+  bounds?: DateBounds,
+  db?: Awaited<ReturnType<typeof migrationDb>>
+) {
+  const supabase = db ?? (await migrationDb());
+  let query = supabase
+    .from('audit_logs')
+    .select(
+      'id, branch_id, user_id, action, entity_type, entity_id, old_data, new_data, ip_address, user_agent, created_at'
+    )
+    .eq('organization_id', organizationId)
+    .order('created_at', { ascending: true })
+    .limit(20000);
+  if (bounds) query = applyDateFilter(query, 'created_at', bounds);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
 async function fetchAppointments(
   organizationId: string,
   patientId?: string | null,
@@ -206,6 +338,44 @@ async function fetchAppointments(
   if (patientId) query = query.eq('patient_id', patientId);
   if (bounds) query = applyDateFilter(query, 'starts_at', bounds);
   const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+async function fetchConsultations(
+  organizationId: string,
+  patientId?: string | null,
+  bounds?: DateBounds,
+  db?: Awaited<ReturnType<typeof migrationDb>>
+) {
+  const supabase = db ?? (await migrationDb());
+  let query = supabase
+    .from('consultations')
+    .select(
+      'id, branch_id, patient_id, owner_id, appointment_id, veterinarian_id, status, started_at, completed_at, title, anamnesis, physical_exam, diagnosis, treatment, plan, weight_kg, temperature_c, notes, source_system, source_record_id, imported_at, created_at'
+    )
+    .eq('organization_id', organizationId)
+    .is('deleted_at', null)
+    .order('started_at', { ascending: true })
+    .limit(20000);
+  if (patientId) query = query.eq('patient_id', patientId);
+  if (bounds) query = applyDateFilter(query, 'started_at', bounds);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+async function fetchBranches(organizationId: string, db?: Awaited<ReturnType<typeof migrationDb>>) {
+  const supabase = db ?? (await migrationDb());
+  const { data, error } = await supabase
+    .from('branches')
+    .select(
+      'id, name, code, address, phone, email, timezone, is_active, is_main, source_system, source_record_id, created_at'
+    )
+    .eq('organization_id', organizationId)
+    .is('deleted_at', null)
+    .order('name', { ascending: true })
+    .limit(1000);
   if (error) throw new Error(error.message);
   return data ?? [];
 }
@@ -646,21 +816,35 @@ export async function runExportJob(
       .update({ progress_message: 'Leyendo registros del tenant…' })
       .eq('id', jobId);
 
+    const needBranches = exportType === 'branches' || exportType === 'full_clinic';
+    const needCash = exportType === 'cash_sessions' || exportType === 'full_clinic';
+    const needReminders = exportType === 'reminder_logs' || exportType === 'full_clinic';
+    const needWhatsApp = exportType === 'whatsapp_messages' || exportType === 'full_clinic';
+    const needAudit = exportType === 'audit_logs' || exportType === 'full_clinic';
     const needPatients =
       exportType !== 'owners' &&
+      exportType !== 'branches' &&
+      exportType !== 'cash_sessions' &&
+      exportType !== 'reminder_logs' &&
+      exportType !== 'whatsapp_messages' &&
+      exportType !== 'audit_logs' &&
+      exportType !== 'invoices' &&
+      exportType !== 'payments' &&
       (exportType === 'patients' ||
         exportType === 'full_clinic' ||
         exportType === 'patient_clinical' ||
         exportType === 'clinical_entries' ||
         exportType === 'vaccinations' ||
         exportType === 'appointments' ||
+        exportType === 'consultations' ||
         specialtyOnly);
     const needOwners =
       exportType === 'owners' ||
       exportType === 'full_clinic' ||
       exportType === 'patient_clinical' ||
       exportType === 'patients' ||
-      exportType === 'appointments';
+      exportType === 'appointments' ||
+      exportType === 'consultations';
     const needClinical =
       exportType === 'clinical_entries' ||
       exportType === 'patient_clinical' ||
@@ -685,6 +869,10 @@ export async function runExportJob(
       exportType === 'appointments' ||
       exportType === 'full_clinic' ||
       exportType === 'patient_clinical';
+    const needConsultations =
+      exportType === 'consultations' ||
+      exportType === 'full_clinic' ||
+      exportType === 'patient_clinical';
     const needInventory =
       exportType === 'inventory_products' || exportType === 'full_clinic';
     const needInvoices =
@@ -693,6 +881,7 @@ export async function runExportJob(
       exportType === 'full_clinic' ||
       exportType === 'patient_clinical';
 
+    const branches = needBranches ? await fetchBranches(organizationId, supabase) : [];
     const owners = needOwners ? await fetchOwners(organizationId, supabase) : [];
     const patients = needPatients ? await fetchPatients(organizationId, supabase) : [];
     const clinical = needClinical
@@ -730,6 +919,9 @@ export async function runExportJob(
     const appointments = needAppointments
       ? await fetchAppointments(organizationId, job.patient_id, bounds, supabase)
       : [];
+    const consultations = needConsultations
+      ? await fetchConsultations(organizationId, job.patient_id, bounds, supabase)
+      : [];
     const inventoryProducts = needInventory
       ? await fetchInventoryProducts(organizationId, supabase)
       : [];
@@ -750,6 +942,23 @@ export async function runExportJob(
           supabase
         )
       : [];
+    const cashSessions = needCash
+      ? await fetchCashSessions(organizationId, bounds, supabase)
+      : [];
+    const cashMovements = needCash
+      ? await fetchCashMovements(
+          organizationId,
+          cashSessions.map((row: { id: string }) => row.id),
+          supabase
+        )
+      : [];
+    const reminderLogs = needReminders
+      ? await fetchReminderLogs(organizationId, bounds, supabase)
+      : [];
+    const whatsappMessages = needWhatsApp
+      ? await fetchWhatsAppMessages(organizationId, bounds, supabase)
+      : [];
+    const auditLogs = needAudit ? await fetchAuditLogs(organizationId, bounds, supabase) : [];
 
     const filteredPatients = job.patient_id
       ? patients.filter((p: { id: string }) => p.id === job.patient_id)
@@ -760,6 +969,7 @@ export async function runExportJob(
         : owners;
 
     const recordCounts: Record<string, number> = {
+      branches: branches.length,
       owners: filteredOwners.length,
       patients: filteredPatients.length,
       clinicalEntries: clinical.length,
@@ -771,10 +981,16 @@ export async function runExportJob(
       prescriptionItems: prescriptionItems.length,
       hospitalizations: hospitalizations.length,
       appointments: appointments.length,
+      consultations: consultations.length,
       inventoryProducts: inventoryProducts.length,
       invoices: invoices.length,
       invoiceItems: invoiceItems.length,
       invoicePayments: invoicePayments.length,
+      cashSessions: cashSessions.length,
+      cashMovements: cashMovements.length,
+      reminderLogs: reminderLogs.length,
+      whatsappMessages: whatsappMessages.length,
+      auditLogs: auditLogs.length,
     };
 
     const manifest = {
@@ -807,18 +1023,29 @@ export async function runExportJob(
                 ? vaccinations
                 : exportType === 'appointments'
                   ? appointments
-                  : exportType === 'inventory_products'
+                  : exportType === 'consultations'
+                    ? consultations
+                    : exportType === 'inventory_products'
                     ? inventoryProducts
                     : exportType === 'invoices'
                       ? invoices
                       : exportType === 'payments'
                         ? invoicePayments
-                        : null;
+                        : exportType === 'cash_sessions'
+                          ? cashSessions
+                          : exportType === 'reminder_logs'
+                            ? reminderLogs
+                            : exportType === 'whatsapp_messages'
+                              ? whatsappMessages
+                              : exportType === 'audit_logs'
+                                ? auditLogs
+                                : null;
 
     if (job.format === 'json') {
       body = JSON.stringify(
         {
           manifest,
+          branches,
           owners: filteredOwners,
           patients: filteredPatients,
           clinicalEntries: clinical,
@@ -828,10 +1055,16 @@ export async function runExportJob(
           prescriptions,
           hospitalizations,
           appointments,
+          consultations,
           inventoryProducts,
           invoices,
           invoiceItems,
           invoicePayments,
+          cashSessions,
+          cashMovements,
+          reminderLogs,
+          whatsappMessages,
+          auditLogs,
         },
         null,
         2
@@ -840,7 +1073,24 @@ export async function runExportJob(
       contentType = 'application/json;charset=utf-8';
     } else if (job.format === 'csv' || job.format === 'xlsx') {
       let csv: string;
-      if (exportType === 'owners') {
+      if (exportType === 'branches') {
+        csv = toCsv(
+          [
+            'id',
+            'name',
+            'code',
+            'address',
+            'phone',
+            'email',
+            'timezone',
+            'is_active',
+            'is_main',
+            'source_system',
+            'source_record_id',
+          ],
+          branches
+        );
+      } else if (exportType === 'owners') {
         csv = toCsv(
           [
             'id',
@@ -1033,6 +1283,31 @@ export async function runExportJob(
           ],
           appointments
         );
+      } else if (exportType === 'consultations') {
+        csv = toCsv(
+          [
+            'id',
+            'branch_id',
+            'patient_id',
+            'owner_id',
+            'appointment_id',
+            'started_at',
+            'completed_at',
+            'status',
+            'title',
+            'anamnesis',
+            'physical_exam',
+            'diagnosis',
+            'treatment',
+            'plan',
+            'weight_kg',
+            'temperature_c',
+            'notes',
+            'source_system',
+            'source_record_id',
+          ],
+          consultations
+        );
       } else if (exportType === 'inventory_products') {
         csv = toCsv(
           [
@@ -1140,6 +1415,122 @@ export async function runExportJob(
             };
           })
         );
+      } else if (exportType === 'cash_sessions') {
+        const sessionById = new Map(
+          cashSessions.map((row: { id: string }) => [row.id, row] as const)
+        );
+        csv = toCsv(
+          [
+            'cash_session_id',
+            'branch_id',
+            'status',
+            'opened_at',
+            'closed_at',
+            'opening_amount',
+            'expected_cash',
+            'counted_cash',
+            'difference',
+            'opened_by',
+            'closed_by',
+            'notes',
+            'close_notes',
+            'movement_id',
+            'payment_id',
+            'kind',
+            'method',
+            'amount',
+            'movement_notes',
+            'movement_created_at',
+          ],
+          cashMovements.length > 0
+            ? cashMovements.map((mov: Record<string, unknown>) => {
+                const session = sessionById.get(String(mov.cash_session_id)) as
+                  | Record<string, unknown>
+                  | undefined;
+                return {
+                  cash_session_id: mov.cash_session_id,
+                  branch_id: session?.branch_id ?? '',
+                  status: session?.status ?? '',
+                  opened_at: session?.opened_at ?? '',
+                  closed_at: session?.closed_at ?? '',
+                  opening_amount: session?.opening_amount ?? '',
+                  expected_cash: session?.expected_cash ?? '',
+                  counted_cash: session?.counted_cash ?? '',
+                  difference: session?.difference ?? '',
+                  opened_by: session?.opened_by ?? '',
+                  closed_by: session?.closed_by ?? '',
+                  notes: session?.notes ?? '',
+                  close_notes: session?.close_notes ?? '',
+                  movement_id: mov.id,
+                  payment_id: mov.payment_id ?? '',
+                  kind: mov.kind,
+                  method: mov.method,
+                  amount: mov.amount,
+                  movement_notes: mov.notes ?? '',
+                  movement_created_at: mov.created_at,
+                };
+              })
+            : cashSessions.map((session: Record<string, unknown>) => ({
+                cash_session_id: session.id,
+                branch_id: session.branch_id,
+                status: session.status,
+                opened_at: session.opened_at,
+                closed_at: session.closed_at ?? '',
+                opening_amount: session.opening_amount,
+                expected_cash: session.expected_cash ?? '',
+                counted_cash: session.counted_cash ?? '',
+                difference: session.difference ?? '',
+                opened_by: session.opened_by ?? '',
+                closed_by: session.closed_by ?? '',
+                notes: session.notes ?? '',
+                close_notes: session.close_notes ?? '',
+                movement_id: '',
+                payment_id: '',
+                kind: '',
+                method: '',
+                amount: '',
+                movement_notes: '',
+                movement_created_at: '',
+              }))
+        );
+      } else if (exportType === 'reminder_logs') {
+        csv = toCsv(
+          [
+            'id',
+            'branch_id',
+            'reminder_type',
+            'related_id',
+            'owner_id',
+            'patient_id',
+            'channel',
+            'status',
+            'due_on',
+            'whatsapp_message_id',
+            'sent_by',
+            'sent_at',
+            'created_at',
+          ],
+          reminderLogs
+        );
+      } else if (exportType === 'whatsapp_messages') {
+        csv = toCsv(
+          [
+            'id',
+            'branch_id',
+            'owner_id',
+            'patient_id',
+            'related_type',
+            'related_id',
+            'template_key',
+            'phone_e164',
+            'body',
+            'sent_by',
+            'created_at',
+          ],
+          whatsappMessages
+        );
+      } else if (exportType === 'audit_logs') {
+        csv = toCsv([...AUDIT_LOG_CSV_HEADERS], auditLogsForCsv(auditLogs));
       } else {
         csv = toCsv(
           [
@@ -1192,6 +1583,25 @@ export async function runExportJob(
       zip.file('manifest.json', JSON.stringify(manifest, null, 2));
       const dataFolder = zip.folder('data');
       if (!specialtyOnly) {
+        dataFolder?.file(
+          'branches.csv',
+          toCsv(
+            [
+              'id',
+              'name',
+              'code',
+              'address',
+              'phone',
+              'email',
+              'timezone',
+              'is_active',
+              'is_main',
+              'source_system',
+              'source_record_id',
+            ],
+            branches
+          )
+        );
         dataFolder?.file(
           'owners.csv',
           toCsv(
@@ -1398,6 +1808,33 @@ export async function runExportJob(
         )
       );
       dataFolder?.file(
+        'consultations.csv',
+        toCsv(
+          [
+            'id',
+            'branch_id',
+            'patient_id',
+            'owner_id',
+            'appointment_id',
+            'started_at',
+            'completed_at',
+            'status',
+            'title',
+            'anamnesis',
+            'physical_exam',
+            'diagnosis',
+            'treatment',
+            'plan',
+            'weight_kg',
+            'temperature_c',
+            'notes',
+            'source_system',
+            'source_record_id',
+          ],
+          consultations
+        )
+      );
+      dataFolder?.file(
         'inventory_products.csv',
         toCsv(
           [
@@ -1466,10 +1903,94 @@ export async function runExportJob(
           invoicePayments
         )
       );
+      dataFolder?.file(
+        'cash_sessions.csv',
+        toCsv(
+          [
+            'id',
+            'branch_id',
+            'opened_by',
+            'closed_by',
+            'status',
+            'opening_amount',
+            'expected_cash',
+            'counted_cash',
+            'difference',
+            'notes',
+            'close_notes',
+            'opened_at',
+            'closed_at',
+            'created_at',
+          ],
+          cashSessions
+        )
+      );
+      dataFolder?.file(
+        'cash_movements.csv',
+        toCsv(
+          [
+            'id',
+            'cash_session_id',
+            'payment_id',
+            'recorded_by',
+            'kind',
+            'method',
+            'amount',
+            'notes',
+            'created_at',
+          ],
+          cashMovements
+        )
+      );
+      dataFolder?.file(
+        'reminder_logs.csv',
+        toCsv(
+          [
+            'id',
+            'branch_id',
+            'reminder_type',
+            'related_id',
+            'owner_id',
+            'patient_id',
+            'channel',
+            'status',
+            'due_on',
+            'whatsapp_message_id',
+            'sent_by',
+            'sent_at',
+            'created_at',
+          ],
+          reminderLogs
+        )
+      );
+      dataFolder?.file(
+        'whatsapp_messages.csv',
+        toCsv(
+          [
+            'id',
+            'branch_id',
+            'owner_id',
+            'patient_id',
+            'related_type',
+            'related_id',
+            'template_key',
+            'phone_e164',
+            'body',
+            'sent_by',
+            'created_at',
+          ],
+          whatsappMessages
+        )
+      );
+      dataFolder?.file(
+        'audit_logs.csv',
+        toCsv([...AUDIT_LOG_CSV_HEADERS], auditLogsForCsv(auditLogs))
+      );
 
       if (specialtyRows && specialtyOnly) {
         dataFolder?.file(`${exportType}.json`, JSON.stringify(specialtyRows, null, 2));
       } else {
+        dataFolder?.file('branches.json', JSON.stringify(branches, null, 2));
         dataFolder?.file('owners.json', JSON.stringify(filteredOwners, null, 2));
         dataFolder?.file('patients.json', JSON.stringify(filteredPatients, null, 2));
         dataFolder?.file('clinical-records.json', JSON.stringify(clinical, null, 2));
@@ -1481,10 +2002,16 @@ export async function runExportJob(
         dataFolder?.file('prescription_items.json', JSON.stringify(prescriptionItems, null, 2));
         dataFolder?.file('hospitalizations.json', JSON.stringify(hospitalizations, null, 2));
         dataFolder?.file('appointments.json', JSON.stringify(appointments, null, 2));
+        dataFolder?.file('consultations.json', JSON.stringify(consultations, null, 2));
         dataFolder?.file('inventory_products.json', JSON.stringify(inventoryProducts, null, 2));
         dataFolder?.file('invoices.json', JSON.stringify(invoices, null, 2));
         dataFolder?.file('invoice_items.json', JSON.stringify(invoiceItems, null, 2));
         dataFolder?.file('invoice_payments.json', JSON.stringify(invoicePayments, null, 2));
+        dataFolder?.file('cash_sessions.json', JSON.stringify(cashSessions, null, 2));
+        dataFolder?.file('cash_movements.json', JSON.stringify(cashMovements, null, 2));
+        dataFolder?.file('reminder_logs.json', JSON.stringify(reminderLogs, null, 2));
+        dataFolder?.file('whatsapp_messages.json', JSON.stringify(whatsappMessages, null, 2));
+        dataFolder?.file('audit_logs.json', JSON.stringify(auditLogs, null, 2));
       }
 
       const patientIds = filteredPatients.map((p: { id: string }) => p.id);
@@ -1524,7 +2051,7 @@ export async function runExportJob(
         .folder('reports')
         ?.file(
           'export-summary.txt',
-          `SyncVete export\nType: ${job.export_type}\nRange: ${bounds.dateFrom ?? '—'} → ${bounds.dateTo ?? '—'}\nOwners: ${recordCounts.owners}\nPatients: ${recordCounts.patients}\nClinical: ${recordCounts.clinicalEntries}\nVaccinations: ${recordCounts.vaccinations}\nLab: ${recordCounts.labOrders}\nLab items: ${recordCounts.labOrderItems}\nSurgeries: ${recordCounts.surgeries}\nPrescriptions: ${recordCounts.prescriptions}\nPrescription items: ${recordCounts.prescriptionItems}\nHospitalizations: ${recordCounts.hospitalizations}\nAttachments: ${attachmentCount}\n`
+          `SyncVete export\nType: ${job.export_type}\nRange: ${bounds.dateFrom ?? '—'} → ${bounds.dateTo ?? '—'}\nBranches: ${recordCounts.branches ?? 0}\nOwners: ${recordCounts.owners}\nPatients: ${recordCounts.patients}\nClinical: ${recordCounts.clinicalEntries}\nVaccinations: ${recordCounts.vaccinations}\nLab: ${recordCounts.labOrders}\nLab items: ${recordCounts.labOrderItems}\nSurgeries: ${recordCounts.surgeries}\nPrescriptions: ${recordCounts.prescriptions}\nPrescription items: ${recordCounts.prescriptionItems}\nHospitalizations: ${recordCounts.hospitalizations}\nAppointments: ${recordCounts.appointments ?? 0}\nConsultations: ${recordCounts.consultations ?? 0}\nInventory: ${recordCounts.inventoryProducts ?? 0}\nInvoices: ${recordCounts.invoices ?? 0}\nInvoice items: ${recordCounts.invoiceItems ?? 0}\nInvoice payments: ${recordCounts.invoicePayments ?? 0}\nCash sessions: ${recordCounts.cashSessions ?? 0}\nCash movements: ${recordCounts.cashMovements ?? 0}\nReminder logs: ${recordCounts.reminderLogs ?? 0}\nWhatsApp messages: ${recordCounts.whatsappMessages ?? 0}\nAudit logs: ${recordCounts.auditLogs ?? 0}\nAttachments: ${attachmentCount}\n`
         );
       body = await zip.generateAsync({ type: 'uint8array' });
       filename = `SyncVete-Clinic-Export-${new Date().toISOString().slice(0, 10)}.zip`;
