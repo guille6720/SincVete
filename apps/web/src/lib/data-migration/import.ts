@@ -456,14 +456,13 @@ export async function dryRunImport(input: {
     readyCount = rows.filter((r) => !errorRows.has(r.rowNumber)).length;
   } else if (input.entity === 'clinical_entries') {
     const rows = asClinicalRows(parsed.rows, input.mapping);
-    let knownStaffInternalIds: Set<string> | undefined;
     const { data: profiles } = await supabase
       .from('profiles')
       .select('id')
       .eq('organization_id', session.organizationId)
       .is('deleted_at', null)
       .limit(5000);
-    knownStaffInternalIds = new Set(
+    const knownStaffInternalIds = new Set(
       ((profiles ?? []) as Array<{ id: string }>).map((p) => p.id).filter(Boolean)
     );
     issues = validateClinicalRows(rows, {
@@ -478,14 +477,13 @@ export async function dryRunImport(input: {
     readyCount = rows.filter((r) => !errorRows.has(r.rowNumber)).length;
   } else if (input.entity === 'vaccinations') {
     const rows = asVaccinationRows(parsed.rows, input.mapping);
-    let knownStaffInternalIds: Set<string> | undefined;
     const { data: profiles } = await supabase
       .from('profiles')
       .select('id')
       .eq('organization_id', session.organizationId)
       .is('deleted_at', null)
       .limit(5000);
-    knownStaffInternalIds = new Set(
+    const knownStaffInternalIds = new Set(
       ((profiles ?? []) as Array<{ id: string }>).map((p) => p.id).filter(Boolean)
     );
     issues = validateVaccinationRows(rows, {
