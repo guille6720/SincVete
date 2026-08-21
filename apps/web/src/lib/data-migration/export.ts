@@ -18,6 +18,18 @@ const EXPORT_RETENTION_DAYS = 7;
 
 type DateBounds = { dateFrom: string | null; dateTo: string | null };
 
+function withExternalBranch(row: Record<string, unknown>) {
+  return { ...row, external_branch_id: row.branch_id ?? '' };
+}
+
+function withExternalStaff(row: Record<string, unknown>, staffKey: string) {
+  return { ...row, external_assigned_user_id: row[staffKey] ?? '' };
+}
+
+function withExternalBranchAndStaff(row: Record<string, unknown>, staffKey: string) {
+  return withExternalStaff(withExternalBranch(row), staffKey);
+}
+
 function applyDateFilter(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- MigrationDb chain
   query: any,
@@ -132,7 +144,7 @@ async function fetchInvoices(
   let query = supabase
     .from('invoices')
     .select(
-      'id, branch_id, owner_id, patient_id, status, number, currency, issued_at, due_at, paid_at, voided_at, subtotal, tax_amount, total, paid_amount, balance, notes, created_at'
+      'id, branch_id, owner_id, patient_id, created_by, status, number, currency, issued_at, due_at, paid_at, voided_at, subtotal, tax_amount, total, paid_amount, balance, notes, created_at'
     )
     .eq('organization_id', organizationId)
     .is('deleted_at', null)
@@ -176,7 +188,7 @@ async function fetchInvoicePayments(
   const { data, error } = await supabase
     .from('payments')
     .select(
-      'id, invoice_id, method, amount, paid_at, reference, notes, created_at'
+      'id, invoice_id, recorded_by, method, amount, paid_at, reference, notes, created_at'
     )
     .eq('organization_id', organizationId)
     .is('deleted_at', null)
@@ -225,6 +237,38 @@ async function fetchCashMovements(
     .in('cash_session_id', sessionIds.slice(0, 2000))
     .order('created_at', { ascending: true })
     .limit(20000);
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+async function fetchStaffProfiles(
+  organizationId: string,
+  db?: Awaited<ReturnType<typeof migrationDb>>
+) {
+  const supabase = db ?? (await migrationDb());
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, phone, active_branch_id, is_active, created_at')
+    .eq('organization_id', organizationId)
+    .is('deleted_at', null)
+    .order('full_name', { ascending: true })
+    .limit(5000);
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+async function fetchStaffMemberships(
+  organizationId: string,
+  db?: Awaited<ReturnType<typeof migrationDb>>
+) {
+  const supabase = db ?? (await migrationDb());
+  const { data, error } = await supabase
+    .from('branch_members')
+    .select('id, branch_id, user_id, role, is_active, created_at')
+    .eq('organization_id', organizationId)
+    .is('deleted_at', null)
+    .order('user_id', { ascending: true })
+    .limit(10000);
   if (error) throw new Error(error.message);
   return data ?? [];
 }
@@ -319,6 +363,27 @@ async function fetchAuditLogs(
   return data ?? [];
 }
 
+async function fetchNotifications(
+  organizationId: string,
+  bounds?: DateBounds,
+  db?: Awaited<ReturnType<typeof migrationDb>>
+) {
+  const supabase = db ?? (await migrationDb());
+  let query = supabase
+    .from('notifications')
+    .select(
+      'id, branch_id, kind, title, body, href, related_type, related_id, created_at'
+    )
+    .eq('organization_id', organizationId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: true })
+    .limit(20000);
+  if (bounds) query = applyDateFilter(query, 'created_at', bounds);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
 async function fetchAppointments(
   organizationId: string,
   patientId?: string | null,
@@ -385,7 +450,7 @@ async function fetchOwners(organizationId: string, db?: Awaited<ReturnType<typeo
   const { data, error } = await supabase
     .from('owners')
     .select(
-      'id, full_name, email, phone, document_type, document_number, address, city, province, postal_code, notes, is_active, source_system, source_record_id, imported_at, created_at'
+      'id, branch_id, full_name, email, phone, document_type, document_number, address, city, province, postal_code, notes, is_active, source_system, source_record_id, imported_at, created_at'
     )
     .eq('organization_id', organizationId)
     .is('deleted_at', null)
@@ -400,7 +465,7 @@ async function fetchPatients(organizationId: string, db?: Awaited<ReturnType<typ
   const { data, error } = await supabase
     .from('patients')
     .select(
-      'id, owner_id, name, species, breed, sex, birth_date, microchip, color, notes, is_active, is_deceased, source_system, source_record_id, imported_at, created_at'
+      'id, branch_id, owner_id, name, species, breed, sex, birth_date, microchip, color, notes, is_active, is_deceased, source_system, source_record_id, imported_at, created_at'
     )
     .eq('organization_id', organizationId)
     .is('deleted_at', null)
@@ -420,7 +485,7 @@ async function fetchClinicalEntries(
   let query = supabase
     .from('clinical_entries')
     .select(
-      'id, patient_id, owner_id, entry_date, entry_type, title, anamnesis, physical_exam, diagnosis, treatment, plan, weight_kg, temperature_c, notes, source_system, source_record_id, original_created_at, original_professional_name, imported_at, created_at'
+      'id, branch_id, patient_id, owner_id, recorded_by, entry_date, entry_type, title, anamnesis, physical_exam, diagnosis, treatment, plan, weight_kg, temperature_c, notes, source_system, source_record_id, original_created_at, original_professional_name, imported_at, created_at'
     )
     .eq('organization_id', organizationId)
     .is('deleted_at', null)
@@ -443,7 +508,7 @@ async function fetchVaccinations(
   let query = supabase
     .from('vaccinations')
     .select(
-      'id, patient_id, owner_id, vaccine_name, manufacturer, lot_number, administered_at, next_due_at, notes, source_system, source_record_id, original_created_at, original_professional_name, imported_at, created_at'
+      'id, branch_id, patient_id, owner_id, veterinarian_id, vaccine_name, manufacturer, lot_number, administered_at, next_due_at, notes, source_system, source_record_id, original_created_at, original_professional_name, imported_at, created_at'
     )
     .eq('organization_id', organizationId)
     .is('deleted_at', null)
@@ -466,7 +531,7 @@ async function fetchLabOrders(
   let query = supabase
     .from('lab_orders')
     .select(
-      'id, patient_id, owner_id, title, status, priority, sample_type, ordered_at, completed_at, interpretation, notes, source_system, source_record_id, original_professional_name, imported_at, created_at'
+      'id, branch_id, patient_id, owner_id, ordered_by, title, status, priority, sample_type, ordered_at, completed_at, interpretation, notes, source_system, source_record_id, original_professional_name, imported_at, created_at'
     )
     .eq('organization_id', organizationId)
     .is('deleted_at', null)
@@ -510,7 +575,7 @@ async function fetchSurgeries(
   let query = supabase
     .from('surgeries')
     .select(
-      'id, patient_id, owner_id, procedure_name, status, scheduled_at, started_at, completed_at, notes, source_system, source_record_id, original_professional_name, imported_at, created_at'
+      'id, branch_id, patient_id, owner_id, surgeon_id, procedure_name, status, scheduled_at, started_at, completed_at, notes, source_system, source_record_id, original_professional_name, imported_at, created_at'
     )
     .eq('organization_id', organizationId)
     .is('deleted_at', null)
@@ -533,7 +598,7 @@ async function fetchPrescriptions(
   let query = supabase
     .from('prescriptions')
     .select(
-      'id, patient_id, owner_id, status, notes, prescribed_at, source_system, source_record_id, original_professional_name, imported_at, created_at'
+      'id, branch_id, patient_id, owner_id, prescribed_by, status, notes, prescribed_at, source_system, source_record_id, original_professional_name, imported_at, created_at'
     )
     .eq('organization_id', organizationId)
     .is('deleted_at', null)
@@ -577,7 +642,7 @@ async function fetchHospitalizations(
   let query = supabase
     .from('hospitalizations')
     .select(
-      'id, patient_id, owner_id, status, admitted_at, discharged_at, cage, reason, diagnosis, treatment_plan, notes, source_system, source_record_id, original_professional_name, imported_at, created_at'
+      'id, branch_id, patient_id, owner_id, veterinarian_id, status, admitted_at, discharged_at, cage, reason, diagnosis, treatment_plan, notes, source_system, source_record_id, original_professional_name, imported_at, created_at'
     )
     .eq('organization_id', organizationId)
     .is('deleted_at', null)
@@ -818,16 +883,21 @@ export async function runExportJob(
 
     const needBranches = exportType === 'branches' || exportType === 'full_clinic';
     const needCash = exportType === 'cash_sessions' || exportType === 'full_clinic';
+    const needStaff = exportType === 'staff_profiles' || exportType === 'full_clinic';
     const needReminders = exportType === 'reminder_logs' || exportType === 'full_clinic';
     const needWhatsApp = exportType === 'whatsapp_messages' || exportType === 'full_clinic';
     const needAudit = exportType === 'audit_logs' || exportType === 'full_clinic';
+    const needNotifications =
+      exportType === 'notifications' || exportType === 'full_clinic';
     const needPatients =
       exportType !== 'owners' &&
       exportType !== 'branches' &&
       exportType !== 'cash_sessions' &&
+      exportType !== 'staff_profiles' &&
       exportType !== 'reminder_logs' &&
       exportType !== 'whatsapp_messages' &&
       exportType !== 'audit_logs' &&
+      exportType !== 'notifications' &&
       exportType !== 'invoices' &&
       exportType !== 'payments' &&
       (exportType === 'patients' ||
@@ -959,6 +1029,13 @@ export async function runExportJob(
       ? await fetchWhatsAppMessages(organizationId, bounds, supabase)
       : [];
     const auditLogs = needAudit ? await fetchAuditLogs(organizationId, bounds, supabase) : [];
+    const notifications = needNotifications
+      ? await fetchNotifications(organizationId, bounds, supabase)
+      : [];
+    const staffProfiles = needStaff ? await fetchStaffProfiles(organizationId, supabase) : [];
+    const staffMemberships = needStaff
+      ? await fetchStaffMemberships(organizationId, supabase)
+      : [];
 
     const filteredPatients = job.patient_id
       ? patients.filter((p: { id: string }) => p.id === job.patient_id)
@@ -991,6 +1068,9 @@ export async function runExportJob(
       reminderLogs: reminderLogs.length,
       whatsappMessages: whatsappMessages.length,
       auditLogs: auditLogs.length,
+      notifications: notifications.length,
+      staffProfiles: staffProfiles.length,
+      staffMemberships: staffMemberships.length,
     };
 
     const manifest = {
@@ -1033,13 +1113,17 @@ export async function runExportJob(
                         ? invoicePayments
                         : exportType === 'cash_sessions'
                           ? cashSessions
-                          : exportType === 'reminder_logs'
+                          : exportType === 'staff_profiles'
+                            ? staffProfiles
+                            : exportType === 'reminder_logs'
                             ? reminderLogs
                             : exportType === 'whatsapp_messages'
                               ? whatsappMessages
                               : exportType === 'audit_logs'
                                 ? auditLogs
-                                : null;
+                                : exportType === 'notifications'
+                                  ? notifications
+                                  : null;
 
     if (job.format === 'json') {
       body = JSON.stringify(
@@ -1062,9 +1146,12 @@ export async function runExportJob(
           invoicePayments,
           cashSessions,
           cashMovements,
+          staffProfiles,
+          staffMemberships,
           reminderLogs,
           whatsappMessages,
           auditLogs,
+          notifications,
         },
         null,
         2
@@ -1101,8 +1188,9 @@ export async function runExportJob(
             'email',
             'city',
             'source_record_id',
+            'external_branch_id',
           ],
-          filteredOwners
+          filteredOwners.map((row: Record<string, unknown>) => withExternalBranch(row))
         );
       } else if (exportType === 'patients') {
         csv = toCsv(
@@ -1116,8 +1204,9 @@ export async function runExportJob(
             'birth_date',
             'microchip',
             'source_record_id',
+            'external_branch_id',
           ],
-          filteredPatients
+          filteredPatients.map((row: Record<string, unknown>) => withExternalBranch(row))
         );
       } else if (exportType === 'vaccinations') {
         csv = toCsv(
@@ -1130,8 +1219,12 @@ export async function runExportJob(
             'manufacturer',
             'lot_number',
             'source_record_id',
+            'external_branch_id',
+            'external_assigned_user_id',
           ],
-          vaccinations
+          vaccinations.map((row: Record<string, unknown>) =>
+            withExternalBranchAndStaff(row, 'veterinarian_id')
+          )
         );
       } else if (exportType === 'lab_orders') {
         const labById = new Map(
@@ -1150,6 +1243,8 @@ export async function runExportJob(
             'reference_range',
             'flag',
             'source_record_id',
+            'external_branch_id',
+            'external_assigned_user_id',
           ],
           labOrderItems.length > 0
             ? labOrderItems.map((item: Record<string, unknown>) => {
@@ -1168,6 +1263,8 @@ export async function runExportJob(
                   reference_range: item.reference_range ?? '',
                   flag: item.flag ?? '',
                   source_record_id: order?.source_record_id ?? '',
+                  external_branch_id: order?.branch_id ?? '',
+                  external_assigned_user_id: order?.ordered_by ?? '',
                 };
               })
             : labOrders.map((order: Record<string, unknown>) => ({
@@ -1182,6 +1279,8 @@ export async function runExportJob(
                 reference_range: '',
                 flag: '',
                 source_record_id: order.source_record_id ?? '',
+                external_branch_id: order.branch_id ?? '',
+                external_assigned_user_id: order.ordered_by ?? '',
               }))
         );
       } else if (exportType === 'surgeries') {
@@ -1194,8 +1293,12 @@ export async function runExportJob(
             'scheduled_at',
             'notes',
             'source_record_id',
+            'external_branch_id',
+            'external_assigned_user_id',
           ],
-          surgeries
+          surgeries.map((row: Record<string, unknown>) =>
+            withExternalBranchAndStaff(row, 'surgeon_id')
+          )
         );
       } else if (exportType === 'prescriptions') {
         const rxById = new Map(
@@ -1215,6 +1318,8 @@ export async function runExportJob(
             'quantity',
             'instructions',
             'source_record_id',
+            'external_branch_id',
+            'external_assigned_user_id',
           ],
           prescriptionItems.length > 0
             ? prescriptionItems.map((item: Record<string, unknown>) => {
@@ -1234,6 +1339,8 @@ export async function runExportJob(
                   quantity: item.quantity ?? '',
                   instructions: item.instructions ?? '',
                   source_record_id: rx?.source_record_id ?? '',
+                  external_branch_id: rx?.branch_id ?? '',
+                  external_assigned_user_id: rx?.prescribed_by ?? '',
                 };
               })
             : prescriptions.map((rx: Record<string, unknown>) => ({
@@ -1249,6 +1356,8 @@ export async function runExportJob(
                 quantity: '',
                 instructions: '',
                 source_record_id: rx.source_record_id ?? '',
+                external_branch_id: rx.branch_id ?? '',
+                external_assigned_user_id: rx.prescribed_by ?? '',
               }))
         );
       } else if (exportType === 'hospitalizations') {
@@ -1263,14 +1372,17 @@ export async function runExportJob(
             'diagnosis',
             'cage',
             'source_record_id',
+            'external_branch_id',
+            'external_assigned_user_id',
           ],
-          hospitalizations
+          hospitalizations.map((row: Record<string, unknown>) =>
+            withExternalBranchAndStaff(row, 'veterinarian_id')
+          )
         );
       } else if (exportType === 'appointments') {
         csv = toCsv(
           [
             'id',
-            'branch_id',
             'patient_id',
             'owner_id',
             'starts_at',
@@ -1280,14 +1392,17 @@ export async function runExportJob(
             'title',
             'notes',
             'cancellation_reason',
+            'external_branch_id',
+            'external_assigned_user_id',
           ],
-          appointments
+          appointments.map((row: Record<string, unknown>) =>
+            withExternalStaff(withExternalBranch(row), 'assigned_user_id')
+          )
         );
       } else if (exportType === 'consultations') {
         csv = toCsv(
           [
             'id',
-            'branch_id',
             'patient_id',
             'owner_id',
             'appointment_id',
@@ -1305,8 +1420,12 @@ export async function runExportJob(
             'notes',
             'source_system',
             'source_record_id',
+            'external_branch_id',
+            'external_assigned_user_id',
           ],
-          consultations
+          consultations.map((row: Record<string, unknown>) =>
+            withExternalBranchAndStaff(row, 'veterinarian_id')
+          )
         );
       } else if (exportType === 'inventory_products') {
         csv = toCsv(
@@ -1346,6 +1465,8 @@ export async function runExportJob(
             'unit_price',
             'line_total',
             'inventory_product_id',
+            'external_branch_id',
+            'external_assigned_user_id',
           ],
           invoiceItems.length > 0
             ? invoiceItems.map((item: Record<string, unknown>) => {
@@ -1368,6 +1489,7 @@ export async function runExportJob(
                   unit_price: item.unit_price,
                   line_total: item.line_total,
                   inventory_product_id: item.inventory_product_id ?? '',
+                  ...withExternalBranchAndStaff(inv ?? {}, 'created_by'),
                 };
               })
             : invoices.map((inv: Record<string, unknown>) => ({
@@ -1386,6 +1508,7 @@ export async function runExportJob(
                 unit_price: '',
                 line_total: '',
                 inventory_product_id: '',
+                ...withExternalBranchAndStaff(inv, 'created_by'),
               }))
         );
       } else if (exportType === 'payments') {
@@ -1400,6 +1523,7 @@ export async function runExportJob(
             'paid_at',
             'reference',
             'notes',
+            'external_assigned_user_id',
           ],
           invoicePayments.map((pay: Record<string, unknown>) => {
             const inv = invById.get(String(pay.invoice_id)) as Record<string, unknown> | undefined;
@@ -1412,6 +1536,7 @@ export async function runExportJob(
               paid_at: pay.paid_at,
               reference: pay.reference ?? '',
               notes: pay.notes ?? '',
+              external_assigned_user_id: pay.recorded_by ?? '',
             };
           })
         );
@@ -1493,6 +1618,60 @@ export async function runExportJob(
                 movement_created_at: '',
               }))
         );
+      } else if (exportType === 'staff_profiles') {
+        const profileById = new Map(
+          staffProfiles.map((row: { id: string }) => [row.id, row] as const)
+        );
+        csv = toCsv(
+          [
+            'profile_id',
+            'full_name',
+            'phone',
+            'active_branch_id',
+            'profile_is_active',
+            'profile_created_at',
+            'membership_id',
+            'branch_id',
+            'user_id',
+            'role',
+            'membership_is_active',
+            'membership_created_at',
+          ],
+          staffMemberships.length > 0
+            ? staffMemberships.map((mem: Record<string, unknown>) => {
+                const profile = profileById.get(String(mem.user_id)) as
+                  | Record<string, unknown>
+                  | undefined;
+                return {
+                  profile_id: profile?.id ?? '',
+                  full_name: profile?.full_name ?? '',
+                  phone: profile?.phone ?? '',
+                  active_branch_id: profile?.active_branch_id ?? '',
+                  profile_is_active: profile?.is_active ?? '',
+                  profile_created_at: profile?.created_at ?? '',
+                  membership_id: mem.id,
+                  branch_id: mem.branch_id,
+                  user_id: mem.user_id,
+                  role: mem.role,
+                  membership_is_active: mem.is_active,
+                  membership_created_at: mem.created_at,
+                };
+              })
+            : staffProfiles.map((profile: Record<string, unknown>) => ({
+                profile_id: profile.id,
+                full_name: profile.full_name,
+                phone: profile.phone ?? '',
+                active_branch_id: profile.active_branch_id ?? '',
+                profile_is_active: profile.is_active,
+                profile_created_at: profile.created_at,
+                membership_id: '',
+                branch_id: '',
+                user_id: profile.id,
+                role: '',
+                membership_is_active: '',
+                membership_created_at: '',
+              }))
+        );
       } else if (exportType === 'reminder_logs') {
         csv = toCsv(
           [
@@ -1531,6 +1710,21 @@ export async function runExportJob(
         );
       } else if (exportType === 'audit_logs') {
         csv = toCsv([...AUDIT_LOG_CSV_HEADERS], auditLogsForCsv(auditLogs));
+      } else if (exportType === 'notifications') {
+        csv = toCsv(
+          [
+            'id',
+            'branch_id',
+            'kind',
+            'title',
+            'body',
+            'href',
+            'related_type',
+            'related_id',
+            'created_at',
+          ],
+          notifications
+        );
       } else {
         csv = toCsv(
           [
@@ -1543,8 +1737,12 @@ export async function runExportJob(
             'treatment',
             'original_professional_name',
             'source_system',
+            'external_branch_id',
+            'external_assigned_user_id',
           ],
-          clinical
+          clinical.map((row: Record<string, unknown>) =>
+            withExternalBranchAndStaff(row, 'recorded_by')
+          )
         );
       }
 
@@ -1582,6 +1780,9 @@ export async function runExportJob(
       const zip = new JSZip();
       zip.file('manifest.json', JSON.stringify(manifest, null, 2));
       const dataFolder = zip.folder('data');
+      const labByIdForZip = new Map(
+        labOrders.map((row: { id: string }) => [row.id, row] as const)
+      );
       if (!specialtyOnly) {
         dataFolder?.file(
           'branches.csv',
@@ -1619,8 +1820,9 @@ export async function runExportJob(
               'notes',
               'source_system',
               'source_record_id',
+              'external_branch_id',
             ],
-            filteredOwners
+            filteredOwners.map((row: Record<string, unknown>) => withExternalBranch(row))
           )
         );
         dataFolder?.file(
@@ -1639,8 +1841,9 @@ export async function runExportJob(
               'notes',
               'source_system',
               'source_record_id',
+              'external_branch_id',
             ],
-            filteredPatients
+            filteredPatients.map((row: Record<string, unknown>) => withExternalBranch(row))
           )
         );
         dataFolder?.file(
@@ -1660,8 +1863,12 @@ export async function runExportJob(
               'original_professional_name',
               'source_system',
               'source_record_id',
+              'external_branch_id',
+              'external_assigned_user_id',
             ],
-            clinical
+            clinical.map((row: Record<string, unknown>) =>
+              withExternalBranchAndStaff(row, 'recorded_by')
+            )
           )
         );
         dataFolder?.file(
@@ -1678,8 +1885,12 @@ export async function runExportJob(
               'notes',
               'source_system',
               'source_record_id',
+              'external_branch_id',
+              'external_assigned_user_id',
             ],
-            vaccinations
+            vaccinations.map((row: Record<string, unknown>) =>
+              withExternalBranchAndStaff(row, 'veterinarian_id')
+            )
           )
         );
       }
@@ -1699,8 +1910,12 @@ export async function runExportJob(
             'notes',
             'source_system',
             'source_record_id',
+            'external_branch_id',
+            'external_assigned_user_id',
           ],
-          labOrders
+          labOrders.map((row: Record<string, unknown>) =>
+            withExternalBranchAndStaff(row, 'ordered_by')
+          )
         )
       );
       dataFolder?.file(
@@ -1715,8 +1930,19 @@ export async function runExportJob(
             'reference_range',
             'flag',
             'sort_order',
+            'external_branch_id',
+            'external_assigned_user_id',
           ],
-          labOrderItems
+          labOrderItems.map((item: Record<string, unknown>) => {
+            const order = labByIdForZip.get(String(item.lab_order_id)) as
+              | Record<string, unknown>
+              | undefined;
+            return {
+              ...item,
+              external_branch_id: order?.branch_id ?? '',
+              external_assigned_user_id: order?.ordered_by ?? '',
+            };
+          })
         )
       );
       dataFolder?.file(
@@ -1731,8 +1957,12 @@ export async function runExportJob(
             'notes',
             'source_system',
             'source_record_id',
+            'external_branch_id',
+            'external_assigned_user_id',
           ],
-          surgeries
+          surgeries.map((row: Record<string, unknown>) =>
+            withExternalBranchAndStaff(row, 'surgeon_id')
+          )
         )
       );
       dataFolder?.file(
@@ -1746,8 +1976,12 @@ export async function runExportJob(
             'notes',
             'source_system',
             'source_record_id',
+            'external_branch_id',
+            'external_assigned_user_id',
           ],
-          prescriptions
+          prescriptions.map((row: Record<string, unknown>) =>
+            withExternalBranchAndStaff(row, 'prescribed_by')
+          )
         )
       );
       dataFolder?.file(
@@ -1784,8 +2018,12 @@ export async function runExportJob(
             'notes',
             'source_system',
             'source_record_id',
+            'external_branch_id',
+            'external_assigned_user_id',
           ],
-          hospitalizations
+          hospitalizations.map((row: Record<string, unknown>) =>
+            withExternalBranchAndStaff(row, 'veterinarian_id')
+          )
         )
       );
       dataFolder?.file(
@@ -1793,7 +2031,6 @@ export async function runExportJob(
         toCsv(
           [
             'id',
-            'branch_id',
             'patient_id',
             'owner_id',
             'starts_at',
@@ -1803,8 +2040,12 @@ export async function runExportJob(
             'title',
             'notes',
             'cancellation_reason',
+            'external_branch_id',
+            'external_assigned_user_id',
           ],
-          appointments
+          appointments.map((row: Record<string, unknown>) =>
+            withExternalStaff(withExternalBranch(row), 'assigned_user_id')
+          )
         )
       );
       dataFolder?.file(
@@ -1812,7 +2053,6 @@ export async function runExportJob(
         toCsv(
           [
             'id',
-            'branch_id',
             'patient_id',
             'owner_id',
             'appointment_id',
@@ -1830,8 +2070,12 @@ export async function runExportJob(
             'notes',
             'source_system',
             'source_record_id',
+            'external_branch_id',
+            'external_assigned_user_id',
           ],
-          consultations
+          consultations.map((row: Record<string, unknown>) =>
+            withExternalBranchAndStaff(row, 'veterinarian_id')
+          )
         )
       );
       dataFolder?.file(
@@ -1876,8 +2120,12 @@ export async function runExportJob(
             'paid_amount',
             'balance',
             'notes',
+            'external_branch_id',
+            'external_assigned_user_id',
           ],
-          invoices
+          invoices.map((row: Record<string, unknown>) =>
+            withExternalBranchAndStaff(row, 'created_by')
+          )
         )
       );
       dataFolder?.file(
@@ -1899,8 +2147,19 @@ export async function runExportJob(
       dataFolder?.file(
         'invoice_payments.csv',
         toCsv(
-          ['id', 'invoice_id', 'method', 'amount', 'paid_at', 'reference', 'notes'],
-          invoicePayments
+          [
+            'id',
+            'invoice_id',
+            'method',
+            'amount',
+            'paid_at',
+            'reference',
+            'notes',
+            'external_assigned_user_id',
+          ],
+          invoicePayments.map((pay: Record<string, unknown>) =>
+            withExternalStaff(pay, 'recorded_by')
+          )
         )
       );
       dataFolder?.file(
@@ -1940,6 +2199,27 @@ export async function runExportJob(
             'created_at',
           ],
           cashMovements
+        )
+      );
+      dataFolder?.file(
+        'staff_profiles.csv',
+        toCsv(
+          [
+            'id',
+            'full_name',
+            'phone',
+            'active_branch_id',
+            'is_active',
+            'created_at',
+          ],
+          staffProfiles
+        )
+      );
+      dataFolder?.file(
+        'staff_memberships.csv',
+        toCsv(
+          ['id', 'branch_id', 'user_id', 'role', 'is_active', 'created_at'],
+          staffMemberships
         )
       );
       dataFolder?.file(
@@ -1986,6 +2266,23 @@ export async function runExportJob(
         'audit_logs.csv',
         toCsv([...AUDIT_LOG_CSV_HEADERS], auditLogsForCsv(auditLogs))
       );
+      dataFolder?.file(
+        'notifications.csv',
+        toCsv(
+          [
+            'id',
+            'branch_id',
+            'kind',
+            'title',
+            'body',
+            'href',
+            'related_type',
+            'related_id',
+            'created_at',
+          ],
+          notifications
+        )
+      );
 
       if (specialtyRows && specialtyOnly) {
         dataFolder?.file(`${exportType}.json`, JSON.stringify(specialtyRows, null, 2));
@@ -2009,9 +2306,12 @@ export async function runExportJob(
         dataFolder?.file('invoice_payments.json', JSON.stringify(invoicePayments, null, 2));
         dataFolder?.file('cash_sessions.json', JSON.stringify(cashSessions, null, 2));
         dataFolder?.file('cash_movements.json', JSON.stringify(cashMovements, null, 2));
+        dataFolder?.file('staff_profiles.json', JSON.stringify(staffProfiles, null, 2));
+        dataFolder?.file('staff_memberships.json', JSON.stringify(staffMemberships, null, 2));
         dataFolder?.file('reminder_logs.json', JSON.stringify(reminderLogs, null, 2));
         dataFolder?.file('whatsapp_messages.json', JSON.stringify(whatsappMessages, null, 2));
         dataFolder?.file('audit_logs.json', JSON.stringify(auditLogs, null, 2));
+        dataFolder?.file('notifications.json', JSON.stringify(notifications, null, 2));
       }
 
       const patientIds = filteredPatients.map((p: { id: string }) => p.id);
@@ -2051,7 +2351,7 @@ export async function runExportJob(
         .folder('reports')
         ?.file(
           'export-summary.txt',
-          `SyncVete export\nType: ${job.export_type}\nRange: ${bounds.dateFrom ?? '—'} → ${bounds.dateTo ?? '—'}\nBranches: ${recordCounts.branches ?? 0}\nOwners: ${recordCounts.owners}\nPatients: ${recordCounts.patients}\nClinical: ${recordCounts.clinicalEntries}\nVaccinations: ${recordCounts.vaccinations}\nLab: ${recordCounts.labOrders}\nLab items: ${recordCounts.labOrderItems}\nSurgeries: ${recordCounts.surgeries}\nPrescriptions: ${recordCounts.prescriptions}\nPrescription items: ${recordCounts.prescriptionItems}\nHospitalizations: ${recordCounts.hospitalizations}\nAppointments: ${recordCounts.appointments ?? 0}\nConsultations: ${recordCounts.consultations ?? 0}\nInventory: ${recordCounts.inventoryProducts ?? 0}\nInvoices: ${recordCounts.invoices ?? 0}\nInvoice items: ${recordCounts.invoiceItems ?? 0}\nInvoice payments: ${recordCounts.invoicePayments ?? 0}\nCash sessions: ${recordCounts.cashSessions ?? 0}\nCash movements: ${recordCounts.cashMovements ?? 0}\nReminder logs: ${recordCounts.reminderLogs ?? 0}\nWhatsApp messages: ${recordCounts.whatsappMessages ?? 0}\nAudit logs: ${recordCounts.auditLogs ?? 0}\nAttachments: ${attachmentCount}\n`
+          `SyncVete export\nType: ${job.export_type}\nRange: ${bounds.dateFrom ?? '—'} → ${bounds.dateTo ?? '—'}\nBranches: ${recordCounts.branches ?? 0}\nOwners: ${recordCounts.owners}\nPatients: ${recordCounts.patients}\nClinical: ${recordCounts.clinicalEntries}\nVaccinations: ${recordCounts.vaccinations}\nLab: ${recordCounts.labOrders}\nLab items: ${recordCounts.labOrderItems}\nSurgeries: ${recordCounts.surgeries}\nPrescriptions: ${recordCounts.prescriptions}\nPrescription items: ${recordCounts.prescriptionItems}\nHospitalizations: ${recordCounts.hospitalizations}\nAppointments: ${recordCounts.appointments ?? 0}\nConsultations: ${recordCounts.consultations ?? 0}\nInventory: ${recordCounts.inventoryProducts ?? 0}\nInvoices: ${recordCounts.invoices ?? 0}\nInvoice items: ${recordCounts.invoiceItems ?? 0}\nInvoice payments: ${recordCounts.invoicePayments ?? 0}\nCash sessions: ${recordCounts.cashSessions ?? 0}\nCash movements: ${recordCounts.cashMovements ?? 0}\nStaff profiles: ${recordCounts.staffProfiles ?? 0}\nStaff memberships: ${recordCounts.staffMemberships ?? 0}\nReminder logs: ${recordCounts.reminderLogs ?? 0}\nWhatsApp messages: ${recordCounts.whatsappMessages ?? 0}\nAudit logs: ${recordCounts.auditLogs ?? 0}\nNotifications: ${recordCounts.notifications ?? 0}\nAttachments: ${attachmentCount}\n`
         );
       body = await zip.generateAsync({ type: 'uint8array' });
       filename = `SyncVete-Clinic-Export-${new Date().toISOString().slice(0, 10)}.zip`;

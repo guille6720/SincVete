@@ -1,6 +1,6 @@
 /** SyncVete data import/export — pure helpers (no DB I/O). */
 
-export const DATA_MIGRATION_FORMAT_VERSION = '1.3';
+export const DATA_MIGRATION_FORMAT_VERSION = '1.5';
 export const DATA_MIGRATION_FORMAT = 'syncvete-migration';
 
 export const IMPORT_TYPES = [
@@ -161,6 +161,8 @@ export const EXPORT_TYPES = [
   'reminder_logs',
   'whatsapp_messages',
   'audit_logs',
+  'notifications',
+  'staff_profiles',
   'patient_clinical',
   'full_clinic',
 ] as const;
@@ -185,6 +187,8 @@ export const EXPORT_TYPE_LABELS: Record<ExportType, string> = {
   reminder_logs: 'Recordatorios (historial)',
   whatsapp_messages: 'WhatsApp (historial)',
   audit_logs: 'Auditoría (historial)',
+  notifications: 'Notificaciones (historial)',
+  staff_profiles: 'Staff (perfiles + membresías)',
   patient_clinical: 'Historia de un paciente',
   full_clinic: 'Exportación completa de la clínica',
 };
@@ -245,16 +249,227 @@ export const EXTERNAL_BRANCH_IMPORT_FIELD: ImportFieldDef = {
   aliases: ['external_branch_id', 'branch_id', 'id_sucursal', 'sucursal_id'],
 };
 
+/** Optional staff mapping (Phase 35+). Empty → default importer / null per entity. */
+export const EXTERNAL_ASSIGNED_USER_IMPORT_FIELD: ImportFieldDef = {
+  key: 'external_assigned_user_id',
+  label: 'ID externo profesional',
+  aliases: [
+    'external_assigned_user_id',
+    'assigned_user_id',
+    'veterinarian_id',
+    'id_profesional',
+    'profesional',
+    'vet_id',
+  ],
+};
+
 export function resolveImportBranchId(input: {
   externalBranchId: string | null | undefined;
   branchIdByExternal?: Record<string, string>;
+  /** Phase 40: accept org branch UUIDs for round-trip (same pattern as staff). */
+  knownBranchInternalIds?: Set<string>;
   defaultBranchId: string;
 }): { ok: true; branchId: string } | { ok: false; reason: 'unmapped_branch' } {
   const ext = (input.externalBranchId ?? '').trim();
   if (!ext) return { ok: true, branchId: input.defaultBranchId };
   const mapped = input.branchIdByExternal?.[ext];
-  if (!mapped) return { ok: false, reason: 'unmapped_branch' };
-  return { ok: true, branchId: mapped };
+  if (mapped) return { ok: true, branchId: mapped };
+  if (input.knownBranchInternalIds?.has(ext)) return { ok: true, branchId: ext };
+  return { ok: false, reason: 'unmapped_branch' };
+}
+
+/** Phase 35/36: optional assigned staff. Empty → defaultUserId (or null). */
+export function resolveImportStaffUserId(input: {
+  externalAssignedUserId: string | null | undefined;
+  userIdByExternal?: Record<string, string>;
+  knownStaffInternalIds?: Set<string>;
+  /** Used when external id is empty (e.g. importer user for clinical rows). */
+  defaultUserId?: string | null;
+}): { ok: true; userId: string | null } | { ok: false; reason: 'unmapped_staff' } {
+  const ext = (input.externalAssignedUserId ?? '').trim();
+  if (!ext) return { ok: true, userId: input.defaultUserId ?? null };
+  const mapped = input.userIdByExternal?.[ext];
+  if (mapped) return { ok: true, userId: mapped };
+  if (input.knownStaffInternalIds?.has(ext)) return { ok: true, userId: ext };
+  return { ok: false, reason: 'unmapped_staff' };
+}
+
+export function pushUnmappedStaffIssue(
+  issues: Array<{
+    rowNumber: number;
+    entityType: string;
+    field?: string;
+    code: string;
+    message: string;
+    severity: 'error' | 'warning';
+    recommendedAction?: string;
+    sourceReference?: string;
+  }>,
+  rowNumber: number,
+  entityType: string,
+  externalAssignedUserId: string | null | undefined,
+  knownStaffExternalIds?: Set<string>,
+  knownStaffInternalIds?: Set<string>
+): void {
+  const ext = (externalAssignedUserId ?? '').trim();
+  if (!ext) return;
+  if (knownStaffExternalIds?.has(ext)) return;
+  if (knownStaffInternalIds?.has(ext)) return;
+  issues.push({
+    rowNumber,
+    entityType,
+    field: 'external_assigned_user_id',
+    code: 'unmapped_staff',
+    message:
+      'Profesional externo no mapeado; cargá mapa staff (external_staff_id → internal_user_id) o usá un profile id del tenant',
+    severity: 'error',
+    recommendedAction: 'Exportá staff_profiles y armá el mapa, o quitá external_assigned_user_id',
+    sourceReference: ext,
+  });
+}
+
+export const STAFF_MAP_IMPORT_FIELDS: ImportFieldDef[] = [
+  {
+    key: 'external_staff_id',
+    label: 'ID externo staff',
+    required: true,
+    aliases: ['external_staff_id', 'staff_id', 'external_user_id', 'user_id', 'id_profesional'],
+  },
+  {
+    key: 'internal_user_id',
+    label: 'ID interno SyncVete (profile)',
+    required: true,
+    aliases: ['internal_user_id', 'profile_id', 'user_uuid', 'id_interno'],
+  },
+];
+
+export function buildStaffMapTemplateCsv(): string {
+  return toCsv(STAFF_MAP_IMPORT_FIELDS.map((f) => f.key), [
+    {
+      external_staff_id: 'VET-LEGACY-01',
+      internal_user_id: '00000000-0000-4000-8000-000000000001',
+    },
+  ]);
+}
+
+/** Phase 39: branch map template for cutover pack (external → internal UUID). */
+export const BRANCH_MAP_IMPORT_FIELDS: ImportFieldDef[] = [
+  {
+    key: 'external_branch_id',
+    label: 'ID externo sucursal',
+    required: true,
+    aliases: ['external_branch_id', 'branch_id', 'id_sucursal', 'sucursal_id'],
+  },
+  {
+    key: 'internal_branch_id',
+    label: 'ID interno SyncVete (branch)',
+    required: true,
+    aliases: ['internal_branch_id', 'branch_uuid', 'id_interno'],
+  },
+];
+
+export function buildBranchMapTemplateCsv(): string {
+  return toCsv(BRANCH_MAP_IMPORT_FIELDS.map((f) => f.key), [
+    {
+      external_branch_id: 'BR-001',
+      internal_branch_id: '00000000-0000-4000-8000-0000000000b1',
+    },
+  ]);
+}
+
+export function parseBranchMapCsv(csvText: string): {
+  map: Record<string, string>;
+  issues: Array<{ rowNumber: number; message: string }>;
+} {
+  const lines = csvText
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const map: Record<string, string> = {};
+  const issues: Array<{ rowNumber: number; message: string }> = [];
+  if (lines.length === 0) return { map, issues };
+  const header = lines[0]!.split(',').map((h) => h.trim().toLowerCase().replace(/^"|"$/g, ''));
+  const extIdx = header.findIndex((h) =>
+    ['external_branch_id', 'branch_id', 'id_sucursal', 'sucursal_id'].includes(h)
+  );
+  const intIdx = header.findIndex((h) =>
+    ['internal_branch_id', 'branch_uuid', 'id_interno'].includes(h)
+  );
+  if (extIdx < 0 || intIdx < 0) {
+    issues.push({
+      rowNumber: 1,
+      message: 'Cabeceras requeridas: external_branch_id, internal_branch_id',
+    });
+    return { map, issues };
+  }
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i]!.split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+    const externalId = cols[extIdx] ?? '';
+    const internalId = cols[intIdx] ?? '';
+    if (!externalId || !internalId) {
+      issues.push({ rowNumber: i + 1, message: 'Fila incompleta' });
+      continue;
+    }
+    map[externalId] = internalId;
+  }
+  return { map, issues };
+}
+
+export const CUTOVER_PACK_VERSION = 3;
+
+export function buildCutoverRoundtripNotes(formatVersion?: string): string {
+  const version = formatVersion ?? DATA_MIGRATION_FORMAT_VERSION;
+  return [
+    'SyncVete — Notas de round-trip (cutover pack v3)',
+    `Formato migración: ${DATA_MIGRATION_FORMAT} ${version}`,
+    '',
+    '1. Exportá staff_profiles y armá staff_map.csv (external_staff_id → internal_user_id).',
+    '2. Exportá branches y armá branch_map.csv (external_branch_id → internal_branch_id),',
+    '   o usá UUIDs internos como external_* (aceptados si existen en el tenant) — fase 40.',
+    '3. Los CSV de clínica/export full incluyen external_branch_id y external_assigned_user_id',
+    '   con UUIDs internos para re-import en el mismo tenant.',
+    '4. Vacío en staff clínico/pagos/facturas → usuario importador; sin mapa → error.',
+    '5. Agenda vacío → null. Nunca se crean usuarios auth ni se toca caja/planes.',
+    '6. Vacío en sucursal → sede de sesión; sin mapa ni UUID conocido → error.',
+    '',
+  ].join('\n');
+}
+
+export function parseStaffMapCsv(csvText: string): {
+  map: Record<string, string>;
+  issues: Array<{ rowNumber: number; message: string }>;
+} {
+  const lines = csvText
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const map: Record<string, string> = {};
+  const issues: Array<{ rowNumber: number; message: string }> = [];
+  if (lines.length === 0) return { map, issues };
+  const header = lines[0]!.split(',').map((h) => h.trim().toLowerCase().replace(/^"|"$/g, ''));
+  const extIdx = header.findIndex((h) =>
+    ['external_staff_id', 'staff_id', 'external_user_id', 'user_id', 'id_profesional'].includes(h)
+  );
+  const intIdx = header.findIndex((h) =>
+    ['internal_user_id', 'profile_id', 'user_uuid', 'id_interno'].includes(h)
+  );
+  if (extIdx < 0 || intIdx < 0) {
+    issues.push({ rowNumber: 1, message: 'Cabeceras requeridas: external_staff_id, internal_user_id' });
+    return { map, issues };
+  }
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i]!.split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+    const externalId = cols[extIdx] ?? '';
+    const internalId = cols[intIdx] ?? '';
+    if (!externalId || !internalId) {
+      issues.push({ rowNumber: i + 1, message: 'Fila incompleta' });
+      continue;
+    }
+    map[externalId] = internalId;
+  }
+  return { map, issues };
 }
 
 export function pushUnmappedBranchIssue(
@@ -271,20 +486,24 @@ export function pushUnmappedBranchIssue(
   rowNumber: number,
   entityType: string,
   externalBranchId: string | null | undefined,
-  knownBranchExternalIds?: Set<string>
+  knownBranchExternalIds?: Set<string>,
+  knownBranchInternalIds?: Set<string>
 ): void {
   const ext = (externalBranchId ?? '').trim();
   if (!ext) return;
-  if (!knownBranchExternalIds || !knownBranchExternalIds.has(ext)) {
-    issues.push({
-      rowNumber,
-      entityType,
-      field: 'external_branch_id',
-      code: 'unmapped_branch',
-      message: 'Sucursal externa no mapeada; importá sucursales primero o quitá external_branch_id',
-      severity: 'error',
-    });
-  }
+  if (knownBranchExternalIds?.has(ext)) return;
+  if (knownBranchInternalIds?.has(ext)) return;
+  issues.push({
+    rowNumber,
+    entityType,
+    field: 'external_branch_id',
+    code: 'unmapped_branch',
+    message:
+      'Sucursal externa no mapeada; cargá mapa branch (external_branch_id → internal_branch_id) o usá un branch id del tenant',
+    severity: 'error',
+    recommendedAction: 'Exportá branches y armá el mapa, o quitá external_branch_id',
+    sourceReference: ext,
+  });
 }
 
 export const BRANCH_IMPORT_FIELDS: ImportFieldDef[] = [
@@ -481,6 +700,7 @@ export const CLINICAL_IMPORT_FIELDS: ImportFieldDef[] = [
     aliases: ['external_patient_id', 'patient_id', 'id_paciente'],
   },
   EXTERNAL_BRANCH_IMPORT_FIELD,
+  EXTERNAL_ASSIGNED_USER_IMPORT_FIELD,
   {
     key: 'original_date',
     label: 'Fecha original',
@@ -548,6 +768,7 @@ export const VACCINATION_IMPORT_FIELDS: ImportFieldDef[] = [
     aliases: ['external_patient_id', 'patient_id', 'id_paciente'],
   },
   EXTERNAL_BRANCH_IMPORT_FIELD,
+  EXTERNAL_ASSIGNED_USER_IMPORT_FIELD,
   {
     key: 'vaccine_name',
     label: 'Vacuna',
@@ -606,6 +827,7 @@ export const LAB_ORDER_IMPORT_FIELDS: ImportFieldDef[] = [
     aliases: ['external_patient_id', 'patient_id', 'id_paciente'],
   },
   EXTERNAL_BRANCH_IMPORT_FIELD,
+  EXTERNAL_ASSIGNED_USER_IMPORT_FIELD,
   {
     key: 'ordered_at',
     label: 'Fecha solicitud',
@@ -670,6 +892,18 @@ export const SURGERY_IMPORT_FIELDS: ImportFieldDef[] = [
   },
   EXTERNAL_BRANCH_IMPORT_FIELD,
   {
+    key: 'external_assigned_user_id',
+    label: 'ID externo profesional',
+    aliases: [
+      'external_assigned_user_id',
+      'assigned_user_id',
+      'veterinarian_id',
+      'id_profesional',
+      'profesional',
+      'vet_id',
+    ],
+  },
+  {
     key: 'scheduled_at',
     label: 'Fecha cirugía',
     required: true,
@@ -727,6 +961,7 @@ export const PRESCRIPTION_IMPORT_FIELDS: ImportFieldDef[] = [
     aliases: ['external_patient_id', 'patient_id', 'id_paciente'],
   },
   EXTERNAL_BRANCH_IMPORT_FIELD,
+  EXTERNAL_ASSIGNED_USER_IMPORT_FIELD,
   {
     key: 'prescribed_at',
     label: 'Fecha prescrita',
@@ -803,6 +1038,18 @@ export const HOSPITALIZATION_IMPORT_FIELDS: ImportFieldDef[] = [
   },
   EXTERNAL_BRANCH_IMPORT_FIELD,
   {
+    key: 'external_assigned_user_id',
+    label: 'ID externo profesional',
+    aliases: [
+      'external_assigned_user_id',
+      'assigned_user_id',
+      'veterinarian_id',
+      'id_profesional',
+      'profesional',
+      'vet_id',
+    ],
+  },
+  {
     key: 'admitted_at',
     label: 'Fecha ingreso',
     required: true,
@@ -870,6 +1117,18 @@ export const APPOINTMENT_IMPORT_FIELDS: ImportFieldDef[] = [
     aliases: ['external_patient_id', 'patient_id', 'id_paciente'],
   },
   EXTERNAL_BRANCH_IMPORT_FIELD,
+  {
+    key: 'external_assigned_user_id',
+    label: 'ID externo profesional asignado',
+    aliases: [
+      'external_assigned_user_id',
+      'assigned_user_id',
+      'veterinarian_id',
+      'id_profesional',
+      'profesional',
+      'vet_id',
+    ],
+  },
   {
     key: 'starts_at',
     label: 'Inicio',
@@ -982,6 +1241,7 @@ export const INVOICE_IMPORT_FIELDS: ImportFieldDef[] = [
     aliases: ['external_invoice_id', 'invoice_id', 'id_factura', 'factura'],
   },
   EXTERNAL_BRANCH_IMPORT_FIELD,
+  EXTERNAL_ASSIGNED_USER_IMPORT_FIELD,
   {
     key: 'external_owner_id',
     label: 'ID externo propietario',
@@ -1087,6 +1347,7 @@ export const PAYMENT_IMPORT_FIELDS: ImportFieldDef[] = [
     required: true,
     aliases: ['external_invoice_id', 'invoice_id', 'id_factura', 'factura'],
   },
+  EXTERNAL_ASSIGNED_USER_IMPORT_FIELD,
   {
     key: 'amount',
     label: 'Monto',
@@ -1134,6 +1395,18 @@ export const CONSULTATION_IMPORT_FIELDS: ImportFieldDef[] = [
     aliases: ['external_patient_id', 'patient_id', 'id_paciente'],
   },
   EXTERNAL_BRANCH_IMPORT_FIELD,
+  {
+    key: 'external_assigned_user_id',
+    label: 'ID externo profesional',
+    aliases: [
+      'external_assigned_user_id',
+      'assigned_user_id',
+      'veterinarian_id',
+      'id_profesional',
+      'profesional',
+      'vet_id',
+    ],
+  },
   {
     key: 'external_appointment_id',
     label: 'ID externo cita',
@@ -1448,6 +1721,7 @@ export type ClinicalImportRow = {
   externalClinicalId: string;
   externalPatientId: string;
   externalBranchId: string | null;
+  externalAssignedUserId: string | null;
   originalDate: string;
   originalVeterinarian: string | null;
   recordType: string;
@@ -1479,6 +1753,7 @@ export function validateOwnerRows(
     documentToId?: Map<string, string>;
     emailToId?: Map<string, string>;
     knownBranchExternalIds?: Set<string>;
+    knownBranchInternalIds?: Set<string>;
   }
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
@@ -1559,7 +1834,8 @@ export function validateOwnerRows(
       row.rowNumber,
       'owners',
       row.externalBranchId,
-      options?.knownBranchExternalIds
+      options?.knownBranchExternalIds,
+      options?.knownBranchInternalIds
     );
   }
   return issues;
@@ -1573,6 +1849,7 @@ export function validatePatientRows(
     microchipToId?: Map<string, string>;
     locale?: DateLocale;
     knownBranchExternalIds?: Set<string>;
+    knownBranchInternalIds?: Set<string>;
   }
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
@@ -1675,7 +1952,8 @@ export function validatePatientRows(
       row.rowNumber,
       'patients',
       row.externalBranchId,
-      options?.knownBranchExternalIds
+      options?.knownBranchExternalIds,
+      options?.knownBranchInternalIds
     );
   }
   return issues;
@@ -1686,6 +1964,9 @@ export function validateClinicalRows(
   options?: {
     knownPatientExternalIds?: Set<string>;
     knownBranchExternalIds?: Set<string>;
+    knownBranchInternalIds?: Set<string>;
+    knownStaffExternalIds?: Set<string>;
+    knownStaffInternalIds?: Set<string>;
     locale?: DateLocale;
   }
 ): ValidationIssue[] {
@@ -1731,7 +2012,16 @@ export function validateClinicalRows(
       row.rowNumber,
       'clinical_entries',
       row.externalBranchId,
-      options?.knownBranchExternalIds
+      options?.knownBranchExternalIds,
+      options?.knownBranchInternalIds
+    );
+    pushUnmappedStaffIssue(
+      issues,
+      row.rowNumber,
+      'clinical_entries',
+      row.externalAssignedUserId,
+      options?.knownStaffExternalIds,
+      options?.knownStaffInternalIds
     );
     const parsed = parseImportDate(row.originalDate, locale);
     if (!parsed.ok) {
@@ -1893,6 +2183,7 @@ export function buildClinicalTemplateCsv(): string {
         external_clinical_record_id: 'CLI-001',
         external_patient_id: 'PAT-001',
         external_branch_id: 'BR-001',
+        external_assigned_user_id: 'VET-LEGACY-01',
         original_date: '2024-05-14',
         original_veterinarian: 'Dr. Juan Lopez',
         record_type: 'consulta',
@@ -1913,6 +2204,7 @@ export type VaccinationImportRow = {
   externalVaccinationId: string;
   externalPatientId: string;
   externalBranchId: string | null;
+  externalAssignedUserId: string | null;
   vaccineName: string;
   administeredAt: string;
   nextDueAt: string | null;
@@ -1928,6 +2220,9 @@ export function validateVaccinationRows(
   options?: {
     knownPatientExternalIds?: Set<string>;
     knownBranchExternalIds?: Set<string>;
+    knownBranchInternalIds?: Set<string>;
+    knownStaffExternalIds?: Set<string>;
+    knownStaffInternalIds?: Set<string>;
     locale?: DateLocale;
   }
 ): ValidationIssue[] {
@@ -1985,7 +2280,16 @@ export function validateVaccinationRows(
       row.rowNumber,
       'vaccinations',
       row.externalBranchId,
-      options?.knownBranchExternalIds
+      options?.knownBranchExternalIds,
+      options?.knownBranchInternalIds
+    );
+    pushUnmappedStaffIssue(
+      issues,
+      row.rowNumber,
+      'vaccinations',
+      row.externalAssignedUserId,
+      options?.knownStaffExternalIds,
+      options?.knownStaffInternalIds
     );
     if (!row.vaccineName || row.vaccineName.trim().length < 2) {
       issues.push({
@@ -2033,6 +2337,7 @@ export function buildVaccinationTemplateCsv(): string {
         external_vaccination_id: 'VAC-001',
         external_patient_id: 'PAT-001',
         external_branch_id: 'BR-001',
+        external_assigned_user_id: 'VET-LEGACY-01',
         vaccine_name: 'Antirrábica',
         administered_at: '2024-03-01',
         next_due_at: '2025-03-01',
@@ -2106,6 +2411,7 @@ export type LabOrderImportRow = {
   externalLabOrderId: string;
   externalPatientId: string;
   externalBranchId: string | null;
+  externalAssignedUserId: string | null;
   orderedAt: string;
   title: string;
   tests: string | null;
@@ -2122,6 +2428,7 @@ export type SurgeryImportRow = {
   externalSurgeryId: string;
   externalPatientId: string;
   externalBranchId: string | null;
+  externalAssignedUserId: string | null;
   scheduledAt: string;
   procedureName: string;
   diagnosis: string | null;
@@ -2137,6 +2444,7 @@ export type PrescriptionImportRow = {
   externalPrescriptionId: string;
   externalPatientId: string;
   externalBranchId: string | null;
+  externalAssignedUserId: string | null;
   prescribedAt: string;
   medicationName: string;
   dose: string;
@@ -2187,6 +2495,9 @@ export function validateLabOrderRows(
   options?: {
     knownPatientExternalIds?: Set<string>;
     knownBranchExternalIds?: Set<string>;
+    knownBranchInternalIds?: Set<string>;
+    knownStaffExternalIds?: Set<string>;
+    knownStaffInternalIds?: Set<string>;
     locale?: DateLocale;
   }
 ): ValidationIssue[] {
@@ -2227,7 +2538,16 @@ export function validateLabOrderRows(
       row.rowNumber,
       'lab_orders',
       row.externalBranchId,
-      options?.knownBranchExternalIds
+      options?.knownBranchExternalIds,
+      options?.knownBranchInternalIds
+    );
+    pushUnmappedStaffIssue(
+      issues,
+      row.rowNumber,
+      'lab_orders',
+      row.externalAssignedUserId,
+      options?.knownStaffExternalIds,
+      options?.knownStaffInternalIds
     );
     if (!row.title || row.title.trim().length < 2) {
       issues.push({
@@ -2258,6 +2578,9 @@ export function validateSurgeryRows(
   options?: {
     knownPatientExternalIds?: Set<string>;
     knownBranchExternalIds?: Set<string>;
+    knownBranchInternalIds?: Set<string>;
+    knownStaffExternalIds?: Set<string>;
+    knownStaffInternalIds?: Set<string>;
     locale?: DateLocale;
   }
 ): ValidationIssue[] {
@@ -2298,7 +2621,16 @@ export function validateSurgeryRows(
       row.rowNumber,
       'surgeries',
       row.externalBranchId,
-      options?.knownBranchExternalIds
+      options?.knownBranchExternalIds,
+      options?.knownBranchInternalIds
+    );
+    pushUnmappedStaffIssue(
+      issues,
+      row.rowNumber,
+      'surgeries',
+      row.externalAssignedUserId,
+      options?.knownStaffExternalIds,
+      options?.knownStaffInternalIds
     );
     if (!row.procedureName || row.procedureName.trim().length < 2) {
       issues.push({
@@ -2329,6 +2661,9 @@ export function validatePrescriptionRows(
   options?: {
     knownPatientExternalIds?: Set<string>;
     knownBranchExternalIds?: Set<string>;
+    knownBranchInternalIds?: Set<string>;
+    knownStaffExternalIds?: Set<string>;
+    knownStaffInternalIds?: Set<string>;
     locale?: DateLocale;
   }
 ): ValidationIssue[] {
@@ -2369,7 +2704,16 @@ export function validatePrescriptionRows(
       row.rowNumber,
       'prescriptions',
       row.externalBranchId,
-      options?.knownBranchExternalIds
+      options?.knownBranchExternalIds,
+      options?.knownBranchInternalIds
+    );
+    pushUnmappedStaffIssue(
+      issues,
+      row.rowNumber,
+      'prescriptions',
+      row.externalAssignedUserId,
+      options?.knownStaffExternalIds,
+      options?.knownStaffInternalIds
     );
     if (!row.medicationName) {
       issues.push({
@@ -2421,6 +2765,7 @@ export function buildLabOrderTemplateCsv(): string {
       external_lab_order_id: 'LAB-001',
       external_patient_id: 'PAT-001',
       external_branch_id: 'BR-001',
+      external_assigned_user_id: 'VET-LEGACY-01',
       ordered_at: '2024-06-01',
       title: 'Hemograma',
       tests: 'Hemograma|Glucemia',
@@ -2440,6 +2785,7 @@ export function buildSurgeryTemplateCsv(): string {
       external_surgery_id: 'SUR-001',
       external_patient_id: 'PAT-001',
       external_branch_id: 'BR-001',
+      external_assigned_user_id: 'VET-LEGACY-01',
       scheduled_at: '2024-07-10',
       procedure_name: 'Ovariohisterectomía',
       diagnosis: 'Electiva',
@@ -2458,6 +2804,7 @@ export function buildPrescriptionTemplateCsv(): string {
       external_prescription_id: 'RX-001',
       external_patient_id: 'PAT-001',
       external_branch_id: 'BR-001',
+      external_assigned_user_id: 'VET-LEGACY-01',
       prescribed_at: '2024-08-01',
       medication_name: 'Amoxicilina',
       dose: '250 mg',
@@ -2523,6 +2870,7 @@ export type HospitalizationImportRow = {
   externalHospitalizationId: string;
   externalPatientId: string;
   externalBranchId: string | null;
+  externalAssignedUserId: string | null;
   admittedAt: string;
   dischargedAt: string | null;
   reason: string;
@@ -2540,6 +2888,9 @@ export function validateHospitalizationRows(
   options?: {
     knownPatientExternalIds?: Set<string>;
     knownBranchExternalIds?: Set<string>;
+    knownBranchInternalIds?: Set<string>;
+    knownStaffExternalIds?: Set<string>;
+    knownStaffInternalIds?: Set<string>;
     locale?: DateLocale;
   }
 ): ValidationIssue[] {
@@ -2580,7 +2931,16 @@ export function validateHospitalizationRows(
       row.rowNumber,
       'hospitalizations',
       row.externalBranchId,
-      options?.knownBranchExternalIds
+      options?.knownBranchExternalIds,
+      options?.knownBranchInternalIds
+    );
+    pushUnmappedStaffIssue(
+      issues,
+      row.rowNumber,
+      'hospitalizations',
+      row.externalAssignedUserId,
+      options?.knownStaffExternalIds,
+      options?.knownStaffInternalIds
     );
     if (!row.reason || row.reason.trim().length < 2) {
       issues.push({
@@ -2622,6 +2982,7 @@ export function buildHospitalizationTemplateCsv(): string {
       external_hospitalization_id: 'HOSP-001',
       external_patient_id: 'PAT-001',
       external_branch_id: 'BR-001',
+      external_assigned_user_id: 'VET-LEGACY-01',
       admitted_at: '2024-09-01',
       discharged_at: '2024-09-05',
       reason: 'Gastroenteritis',
@@ -2641,6 +3002,7 @@ export type AppointmentImportRow = {
   externalAppointmentId: string;
   externalPatientId: string;
   externalBranchId: string | null;
+  externalAssignedUserId: string | null;
   startsAt: string;
   endsAt: string | null;
   appointmentType: string | null;
@@ -2655,6 +3017,9 @@ export function validateAppointmentRows(
   options?: {
     knownPatientExternalIds?: Set<string>;
     knownBranchExternalIds?: Set<string>;
+    knownBranchInternalIds?: Set<string>;
+    knownStaffExternalIds?: Set<string>;
+    knownStaffInternalIds?: Set<string>;
     locale?: DateLocale;
   }
 ): ValidationIssue[] {
@@ -2695,7 +3060,16 @@ export function validateAppointmentRows(
       row.rowNumber,
       'appointments',
       row.externalBranchId,
-      options?.knownBranchExternalIds
+      options?.knownBranchExternalIds,
+      options?.knownBranchInternalIds
+    );
+    pushUnmappedStaffIssue(
+      issues,
+      row.rowNumber,
+      'appointments',
+      row.externalAssignedUserId,
+      options?.knownStaffExternalIds,
+      options?.knownStaffInternalIds
     );
     const starts = parseImportDateTime(row.startsAt, locale);
     if (!starts.ok) {
@@ -2777,6 +3151,7 @@ export function buildAppointmentTemplateCsv(): string {
       external_appointment_id: 'APT-001',
       external_patient_id: 'PAT-001',
       external_branch_id: 'BR-001',
+      external_assigned_user_id: 'VET-LEGACY-01',
       starts_at: '2024-10-01 10:00',
       ends_at: '2024-10-01 10:30',
       appointment_type: 'consulta',
@@ -2793,6 +3168,7 @@ export type ConsultationImportRow = {
   externalConsultationId: string;
   externalPatientId: string;
   externalBranchId: string | null;
+  externalAssignedUserId: string | null;
   externalAppointmentId: string | null;
   startedAt: string;
   completedAt: string | null;
@@ -2814,6 +3190,9 @@ export function validateConsultationRows(
   options?: {
     knownPatientExternalIds?: Set<string>;
     knownBranchExternalIds?: Set<string>;
+    knownBranchInternalIds?: Set<string>;
+    knownStaffExternalIds?: Set<string>;
+    knownStaffInternalIds?: Set<string>;
     locale?: DateLocale;
   }
 ): ValidationIssue[] {
@@ -2867,7 +3246,16 @@ export function validateConsultationRows(
       row.rowNumber,
       'consultations',
       row.externalBranchId,
-      options?.knownBranchExternalIds
+      options?.knownBranchExternalIds,
+      options?.knownBranchInternalIds
+    );
+    pushUnmappedStaffIssue(
+      issues,
+      row.rowNumber,
+      'consultations',
+      row.externalAssignedUserId,
+      options?.knownStaffExternalIds,
+      options?.knownStaffInternalIds
     );
     const started = parseImportDateTime(row.startedAt, locale);
     if (!started.ok) {
@@ -2903,6 +3291,7 @@ export function buildConsultationTemplateCsv(): string {
       external_consultation_id: 'CON-001',
       external_patient_id: 'PAT-001',
       external_branch_id: 'BR-001',
+      external_assigned_user_id: 'VET-LEGACY-01',
       external_appointment_id: 'APT-001',
       started_at: '2024-10-01 10:05',
       completed_at: '2024-10-01 10:35',
@@ -2940,7 +3329,7 @@ export type InventoryProductImportRow = {
 
 export function validateInventoryProductRows(
   rows: InventoryProductImportRow[],
-  options?: { knownBranchExternalIds?: Set<string> }
+  options?: { knownBranchExternalIds?: Set<string>; knownBranchInternalIds?: Set<string> }
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const seen = new Set<string>();
@@ -2971,7 +3360,8 @@ export function validateInventoryProductRows(
       row.rowNumber,
       'inventory_products',
       row.externalBranchId,
-      options?.knownBranchExternalIds
+      options?.knownBranchExternalIds,
+      options?.knownBranchInternalIds
     );
     if (!row.name || row.name.trim().length < 2) {
       issues.push({
@@ -3031,6 +3421,7 @@ export type InvoiceImportRow = {
   rowNumber: number;
   externalInvoiceId: string;
   externalBranchId: string | null;
+  externalAssignedUserId: string | null;
   externalOwnerId: string | null;
   externalPatientId: string | null;
   number: string | null;
@@ -3057,6 +3448,9 @@ export function validateInvoiceRows(
     knownOwnerExternalIds?: Set<string>;
     knownPatientExternalIds?: Set<string>;
     knownBranchExternalIds?: Set<string>;
+    knownBranchInternalIds?: Set<string>;
+    knownStaffExternalIds?: Set<string>;
+    knownStaffInternalIds?: Set<string>;
   }
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
@@ -3078,7 +3472,16 @@ export function validateInvoiceRows(
       row.rowNumber,
       'invoices',
       row.externalBranchId,
-      options?.knownBranchExternalIds
+      options?.knownBranchExternalIds,
+      options?.knownBranchInternalIds
+    );
+    pushUnmappedStaffIssue(
+      issues,
+      row.rowNumber,
+      'invoices',
+      row.externalAssignedUserId,
+      options?.knownStaffExternalIds,
+      options?.knownStaffInternalIds
     );
     if (!row.externalOwnerId && !row.externalPatientId) {
       issues.push({
@@ -3154,6 +3557,7 @@ export function buildInvoiceTemplateCsv(): string {
     {
       external_invoice_id: 'INV-001',
       external_branch_id: 'BR-001',
+      external_assigned_user_id: 'VET-LEGACY-01',
       external_owner_id: 'OWN-001',
       external_patient_id: 'PAT-001',
       number: 'A-0001',
@@ -3180,6 +3584,7 @@ export type PaymentImportRow = {
   rowNumber: number;
   externalPaymentId: string;
   externalInvoiceId: string;
+  externalAssignedUserId: string | null;
   amount: string;
   method: string | null;
   paidAt: string | null;
@@ -3193,6 +3598,8 @@ export function validatePaymentRows(
   options?: {
     knownInvoiceExternalIds?: Set<string>;
     invoicePaidAmountByExternal?: Map<string, number>;
+    knownStaffExternalIds?: Set<string>;
+    knownStaffInternalIds?: Set<string>;
   }
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
@@ -3241,6 +3648,14 @@ export function validatePaymentRows(
         severity: 'error',
       });
     }
+    pushUnmappedStaffIssue(
+      issues,
+      row.rowNumber,
+      'payments',
+      row.externalAssignedUserId,
+      options?.knownStaffExternalIds,
+      options?.knownStaffInternalIds
+    );
     const amount = Number(String(row.amount ?? '').replace(',', '.'));
     if (!row.amount || Number.isNaN(amount) || amount <= 0) {
       issues.push({
@@ -3285,6 +3700,7 @@ export function buildPaymentTemplateCsv(): string {
     {
       external_payment_id: 'PAY-001',
       external_invoice_id: 'INV-001',
+      external_assigned_user_id: 'VET-LEGACY-01',
       amount: '5000',
       method: 'transferencia',
       paid_at: '2024-11-02',
@@ -3624,7 +4040,7 @@ export function buildCutoverPackReadme(input: CutoverPackSummaryInput): string {
   const orphans = input.orphanCreatedTotal + input.orphanIdMapTotal;
   const lines = [
     'SyncVete — Paquete cutover (freeze)',
-    `Formato: ${DATA_MIGRATION_FORMAT} ${input.formatVersion ?? DATA_MIGRATION_FORMAT_VERSION} · multi-sede owners/patients`,
+    `Formato: ${DATA_MIGRATION_FORMAT} ${input.formatVersion ?? DATA_MIGRATION_FORMAT_VERSION} · multi-sede + staff round-trip`,
     `Organización: ${input.organizationId}`,
     `Tipos de exportación disponibles: ${EXPORT_TYPES.length}`,
     `Generado: ${input.generatedAt}`,
@@ -3641,6 +4057,18 @@ export function buildCutoverPackReadme(input: CutoverPackSummaryInput): string {
     '- integrity.csv',
     '- checklist.csv',
     '- billing_reconcile.csv',
+    '- export_catalog.csv',
+    '- freeze_recommendations.csv',
+    '- id_map.csv',
+    '- staff_map_template.csv',
+    '- branch_map_template.csv',
+    '- roundtrip_notes.txt',
+    '',
+    `Pack version: ${CUTOVER_PACK_VERSION}`,
+    'Antes del freeze, exportá también (ver freeze_recommendations.csv):',
+    ...CUTOVER_FREEZE_EXPORT_RECOMMENDATIONS.map(
+      (r) => `  [${r.priority}] ${r.exportType} — ${r.reason}`
+    ),
     '',
     'Solo lectura: no modifica datos, planes ni caja.',
     'Revisá fail/warn del checklist antes del cutover.',
@@ -3663,5 +4091,116 @@ export function isCutoverPackReady(input: {
     input.stuckImports === 0 &&
     input.stuckExports === 0 &&
     input.billingMismatch === 0
+  );
+}
+
+/** Phase 31: catalog of export types for cutover pack. */
+export function buildExportCatalogCsv(): string {
+  return toCsv(
+    ['export_type', 'label', 'importable', 'notes'],
+    EXPORT_TYPES.map((key) => {
+      const importable =
+        key !== 'patient_clinical' &&
+        key !== 'full_clinic' &&
+        (IMPORT_TYPES as readonly string[]).includes(key);
+      let notes = '';
+      if (
+        key === 'cash_sessions' ||
+        key === 'reminder_logs' ||
+        key === 'whatsapp_messages' ||
+        key === 'audit_logs' ||
+        key === 'notifications' ||
+        key === 'staff_profiles'
+      ) {
+        notes = 'export_only';
+      } else if (key === 'full_clinic' || key === 'patient_clinical') {
+        notes = 'bundle';
+      } else if (importable) {
+        notes = 'roundtrip';
+      }
+      return {
+        export_type: key,
+        label: EXPORT_TYPE_LABELS[key],
+        importable: importable ? 'yes' : 'no',
+        notes,
+      };
+    })
+  );
+}
+
+/** Recommended historical exports before freeze (not auto-run). */
+export const CUTOVER_FREEZE_EXPORT_RECOMMENDATIONS: ReadonlyArray<{
+  exportType: ExportType;
+  priority: 'required' | 'recommended' | 'optional';
+  reason: string;
+}> = [
+  { exportType: 'full_clinic', priority: 'required', reason: 'Backup operativo completo del tenant' },
+  {
+    exportType: 'staff_profiles',
+    priority: 'required',
+    reason: 'Base para armar staff_map (external → internal_user_id)',
+  },
+  { exportType: 'branches', priority: 'required', reason: 'Base para armar branch_map / multi-sede' },
+  { exportType: 'audit_logs', priority: 'recommended', reason: 'Pista forense inmutable' },
+  { exportType: 'cash_sessions', priority: 'recommended', reason: 'Historial de caja (solo lectura)' },
+  { exportType: 'payments', priority: 'recommended', reason: 'Cobros sin reabrir caja' },
+  { exportType: 'whatsapp_messages', priority: 'optional', reason: 'Historial CRM WhatsApp' },
+  { exportType: 'reminder_logs', priority: 'optional', reason: 'Historial de recordatorios' },
+] as const;
+
+export function buildFreezeRecommendationsCsv(): string {
+  return toCsv(
+    ['priority', 'export_type', 'label', 'reason'],
+    CUTOVER_FREEZE_EXPORT_RECOMMENDATIONS.map((row) => ({
+      priority: row.priority,
+      export_type: row.exportType,
+      label: EXPORT_TYPE_LABELS[row.exportType],
+      reason: row.reason,
+    }))
+  );
+}
+
+/** Phase 32: org-wide id-map CSV (batch_id + external → internal). */
+export type OrgIdMapRow = {
+  batchId: string;
+  entityType: string;
+  externalId: string;
+  internalId: string;
+  createdAt?: string | null;
+};
+
+export function buildOrgIdMapCsv(
+  rows: OrgIdMapRow[],
+  meta?: { organizationId?: string; generatedAt?: string | null; truncated?: boolean }
+): string {
+  const out: Array<Record<string, unknown>> = [
+    {
+      section: 'meta',
+      batch_id: '',
+      entity_type: 'organization_id',
+      external_id: meta?.organizationId ?? '',
+      internal_id: '',
+      created_at: meta?.generatedAt ?? '',
+    },
+    {
+      section: 'meta',
+      batch_id: '',
+      entity_type: 'row_count',
+      external_id: String(rows.length),
+      internal_id: meta?.truncated ? 'truncated' : 'complete',
+      created_at: '',
+    },
+    ...rows.map((row) => ({
+      section: 'map',
+      batch_id: row.batchId,
+      entity_type: row.entityType,
+      external_id: row.externalId,
+      internal_id: row.internalId,
+      created_at: row.createdAt ?? '',
+    })),
+  ];
+  return toCsv(
+    ['section', 'batch_id', 'entity_type', 'external_id', 'internal_id', 'created_at'],
+    out
   );
 }

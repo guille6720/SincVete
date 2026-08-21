@@ -6,18 +6,27 @@ import {
   IDEMPOTENCY_MODES,
   buildAppointmentTemplateCsv,
   buildConsultationTemplateCsv,
+  buildStaffMapTemplateCsv,
+  parseStaffMapCsv,
+  parseBranchMapCsv,
   buildBatchErrorsReportCsv,
   buildBranchTemplateCsv,
   buildClinicalTemplateCsv,
   buildHospitalizationTemplateCsv,
   buildIdMapReportCsv,
+  buildOrgIdMapCsv,
   buildIntegrityReportCsv,
   buildInventoryProductTemplateCsv,
   buildInvoiceTemplateCsv,
   buildPaymentTemplateCsv,
   buildMigrationChecklistCsv,
   buildBillingReconcileCsv,
+  buildExportCatalogCsv,
+  buildFreezeRecommendationsCsv,
   buildCutoverPackReadme,
+  buildBranchMapTemplateCsv,
+  buildCutoverRoundtripNotes,
+  CUTOVER_PACK_VERSION,
   DATA_MIGRATION_AUDIT_ACTIONS,
   isCutoverPackReady,
   summarizeMigrationChecklist,
@@ -61,6 +70,8 @@ import { workbookFirstSheetToCsv } from '@/lib/data-migration/xlsx';
 import { importZipAttachmentsChunk } from '@/lib/data-migration/attachments';
 import { createServerClient } from '@/lib/supabase/server';
 import JSZip from 'jszip';
+
+const ORG_ID_MAP_EXPORT_LIMIT = 50000;
 
 const IMPORT_ENTITIES = [
   'branches',
@@ -236,7 +247,53 @@ export async function downloadImportTemplate(
         },
       };
     }
+    if (kind === 'staff_map') {
+      return {
+        success: true,
+        data: {
+          filename: 'SyncVete-Staff-Map-Template.csv',
+          csv: buildStaffMapTemplateCsv(),
+        },
+      };
+    }
+    if (kind === 'branch_map') {
+      return {
+        success: true,
+        data: {
+          filename: 'SyncVete-Branch-Map-Template.csv',
+          csv: buildBranchMapTemplateCsv(),
+        },
+      };
+    }
     return { success: false, error: 'Plantilla inválida' };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function parseStaffMapAction(formData: FormData): Promise<
+  ActionResult<{ map: Record<string, string>; issues: Array<{ rowNumber: number; message: string }> }>
+> {
+  try {
+    await requireImportAccess();
+    const csvText = String(formData.get('csvText') ?? '');
+    if (!csvText.trim()) return { success: false, error: 'CSV vacío' };
+    const parsed = parseStaffMapCsv(csvText);
+    return { success: true, data: parsed };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function parseBranchMapAction(formData: FormData): Promise<
+  ActionResult<{ map: Record<string, string>; issues: Array<{ rowNumber: number; message: string }> }>
+> {
+  try {
+    await requireImportAccess();
+    const csvText = String(formData.get('csvText') ?? '');
+    if (!csvText.trim()) return { success: false, error: 'CSV vacío' };
+    const parsed = parseBranchMapCsv(csvText);
+    return { success: true, data: parsed };
   } catch (error) {
     return actionError(error);
   }
@@ -336,6 +393,9 @@ export async function validateDataImport(formData: FormData): Promise<
     const branchIdByExternal = JSON.parse(
       String(formData.get('branchIdByExternal') ?? '{}')
     ) as Record<string, string>;
+    const userIdByExternal = JSON.parse(
+      String(formData.get('userIdByExternal') ?? '{}')
+    ) as Record<string, string>;
     const mapping = JSON.parse(mappingJson) as Record<string, string | null>;
     if (!entity) return { success: false, error: 'Entidad inválida' };
     const result = await dryRunImport({
@@ -348,6 +408,7 @@ export async function validateDataImport(formData: FormData): Promise<
       knownInvoiceExternalIds: knownInvoices,
       invoiceIdByExternal,
       branchIdByExternal,
+      userIdByExternal,
     });
     return { success: true, data: result };
   } catch (error) {
@@ -394,6 +455,9 @@ export async function commitDataImport(formData: FormData): Promise<
     ) as Record<string, string>;
     const branchIdByExternal = JSON.parse(
       String(formData.get('branchIdByExternal') ?? '{}')
+    ) as Record<string, string>;
+    const userIdByExternal = JSON.parse(
+      String(formData.get('userIdByExternal') ?? '{}')
     ) as Record<string, string>;
     const sourceSystem = String(formData.get('sourceSystem') ?? '').trim() || null;
     const offset = Number(formData.get('offset') ?? 0) || 0;
@@ -445,6 +509,7 @@ export async function commitDataImport(formData: FormData): Promise<
       invoiceIdByExternal,
       appointmentIdByExternal,
       branchIdByExternal,
+      userIdByExternal,
       branchId: branch.id,
       offset,
       chunkSize,
@@ -501,6 +566,9 @@ export async function queueDataImportAction(formData: FormData): Promise<
     const branchIdByExternal = JSON.parse(
       String(formData.get('branchIdByExternal') ?? '{}')
     ) as Record<string, string>;
+    const userIdByExternal = JSON.parse(
+      String(formData.get('userIdByExternal') ?? '{}')
+    ) as Record<string, string>;
     const sourceSystem = String(formData.get('sourceSystem') ?? '').trim() || null;
     const rowDecisions = JSON.parse(
       String(formData.get('rowDecisions') ?? '{}')
@@ -539,6 +607,7 @@ export async function queueDataImportAction(formData: FormData): Promise<
       invoiceIdByExternal,
       appointmentIdByExternal,
       branchIdByExternal,
+      userIdByExternal,
       branchId: branch.id,
       rowDecisions,
     });
@@ -1197,6 +1266,65 @@ export async function downloadIntegrityReportAction(): Promise<ActionResult<{ cs
   }
 }
 
+async function buildOrgIdMapExportCsv(
+  organizationId: string,
+  generatedAt: string
+): Promise<{ csv: string; rowCount: number; truncated: boolean }> {
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc('own_data_migration_id_map_export', {
+    p_limit: ORG_ID_MAP_EXPORT_LIMIT,
+  });
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as Array<{
+    batch_id: string;
+    entity_type: string;
+    external_id: string;
+    internal_id: string;
+    created_at: string;
+  }>;
+  const truncated = rows.length >= ORG_ID_MAP_EXPORT_LIMIT;
+  const csv = buildOrgIdMapCsv(
+    rows.map((row) => ({
+      batchId: row.batch_id,
+      entityType: row.entity_type,
+      externalId: row.external_id,
+      internalId: row.internal_id,
+      createdAt: row.created_at,
+    })),
+    { organizationId, generatedAt, truncated }
+  );
+  return { csv, rowCount: rows.length, truncated };
+}
+
+export async function downloadOrgIdMapAction(): Promise<
+  ActionResult<{ csv: string; filename: string; rowCount: number; truncated: boolean }>
+> {
+  try {
+    const canImport = await canPermissionAndFeature('data:import', FEATURES.DATA_IMPORT_EXPORT);
+    const canExport = await canPermissionAndFeature('data:export', FEATURES.DATA_IMPORT_EXPORT);
+    if (!canImport && !canExport) {
+      return { success: false, error: 'No tenés permisos para esta acción' };
+    }
+    const session = canImport ? await requireImportAccess() : await requireExportAccess();
+    const generatedAt = new Date().toISOString();
+    const { csv, rowCount, truncated } = await buildOrgIdMapExportCsv(
+      session.organizationId,
+      generatedAt
+    );
+    return {
+      success: true,
+      data: {
+        csv,
+        filename: `id-map-org-${generatedAt.slice(0, 10)}.csv`,
+        rowCount,
+        truncated,
+      },
+    };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
 export async function downloadImportIdMapAction(
   formData: FormData
 ): Promise<ActionResult<{ csv: string; filename: string }>> {
@@ -1629,11 +1757,13 @@ export async function downloadCutoverPackAction(): Promise<
       return { success: false, error: 'No tenés permisos para esta acción' };
     }
     const session = canImport ? await requireImportAccess() : await requireExportAccess();
+    const generatedAt = new Date().toISOString();
 
-    const [integrityResult, checklistResult, billingResult] = await Promise.all([
+    const [integrityResult, checklistResult, billingResult, idMapExport] = await Promise.all([
       getDataMigrationIntegrityAction(),
       getDataMigrationChecklistAction(),
       getBillingReconcileAction(),
+      buildOrgIdMapExportCsv(session.organizationId, generatedAt),
     ]);
 
     if (!integrityResult.success || !integrityResult.data) {
@@ -1649,7 +1779,6 @@ export async function downloadCutoverPackAction(): Promise<
     const integrity = integrityResult.data;
     const checklist = checklistResult.data;
     const billing = billingResult.data;
-    const generatedAt = new Date().toISOString();
     const organizationId =
       integrity.organizationId || checklist.organizationId || billing.organizationId;
 
@@ -1723,6 +1852,12 @@ export async function downloadCutoverPackAction(): Promise<
     zip.file('integrity.csv', integrityCsv);
     zip.file('checklist.csv', checklistCsv);
     zip.file('billing_reconcile.csv', billingCsv);
+    zip.file('export_catalog.csv', buildExportCatalogCsv());
+    zip.file('freeze_recommendations.csv', buildFreezeRecommendationsCsv());
+    zip.file('id_map.csv', idMapExport.csv);
+    zip.file('staff_map_template.csv', buildStaffMapTemplateCsv());
+    zip.file('branch_map_template.csv', buildBranchMapTemplateCsv());
+    zip.file('roundtrip_notes.txt', buildCutoverRoundtripNotes());
     const zipBytes = await zip.generateAsync({ type: 'nodebuffer' });
     const filename = `cutover-pack-${generatedAt.slice(0, 10)}.zip`;
 
@@ -1732,7 +1867,14 @@ export async function downloadCutoverPackAction(): Promise<
       action: DATA_MIGRATION_AUDIT_ACTIONS.cutoverPackDownloaded,
       entityType: 'data_migration',
       entityId: session.organizationId,
-      newData: { ready, filename },
+      newData: {
+        ready,
+        filename,
+        packVersion: CUTOVER_PACK_VERSION,
+        includesIdMap: true,
+        idMapRowCount: idMapExport.rowCount,
+        idMapTruncated: idMapExport.truncated,
+      },
     });
 
     return {

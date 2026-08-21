@@ -355,18 +355,29 @@ export function UserManual({ toolbar }: { toolbar?: ReactNode }) {
           <li>
             <strong>Multi-sede:</strong> en propietarios, pacientes, historias clínicas, vacunas, laboratorio,
             cirugías, recetas, internaciones, agenda, consultas, inventario y facturas podés usar la columna
-            opcional `external_branch_id` para asignar cada fila a una sucursal. Importá sucursales antes; si el
-            ID no está mapeado, la fila falla (no se usa la sucursal por defecto en silencio).
+            opcional `external_branch_id` para asignar cada fila a una sucursal. Importá sucursales antes; cargá el
+            mapa sucursales (CSV external_branch_id → internal_branch_id) o usá UUID internos del tenant en
+            re-import (round-trip). Si el ID no está mapeado ni es un branch conocido, la fila falla (no se usa la
+            sucursal por defecto en silencio).
           </li>
           <li>
-            <strong>Agenda:</strong> exportá e importá citas (CSV con `starts_at`/`ends_at`). En la
-            migración guiada van después de internaciones y antes de consultas. El dry-run avisa
-            solapamientos del mismo paciente en el archivo.
+            <strong>Historias clínicas y vacunas:</strong> además de multi-sede con `external_branch_id`,
+            podés asignar profesional con `external_assigned_user_id` (mismo mapa staff que consultas; vacío =
+            usuario importador).
+          </li>
+          <li>
+            <strong>Agenda:</strong> exportá e importá citas (CSV con `starts_at`/`ends_at`). Podés asignar
+            profesional con `external_assigned_user_id`: requiere el mapa staff (CSV
+            external_staff_id → internal_user_id) o un profile id existente del tenant. Exportá{' '}
+            <code>staff_profiles</code> primero para armar el mapa. En la migración guiada van después de
+            internaciones y antes de consultas. El dry-run avisa solapamientos del mismo paciente en el archivo.
+            En citas, si dejás vacío `external_assigned_user_id`, la cita queda sin profesional asignado.
           </li>
           <li>
             <strong>Consultas:</strong> exportá e importá consultas SOAP (CSV con `started_at`/`completed_at`).
-            Podés vincular `external_appointment_id` si importaste citas antes. En la migración guiada
-            van después de agenda y antes de inventario.
+            Podés vincular `external_appointment_id` si importaste citas antes. También podés asignar profesional
+            con `external_assigned_user_id` (mismo mapa staff que agenda; vacío = usuario importador). En la
+            migración guiada van después de agenda y antes de inventario.
           </li>
           <li>
             <strong>Checklist go-live:</strong> en el historial de importación podés correr un
@@ -374,17 +385,28 @@ export function UserManual({ toolbar }: { toolbar?: ReactNode }) {
             descargarlo en CSV.
           </li>
           <li>
+            <strong>Id-map org:</strong> descargá el mapa external_id → internal_id de toda la clínica
+            (CSV con meta de organización). También se incluye en el paquete cutover como{' '}
+            <code>id_map.csv</code>.
+          </li>
+          <li>
             <strong>Paquete cutover:</strong> antes del go-live descargá el ZIP de cutover (integridad,
-            checklist y conciliación de facturación). Es solo lectura: no modifica datos, planes ni caja.
+            checklist, conciliación de facturación, export_catalog.csv, freeze_recommendations.csv e
+            id_map.csv). Es solo lectura: no modifica datos, planes ni caja.
           </li>
           <li>
             <strong>Inventario:</strong> exportá e importá productos (CSV con SKU/categoría/stock). En
             la migración guiada van antes de adjuntos.
           </li>
           <li>
-            <strong>Facturas:</strong> exportá e importá facturas con ítems. Los pagos se importan
-            aparte (histórico, sin caja) y también se pueden exportar solos. Usá la conciliación de
-            facturación para comparar `paid_amount` vs suma de pagos antes del go-live.
+            <strong>Facturas:</strong> exportá e importá facturas con ítems. Podés asignar quién creó la
+            factura con `external_assigned_user_id` (mismo mapa staff; vacío = usuario importador). Los pagos
+            se importan aparte (histórico, sin caja) y también se pueden exportar solos. Podés asignar quién
+            registró el pago con `external_assigned_user_id` (mismo mapa staff; vacío = usuario importador). Los
+            exports CSV/ZIP incluyen `external_branch_id` y `external_assigned_user_id` con UUID internos
+            para round-trip. El paquete cutover v3 incluye plantillas staff/branch y notas round-trip; el mapa
+            sucursales se puede cargar en la pantalla de importación. Usá la conciliación de facturación para
+            comparar `paid_amount` vs suma de pagos antes del go-live.
           </li>
           <li>
             <strong>Caja:</strong> exportá sesiones de caja históricas con sus movimientos. No se
@@ -401,6 +423,16 @@ export function UserManual({ toolbar }: { toolbar?: ReactNode }) {
           <li>
             <strong>Auditoría:</strong> exportá el historial de <code>audit_logs</code> (acciones y
             cambios). No se importa — no reescribe la pista de auditoría.
+          </li>
+          <li>
+            <strong>Notificaciones:</strong> exportá el historial de <code>notifications</code> (alertas
+            in-app). No se importa — no recrea el inbox ni marca lecturas.
+          </li>
+          <li>
+            <strong>Staff:</strong> exportá <code>staff_profiles</code> (perfiles + membresías por
+            sucursal). No se importa — no crea usuarios en auth ni asigna roles. Usá el export para armar el
+            mapa staff al importar citas, consultas, historias, vacunas, laboratorio, recetas, cirugías e
+            internaciones con <code>external_assigned_user_id</code>.
           </li>
           <li>
             <strong>Rollback:</strong> solo revierte filas creadas por ese lote (no toca datos previos).

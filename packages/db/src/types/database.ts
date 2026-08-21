@@ -5928,6 +5928,16 @@ export interface Database {
           created_at: string;
         }[];
       };
+      own_data_migration_id_map_export: {
+        Args: { p_limit?: number };
+        Returns: {
+          batch_id: string;
+          entity_type: string;
+          external_id: string;
+          internal_id: string;
+          created_at: string;
+        }[];
+      };
       superadmin_force_retry_data_import_batch: {
         Args: { p_batch_id: string };
         Returns: Json;

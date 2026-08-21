@@ -19,6 +19,7 @@ import {
   parseCsv,
   parseImportDate,
   resolveImportBranchId,
+  resolveImportStaffUserId,
   summarizeIssues,
   validateBranchRows,
   validateClinicalRows,
@@ -53,6 +54,21 @@ type ImportEntity =
   | 'clinical_entries'
   | 'vaccinations'
   | SpecialtyEntity;
+
+async function loadKnownBranchInternalIds(
+  supabase: Awaited<ReturnType<typeof migrationDb>>,
+  organizationId: string
+): Promise<Set<string>> {
+  const { data: branchRows } = await supabase
+    .from('branches')
+    .select('id')
+    .eq('organization_id', organizationId)
+    .is('deleted_at', null)
+    .limit(5000);
+  return new Set(
+    ((branchRows ?? []) as Array<{ id: string }>).map((b) => b.id).filter(Boolean)
+  );
+}
 
 async function findExistingBySource(input: {
   table:
@@ -206,6 +222,7 @@ function asClinicalRows(
       externalClinicalId: mapped.external_clinical_record_id ?? '',
       externalPatientId: mapped.external_patient_id ?? '',
       externalBranchId: mapped.external_branch_id || null,
+      externalAssignedUserId: mapped.external_assigned_user_id || null,
       originalDate: mapped.original_date ?? '',
       originalVeterinarian: mapped.original_veterinarian || null,
       recordType: mapped.record_type || 'consulta',
@@ -231,6 +248,7 @@ function asVaccinationRows(
       externalVaccinationId: mapped.external_vaccination_id ?? '',
       externalPatientId: mapped.external_patient_id ?? '',
       externalBranchId: mapped.external_branch_id || null,
+      externalAssignedUserId: mapped.external_assigned_user_id || null,
       vaccineName: mapped.vaccine_name ?? '',
       administeredAt: mapped.administered_at ?? '',
       nextDueAt: mapped.next_due_at || null,
@@ -346,6 +364,7 @@ export async function dryRunImport(input: {
   knownInvoiceExternalIds?: string[];
   invoiceIdByExternal?: Record<string, string>;
   branchIdByExternal?: Record<string, string>;
+  userIdByExternal?: Record<string, string>;
 }) {
   const session = await requirePermission('data:import');
   const supabase = await migrationDb();
@@ -361,6 +380,11 @@ export async function dryRunImport(input: {
   const locale = (input.dateLocale ?? batch.date_locale ?? 'es-AR') as DateLocale;
   let issues: ValidationIssue[] = [];
   let readyCount = 0;
+  const knownBranchExternalIds = new Set(Object.keys(input.branchIdByExternal ?? {}));
+  const knownBranchInternalIds =
+    input.entity === 'branches'
+      ? undefined
+      : await loadKnownBranchInternalIds(supabase, session.organizationId);
 
   if (input.entity === 'branches') {
     const rows = asBranchRows(parsed.rows, input.mapping);
@@ -398,7 +422,8 @@ export async function dryRunImport(input: {
       existingEmails,
       documentToId,
       emailToId,
-      knownBranchExternalIds: new Set(Object.keys(input.branchIdByExternal ?? {})),
+      knownBranchExternalIds,
+      knownBranchInternalIds,
     });
     const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
     readyCount = rows.filter((r) => !errorRows.has(r.rowNumber)).length;
@@ -424,24 +449,51 @@ export async function dryRunImport(input: {
       existingMicrochips,
       microchipToId,
       locale,
-      knownBranchExternalIds: new Set(Object.keys(input.branchIdByExternal ?? {})),
+      knownBranchExternalIds,
+      knownBranchInternalIds,
     });
     const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
     readyCount = rows.filter((r) => !errorRows.has(r.rowNumber)).length;
   } else if (input.entity === 'clinical_entries') {
     const rows = asClinicalRows(parsed.rows, input.mapping);
+    let knownStaffInternalIds: Set<string> | undefined;
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('organization_id', session.organizationId)
+      .is('deleted_at', null)
+      .limit(5000);
+    knownStaffInternalIds = new Set(
+      ((profiles ?? []) as Array<{ id: string }>).map((p) => p.id).filter(Boolean)
+    );
     issues = validateClinicalRows(rows, {
       knownPatientExternalIds: new Set(input.knownPatientExternalIds ?? []),
-      knownBranchExternalIds: new Set(Object.keys(input.branchIdByExternal ?? {})),
+      knownBranchExternalIds,
+      knownBranchInternalIds,
+      knownStaffExternalIds: new Set(Object.keys(input.userIdByExternal ?? {})),
+      knownStaffInternalIds,
       locale,
     });
     const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
     readyCount = rows.filter((r) => !errorRows.has(r.rowNumber)).length;
   } else if (input.entity === 'vaccinations') {
     const rows = asVaccinationRows(parsed.rows, input.mapping);
+    let knownStaffInternalIds: Set<string> | undefined;
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('organization_id', session.organizationId)
+      .is('deleted_at', null)
+      .limit(5000);
+    knownStaffInternalIds = new Set(
+      ((profiles ?? []) as Array<{ id: string }>).map((p) => p.id).filter(Boolean)
+    );
     issues = validateVaccinationRows(rows, {
       knownPatientExternalIds: new Set(input.knownPatientExternalIds ?? []),
-      knownBranchExternalIds: new Set(Object.keys(input.branchIdByExternal ?? {})),
+      knownBranchExternalIds,
+      knownBranchInternalIds,
+      knownStaffExternalIds: new Set(Object.keys(input.userIdByExternal ?? {})),
+      knownStaffInternalIds,
       locale,
     });
     const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
@@ -472,12 +524,34 @@ export async function dryRunImport(input: {
         }
       }
     }
+    let knownStaffInternalIds: Set<string> | undefined;
+    if (
+      input.entity === 'appointments' ||
+      input.entity === 'consultations' ||
+      input.entity === 'surgeries' ||
+      input.entity === 'hospitalizations' ||
+      input.entity === 'lab_orders' ||
+      input.entity === 'prescriptions'
+    ) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('organization_id', session.organizationId)
+        .is('deleted_at', null)
+        .limit(5000);
+      knownStaffInternalIds = new Set(
+        ((profiles ?? []) as Array<{ id: string }>).map((p) => p.id).filter(Boolean)
+      );
+    }
     const specialty = validateSpecialtyRows(input.entity, parsed.rows, input.mapping, {
       knownPatientExternalIds: input.knownPatientExternalIds,
       knownOwnerExternalIds: input.knownOwnerExternalIds,
       knownInvoiceExternalIds: input.knownInvoiceExternalIds,
       invoicePaidAmountByExternal,
-      knownBranchExternalIds: new Set(Object.keys(input.branchIdByExternal ?? {})),
+      knownBranchExternalIds,
+      knownBranchInternalIds,
+      knownStaffExternalIds: new Set(Object.keys(input.userIdByExternal ?? {})),
+      knownStaffInternalIds,
       locale,
     });
     issues = specialty.issues;
@@ -543,6 +617,7 @@ export async function commitImport(input: {
   invoiceIdByExternal?: Record<string, string>;
   appointmentIdByExternal?: Record<string, string>;
   branchIdByExternal?: Record<string, string>;
+  userIdByExternal?: Record<string, string>;
   branchId: string;
   offset?: number;
   chunkSize?: number;
@@ -591,7 +666,30 @@ export async function commitImport(input: {
   const idempotencyMode = String(batch.idempotency_mode ?? 'off') as IdempotencyMode;
 
   try {
+    const knownBranchInternalIds = await loadKnownBranchInternalIds(
+      supabase,
+      session.organizationId
+    );
     if (isSpecialtyEntity(input.entity)) {
+      let knownStaffInternalIds: Set<string> | undefined;
+      if (
+        input.entity === 'appointments' ||
+        input.entity === 'consultations' ||
+        input.entity === 'surgeries' ||
+        input.entity === 'hospitalizations' ||
+        input.entity === 'lab_orders' ||
+        input.entity === 'prescriptions'
+      ) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('organization_id', session.organizationId)
+          .is('deleted_at', null)
+          .limit(5000);
+        knownStaffInternalIds = new Set(
+          ((profiles ?? []) as Array<{ id: string }>).map((p) => p.id).filter(Boolean)
+        );
+      }
       const result = await commitSpecialtySlice({
         supabase,
         entity: input.entity,
@@ -604,6 +702,9 @@ export async function commitImport(input: {
         invoiceIdByExternal: input.invoiceIdByExternal ?? {},
         appointmentIdByExternal: input.appointmentIdByExternal ?? {},
         branchIdByExternal: input.branchIdByExternal ?? {},
+        userIdByExternal: input.userIdByExternal ?? {},
+        knownStaffInternalIds,
+        knownBranchInternalIds,
         organizationId: session.organizationId,
         branchId: input.branchId,
         batchId: input.batchId,
@@ -720,6 +821,7 @@ export async function commitImport(input: {
         const branchResolved = resolveImportBranchId({
           externalBranchId: row.externalBranchId,
           branchIdByExternal: input.branchIdByExternal,
+          knownBranchInternalIds,
           defaultBranchId: input.branchId,
         });
         if (!branchResolved.ok) {
@@ -849,6 +951,7 @@ export async function commitImport(input: {
         const branchResolved = resolveImportBranchId({
           externalBranchId: row.externalBranchId,
           branchIdByExternal: input.branchIdByExternal,
+          knownBranchInternalIds,
           defaultBranchId: input.branchId,
         });
         if (!branchResolved.ok) {
@@ -922,9 +1025,19 @@ export async function commitImport(input: {
         const branchResolved = resolveImportBranchId({
           externalBranchId: row.externalBranchId,
           branchIdByExternal: input.branchIdByExternal,
+          knownBranchInternalIds,
           defaultBranchId: input.branchId,
         });
         if (!branchResolved.ok) {
+          failed += 1;
+          continue;
+        }
+        const staffResolved = resolveImportStaffUserId({
+          externalAssignedUserId: row.externalAssignedUserId,
+          userIdByExternal: input.userIdByExternal,
+          defaultUserId: session.userId,
+        });
+        if (!staffResolved.ok) {
           failed += 1;
           continue;
         }
@@ -962,7 +1075,7 @@ export async function commitImport(input: {
             diagnosis: row.diagnosis,
             treatment: row.treatment,
             plan: row.observations,
-            recorded_by: session.userId,
+            recorded_by: staffResolved.userId,
             import_batch_id: input.batchId,
             source_system: row.sourceSystem ?? sourceSystem,
             source_record_id: row.externalClinicalId,
@@ -1014,9 +1127,19 @@ export async function commitImport(input: {
         const branchResolved = resolveImportBranchId({
           externalBranchId: row.externalBranchId,
           branchIdByExternal: input.branchIdByExternal,
+          knownBranchInternalIds,
           defaultBranchId: input.branchId,
         });
         if (!branchResolved.ok) {
+          failed += 1;
+          continue;
+        }
+        const staffResolved = resolveImportStaffUserId({
+          externalAssignedUserId: row.externalAssignedUserId,
+          userIdByExternal: input.userIdByExternal,
+          defaultUserId: session.userId,
+        });
+        if (!staffResolved.ok) {
           failed += 1;
           continue;
         }
@@ -1058,7 +1181,7 @@ export async function commitImport(input: {
             administered_at: administered.isoDate,
             next_due_at: nextDue && nextDue.ok ? nextDue.isoDate : null,
             notes: noteParts.length ? noteParts.join('\n') : null,
-            veterinarian_id: session.userId,
+            veterinarian_id: staffResolved.userId,
             import_batch_id: input.batchId,
             source_system: row.sourceSystem ?? sourceSystem,
             source_record_id: row.externalVaccinationId,
@@ -1443,6 +1566,7 @@ export async function queueImportBatch(input: {
   invoiceIdByExternal?: Record<string, string>;
   appointmentIdByExternal?: Record<string, string>;
   branchIdByExternal?: Record<string, string>;
+  userIdByExternal?: Record<string, string>;
   branchId: string;
   rowDecisions?: Record<number, RowConflictDecision>;
 }) {
@@ -1514,6 +1638,7 @@ export async function queueImportBatch(input: {
         invoiceIdByExternal: input.invoiceIdByExternal ?? {},
         appointmentIdByExternal: input.appointmentIdByExternal ?? {},
         branchIdByExternal: input.branchIdByExternal ?? {},
+        userIdByExternal: input.userIdByExternal ?? {},
       },
     })
     .eq('id', input.batchId);

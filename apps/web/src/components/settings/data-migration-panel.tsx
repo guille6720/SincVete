@@ -32,6 +32,7 @@ import {
   downloadMigrationChecklistAction,
   downloadBillingReconcileAction,
   downloadCutoverPackAction,
+  downloadOrgIdMapAction,
   downloadSampleMigrationZipAction,
   downloadValidationReportAction,
   getDataMigrationChecklistAction,
@@ -41,6 +42,8 @@ import {
   listDataExportJobsAction,
   listDataImportBatchesAction,
   pollImportBatchProgressAction,
+  parseStaffMapAction,
+  parseBranchMapAction,
   pruneOrphanMigrationMapsAction,
   queueClinicExportAction,
   queueDataImportAction,
@@ -112,6 +115,7 @@ export function DataMigrationPanel({
   } | null>(null);
   const [ownerIdByExternal, setOwnerIdByExternal] = useState<Record<string, string>>({});
   const [branchIdByExternal, setBranchIdByExternal] = useState<Record<string, string>>({});
+  const [userIdByExternal, setUserIdByExternal] = useState<Record<string, string>>({});
   const [patientIdByExternal, setPatientIdByExternal] = useState<Record<string, string>>({});
   const [productIdByExternal, setProductIdByExternal] = useState<Record<string, string>>({});
   const [invoiceIdByExternal, setInvoiceIdByExternal] = useState<Record<string, string>>({});
@@ -188,6 +192,8 @@ export function DataMigrationPanel({
       | 'inventory_products'
       | 'invoices'
       | 'payments'
+      | 'staff_map'
+      | 'branch_map'
   ) {
     setMessage(null);
     const form = new FormData();
@@ -208,6 +214,56 @@ export function DataMigrationPanel({
       return;
     }
     downloadBase64(result.data.filename, result.data.contentType, result.data.base64);
+  }
+
+  async function onLoadStaffMapCsv(text: string) {
+    setMessage(null);
+    const form = new FormData();
+    form.set('csvText', text);
+    const result = await run(() => parseStaffMapAction(form));
+    if (!result?.success || !result.data) {
+      setMessage(result?.error ?? 'No se pudo leer el mapa staff');
+      return;
+    }
+    if (result.data.issues.length > 0) {
+      setMessage(
+        `Mapa staff: ${Object.keys(result.data.map).length} entradas · ${result.data.issues.length} avisos en filas`
+      );
+    } else {
+      setMessage(`Mapa staff cargado: ${Object.keys(result.data.map).length} entradas`);
+    }
+    setUserIdByExternal((prev) => ({ ...prev, ...result.data!.map }));
+  }
+
+  async function onLoadBranchMapCsv(text: string) {
+    setMessage(null);
+    const form = new FormData();
+    form.set('csvText', text);
+    const result = await run(() => parseBranchMapAction(form));
+    if (!result?.success || !result.data) {
+      setMessage(result?.error ?? 'No se pudo leer el mapa sucursales');
+      return;
+    }
+    if (result.data.issues.length > 0) {
+      setMessage(
+        `Mapa sucursales: ${Object.keys(result.data.map).length} entradas · ${result.data.issues.length} avisos en filas`
+      );
+    } else {
+      setMessage(`Mapa sucursales cargado: ${Object.keys(result.data.map).length} entradas`);
+    }
+    setBranchIdByExternal((prev) => ({ ...prev, ...result.data!.map }));
+  }
+
+  async function onBranchMapFileSelected(file: File | null) {
+    if (!file) return;
+    const text = await file.text();
+    await onLoadBranchMapCsv(text);
+  }
+
+  async function onStaffMapFileSelected(file: File | null) {
+    if (!file) return;
+    const text = await file.text();
+    await onLoadStaffMapCsv(text);
   }
 
   async function fileToBase64(file: File): Promise<string> {
@@ -334,6 +390,7 @@ export function DataMigrationPanel({
     form.set('knownInvoiceExternalIds', Object.keys(invoiceIdByExternal).join(','));
     form.set('invoiceIdByExternal', JSON.stringify(invoiceIdByExternal));
     form.set('branchIdByExternal', JSON.stringify(branchIdByExternal));
+    form.set('userIdByExternal', JSON.stringify(userIdByExternal));
     const result = await run(() => validateDataImport(form));
     if (!result?.success || !result.data) {
       setMessage(result?.error ?? 'Validación fallida');
@@ -395,6 +452,7 @@ export function DataMigrationPanel({
       form.set('mapping', JSON.stringify(mapping));
       form.set('ownerIdByExternal', JSON.stringify(ownerIdByExternal));
       form.set('branchIdByExternal', JSON.stringify(branchIdByExternal));
+      form.set('userIdByExternal', JSON.stringify(userIdByExternal));
       form.set('patientIdByExternal', JSON.stringify(patientIdByExternal));
       form.set('productIdByExternal', JSON.stringify(productIdByExternal));
       form.set('invoiceIdByExternal', JSON.stringify(invoiceIdByExternal));
@@ -456,6 +514,7 @@ export function DataMigrationPanel({
     form.set('mapping', JSON.stringify(mapping));
     form.set('ownerIdByExternal', JSON.stringify(ownerIdByExternal));
     form.set('branchIdByExternal', JSON.stringify(branchIdByExternal));
+    form.set('userIdByExternal', JSON.stringify(userIdByExternal));
     form.set('patientIdByExternal', JSON.stringify(patientIdByExternal));
     form.set('productIdByExternal', JSON.stringify(productIdByExternal));
     form.set('invoiceIdByExternal', JSON.stringify(invoiceIdByExternal));
@@ -687,6 +746,20 @@ export function DataMigrationPanel({
     downloadText(result.data.filename, result.data.csv);
   }
 
+  async function onDownloadOrgIdMap() {
+    const result = await run(() => downloadOrgIdMapAction());
+    if (!result?.success || !result.data) {
+      setMessage(result?.error ?? 'No se pudo descargar id-map org');
+      return;
+    }
+    downloadText(result.data.filename, result.data.csv);
+    setMessage(
+      result.data.truncated
+        ? `Id-map org descargado · ${result.data.rowCount} filas (truncado)`
+        : `Id-map org descargado · ${result.data.rowCount} filas`
+    );
+  }
+
   async function onDownloadIdMap(id: string) {
     const form = new FormData();
     form.set('batchId', id);
@@ -836,7 +909,12 @@ export function DataMigrationPanel({
             <CardDescription>
               Hito 1.3: multi-sede también en propietarios y pacientes (vía `external_branch_id` + mapa de
               sucursales; importá sucursales primero). Historias, vacunas, lab, cirugías, recetas e internaciones
-              ya lo soportaban.
+              ya lo soportaban. Fase 35: Agenda: `external_assigned_user_id` + mapa staff (no crea usuarios).
+              Fase 36: Consultas/cirugías/internaciones: `external_assigned_user_id` con mapa staff (vacío = usuario importador).
+              Fase 37: Mapa staff completo también en historias, vacunas, lab y recetas.
+              Fase 38: Export round-trip de `external_branch_id` / `external_assigned_user_id` (UUID internos) + mapa staff en pagos; formato 1.5.
+              Fase 39: Mapa staff en facturas (`created_by`; vacío = importador). Paquete cutover v3 con plantillas staff/branch y notas round-trip.
+              Fase 40: Mapa sucursales (upload CSV) + UUID internos de branch aceptados en re-import; formato 1.5.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1109,9 +1187,45 @@ export function DataMigrationPanel({
               <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadTemplate('payments')}>
                 Plantilla pagos
               </Button>
+              <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadTemplate('staff_map')}>
+                Plantilla mapa staff
+              </Button>
+              <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadTemplate('branch_map')}>
+                Plantilla mapa sucursales
+              </Button>
               <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadSampleZip()}>
                 ZIP migración de ejemplo
               </Button>
+            </div>
+
+            <div className="space-y-2 rounded-md border p-3">
+              <p className="text-sm font-medium">Mapa sucursales (external → branch id)</p>
+              <p className="text-xs text-muted-foreground">
+                Para filas con `external_branch_id`. Exportá branches primero; también se aceptan UUID internos del
+                tenant (round-trip fase 38). Entradas cargadas: {Object.keys(branchIdByExternal).length}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Input
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={(e) => void onBranchMapFileSelected(e.target.files?.[0] ?? null)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2 rounded-md border p-3">
+              <p className="text-sm font-medium">Mapa staff (external → profile id)</p>
+              <p className="text-xs text-muted-foreground">
+                Para citas con `external_assigned_user_id`. Exportá staff_profiles primero; no crea usuarios en
+                auth. Entradas cargadas: {Object.keys(userIdByExternal).length}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Input
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={(e) => void onStaffMapFileSelected(e.target.files?.[0] ?? null)}
+                />
+              </div>
             </div>
 
             <div className="space-y-1">
@@ -1282,8 +1396,13 @@ export function DataMigrationPanel({
               Fase 27: export de recordatorios (historial). Solo lectura — no hay import (no reenvía
               WhatsApp).               Fase 28: export de WhatsApp (historial). Solo lectura — no hay import (no
               reenvía mensajes). Fase 29: export de auditoría (historial). Solo lectura — no hay import
-              (pista inmutable). CSV/JSON/XLSX/ZIP + módulos specialty. Opcional: rango de fechas y encolar
-              para background. ZIP completo incluye lab/cirugía/recetas/internación.
+              (pista inmutable). Fase 33: export de notificaciones (historial). Solo lectura — no hay import
+              (no recrea inbox). Fase 34: export de staff (perfiles + membresías). Solo lectura — no importa
+              usuarios ni roles. CSV/JSON/XLSX/ZIP + módulos specialty. Opcional: rango de fechas y encolar
+              para background. ZIP completo incluye lab/cirugía/recetas/internación. Fase 38: CSV/ZIP emiten
+              `external_branch_id` y `external_assigned_user_id` (UUID internos) para re-import con mapas conocidos; formato 1.5.
+              Fase 39: facturas exportan `created_by` como `external_assigned_user_id`.
+              Fase 40: re-import acepta UUID internos de branch además del mapa sucursales.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1360,7 +1479,9 @@ export function DataMigrationPanel({
           </CardHeader>
           <CardContent className="space-y-2">
             <p className="text-xs text-muted-foreground">
-              Fase 26: Paquete cutover: ZIP con integridad + checklist + conciliación (solo lectura).
+              Paquete cutover v3: incluye catálogo de exports, recomendaciones de freeze, id-map org,
+              plantillas staff/branch y notas round-trip (integridad + checklist + conciliación, solo lectura).
+              Fase 32: export org-wide del id-map (también en paquete cutover).
             </p>
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => void refreshIntegrity()}>
@@ -1374,6 +1495,15 @@ export function DataMigrationPanel({
                 onClick={() => void onDownloadIntegrityReport()}
               >
                 Reporte integridad CSV
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending}
+                onClick={() => void onDownloadOrgIdMap()}
+              >
+                Id-map org
               </Button>
               <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => void refreshChecklist()}>
                 Checklist go-live

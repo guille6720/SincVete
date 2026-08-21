@@ -10,6 +10,7 @@ import {
   parseCsv,
   parseImportDate,
   resolveImportBranchId,
+  resolveImportStaffUserId,
   type ConflictPolicy,
   type DateLocale,
   type IdempotencyMode,
@@ -68,6 +69,9 @@ export async function commitCoreEntitySlice(input: {
   ownerIdByExternal: Record<string, string>;
   patientIdByExternal: Record<string, string>;
   branchIdByExternal?: Record<string, string>;
+  userIdByExternal?: Record<string, string>;
+  knownStaffInternalIds?: Set<string>;
+  knownBranchInternalIds?: Set<string>;
   branchId: string;
   offset: number;
   limit: number;
@@ -200,6 +204,7 @@ export async function commitCoreEntitySlice(input: {
       const branchResolved = resolveImportBranchId({
         externalBranchId: mapped.external_branch_id || null,
         branchIdByExternal: input.branchIdByExternal,
+        knownBranchInternalIds: input.knownBranchInternalIds,
         defaultBranchId: input.branchId,
       });
       if (!branchResolved.ok) {
@@ -283,6 +288,7 @@ export async function commitCoreEntitySlice(input: {
       const branchResolved = resolveImportBranchId({
         externalBranchId: mapped.external_branch_id || null,
         branchIdByExternal: input.branchIdByExternal,
+        knownBranchInternalIds: input.knownBranchInternalIds,
         defaultBranchId: input.branchId,
       });
       if (!branchResolved.ok) {
@@ -353,9 +359,20 @@ export async function commitCoreEntitySlice(input: {
       const branchResolved = resolveImportBranchId({
         externalBranchId: mapped.external_branch_id || null,
         branchIdByExternal: input.branchIdByExternal,
+        knownBranchInternalIds: input.knownBranchInternalIds,
         defaultBranchId: input.branchId,
       });
       if (!branchResolved.ok) {
+        failed += 1;
+        continue;
+      }
+      const staffResolved = resolveImportStaffUserId({
+        externalAssignedUserId: mapped.external_assigned_user_id || null,
+        userIdByExternal: input.userIdByExternal,
+        knownStaffInternalIds: input.knownStaffInternalIds,
+        defaultUserId: userId,
+      });
+      if (!staffResolved.ok) {
         failed += 1;
         continue;
       }
@@ -380,7 +397,7 @@ export async function commitCoreEntitySlice(input: {
           diagnosis: mapped.diagnosis || null,
           treatment: mapped.treatment || null,
           plan: mapped.observations || null,
-          recorded_by: userId,
+          recorded_by: staffResolved.userId,
           import_batch_id: input.batchId,
           source_system: mapped.source_system || sourceSystem,
           source_record_id: mapped.external_clinical_record_id || null,
@@ -426,9 +443,20 @@ export async function commitCoreEntitySlice(input: {
       const branchResolved = resolveImportBranchId({
         externalBranchId: mapped.external_branch_id || null,
         branchIdByExternal: input.branchIdByExternal,
+        knownBranchInternalIds: input.knownBranchInternalIds,
         defaultBranchId: input.branchId,
       });
       if (!branchResolved.ok) {
+        failed += 1;
+        continue;
+      }
+      const staffResolved = resolveImportStaffUserId({
+        externalAssignedUserId: mapped.external_assigned_user_id || null,
+        userIdByExternal: input.userIdByExternal,
+        knownStaffInternalIds: input.knownStaffInternalIds,
+        defaultUserId: userId,
+      });
+      if (!staffResolved.ok) {
         failed += 1;
         continue;
       }
@@ -450,7 +478,7 @@ export async function commitCoreEntitySlice(input: {
           lot_number: mapped.lot_number || null,
           administered_at: administered.isoDate,
           notes: mapped.notes || null,
-          veterinarian_id: userId,
+          veterinarian_id: staffResolved.userId,
           import_batch_id: input.batchId,
           source_system: mapped.source_system || sourceSystem,
           source_record_id: mapped.external_vaccination_id || null,
@@ -539,6 +567,7 @@ export async function processNextQueuedImportChunk(options?: {
       invoiceIdByExternal?: Record<string, string>;
       appointmentIdByExternal?: Record<string, string>;
       branchIdByExternal?: Record<string, string>;
+      userIdByExternal?: Record<string, string>;
     };
     const entity = String(metadata.entity ?? '');
     const branchId = String(metadata.branchId ?? '');
@@ -618,6 +647,37 @@ export async function processNextQueuedImportChunk(options?: {
       let linked = 0;
       let skipped = 0;
 
+      let knownStaffInternalIds: Set<string> | undefined;
+      const { data: branchRows } = await service
+        .from('branches')
+        .select('id')
+        .eq('organization_id', organizationId)
+        .is('deleted_at', null)
+        .limit(5000);
+      const knownBranchInternalIds = new Set(
+        ((branchRows ?? []) as Array<{ id: string }>).map((b) => b.id).filter(Boolean)
+      );
+      if (
+        entity === 'appointments' ||
+        entity === 'consultations' ||
+        entity === 'surgeries' ||
+        entity === 'hospitalizations' ||
+        entity === 'lab_orders' ||
+        entity === 'prescriptions' ||
+        entity === 'clinical_entries' ||
+        entity === 'vaccinations'
+      ) {
+        const { data: profiles } = await service
+          .from('profiles')
+          .select('id')
+          .eq('organization_id', organizationId)
+          .is('deleted_at', null)
+          .limit(5000);
+        knownStaffInternalIds = new Set(
+          ((profiles ?? []) as Array<{ id: string }>).map((p) => p.id).filter(Boolean)
+        );
+      }
+
       if (isSpecialtyCheck(entity)) {
         const result = await commitSpecialtySlice({
           supabase: service,
@@ -631,6 +691,9 @@ export async function processNextQueuedImportChunk(options?: {
           invoiceIdByExternal: metadata.invoiceIdByExternal ?? {},
           appointmentIdByExternal: metadata.appointmentIdByExternal ?? {},
           branchIdByExternal: metadata.branchIdByExternal ?? {},
+          userIdByExternal: metadata.userIdByExternal ?? {},
+          knownStaffInternalIds,
+          knownBranchInternalIds,
           organizationId,
           branchId,
           batchId,
@@ -655,6 +718,9 @@ export async function processNextQueuedImportChunk(options?: {
           ownerIdByExternal: metadata.ownerIdByExternal ?? {},
           patientIdByExternal: metadata.patientIdByExternal ?? {},
           branchIdByExternal: metadata.branchIdByExternal ?? {},
+          userIdByExternal: metadata.userIdByExternal ?? {},
+          knownStaffInternalIds,
+          knownBranchInternalIds,
           branchId,
           offset: range.offset,
           limit: range.size,
