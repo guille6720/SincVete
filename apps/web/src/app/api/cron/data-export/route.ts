@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { authorizeCronSecret } from '@sincvete/shared';
 import { processNextQueuedExportJobs } from '@/lib/data-migration/export';
+import { touchMigrationWorkerHeartbeat } from '@/lib/data-migration/heartbeat';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -23,9 +24,19 @@ async function run(request: Request) {
 
   try {
     const result = await processNextQueuedExportJobs({ maxJobs: 2 });
+    await touchMigrationWorkerHeartbeat({
+      workerName: 'data-export',
+      ok: true,
+      detail: { results: JSON.parse(JSON.stringify(result)) },
+    });
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     console.error('[cron/data-export]', error);
+    await touchMigrationWorkerHeartbeat({
+      workerName: 'data-export',
+      ok: false,
+      detail: { error: error instanceof Error ? error.message : 'failed' },
+    });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'falló el worker de export' },
       { status: 500 }

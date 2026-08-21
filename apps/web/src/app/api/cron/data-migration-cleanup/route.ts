@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { authorizeCronSecret } from '@sincvete/shared';
+import type { Json } from '@sincvete/db';
 import { createServiceClient } from '@/lib/supabase/server';
+import { touchMigrationWorkerHeartbeat } from '@/lib/data-migration/heartbeat';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -34,7 +36,6 @@ async function run(request: Request) {
     );
     if (staleError) throw new Error(staleError.message);
 
-    // Remove storage objects for expired export jobs (best-effort)
     const { data: expiredJobs } = await service
       .from('data_export_jobs')
       .select('id, storage_path')
@@ -55,14 +56,29 @@ async function run(request: Request) {
       }
     }
 
-    return NextResponse.json({
-      ok: true,
+    const payload = {
+      ok: true as const,
       expired: expiredResult,
       staleImports: staleResult,
       deletedObjects,
+    };
+    await touchMigrationWorkerHeartbeat({
+      workerName: 'data-migration-cleanup',
+      ok: true,
+      detail: {
+        expired: expiredResult as Json,
+        staleImports: staleResult as Json,
+        deletedObjects,
+      },
     });
+    return NextResponse.json(payload);
   } catch (error) {
     console.error('[cron/data-migration-cleanup]', error);
+    await touchMigrationWorkerHeartbeat({
+      workerName: 'data-migration-cleanup',
+      ok: false,
+      detail: { error: error instanceof Error ? error.message : 'cleanup failed' },
+    });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'cleanup failed' },
       { status: 500 }

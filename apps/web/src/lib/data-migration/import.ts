@@ -58,7 +58,11 @@ async function findExistingBySource(input: {
     | 'lab_orders'
     | 'surgeries'
     | 'prescriptions'
-    | 'hospitalizations';
+    | 'hospitalizations'
+    | 'appointments'
+    | 'inventory_products'
+    | 'invoices'
+    | 'payments';
   organizationId: string;
   sourceSystem: string;
   sourceRecordId: string;
@@ -81,7 +85,11 @@ function isSpecialtyEntity(entity: ImportEntity): entity is SpecialtyEntity {
     entity === 'lab_orders' ||
     entity === 'surgeries' ||
     entity === 'prescriptions' ||
-    entity === 'hospitalizations'
+    entity === 'hospitalizations' ||
+    entity === 'appointments' ||
+    entity === 'inventory_products' ||
+    entity === 'invoices' ||
+    entity === 'payments'
   );
 }
 
@@ -293,6 +301,8 @@ export async function dryRunImport(input: {
   dateLocale?: DateLocale;
   knownOwnerExternalIds?: string[];
   knownPatientExternalIds?: string[];
+  knownInvoiceExternalIds?: string[];
+  invoiceIdByExternal?: Record<string, string>;
 }) {
   const session = await requirePermission('data:import');
   const supabase = await migrationDb();
@@ -385,8 +395,36 @@ export async function dryRunImport(input: {
     const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
     readyCount = rows.filter((r) => !errorRows.has(r.rowNumber)).length;
   } else {
+    let invoicePaidAmountByExternal: Map<string, number> | undefined;
+    if (input.entity === 'payments') {
+      const invoiceMap = input.invoiceIdByExternal ?? {};
+      const internalIds = Object.values(invoiceMap).filter(Boolean);
+      if (internalIds.length > 0) {
+        const { data: invRows } = await supabase
+          .from('invoices')
+          .select('id, paid_amount')
+          .eq('organization_id', session.organizationId)
+          .in('id', internalIds.slice(0, 2000))
+          .is('deleted_at', null);
+        const paidByInternal = new Map(
+          ((invRows ?? []) as Array<{ id: string; paid_amount: number | null }>).map((row) => [
+            row.id,
+            Number(row.paid_amount ?? 0),
+          ])
+        );
+        invoicePaidAmountByExternal = new Map();
+        for (const [externalId, internalId] of Object.entries(invoiceMap)) {
+          if (paidByInternal.has(internalId)) {
+            invoicePaidAmountByExternal.set(externalId, paidByInternal.get(internalId) ?? 0);
+          }
+        }
+      }
+    }
     const specialty = validateSpecialtyRows(input.entity, parsed.rows, input.mapping, {
       knownPatientExternalIds: input.knownPatientExternalIds,
+      knownOwnerExternalIds: input.knownOwnerExternalIds,
+      knownInvoiceExternalIds: input.knownInvoiceExternalIds,
+      invoicePaidAmountByExternal,
       locale,
     });
     issues = specialty.issues;
@@ -448,6 +486,8 @@ export async function commitImport(input: {
   sourceSystem?: string | null;
   ownerIdByExternal?: Record<string, string>;
   patientIdByExternal?: Record<string, string>;
+  productIdByExternal?: Record<string, string>;
+  invoiceIdByExternal?: Record<string, string>;
   branchId: string;
   offset?: number;
   chunkSize?: number;
@@ -504,6 +544,9 @@ export async function commitImport(input: {
         mapping: input.mapping,
         locale,
         patientIdByExternal: input.patientIdByExternal ?? {},
+        ownerIdByExternal: input.ownerIdByExternal ?? {},
+        productIdByExternal: input.productIdByExternal ?? {},
+        invoiceIdByExternal: input.invoiceIdByExternal ?? {},
         organizationId: session.organizationId,
         branchId: input.branchId,
         batchId: input.batchId,
@@ -1112,6 +1155,10 @@ export async function rollbackImportBatch(batchId: string) {
       row.entity_type === 'surgeries' ||
       row.entity_type === 'prescriptions' ||
       row.entity_type === 'hospitalizations' ||
+      row.entity_type === 'appointments' ||
+      row.entity_type === 'inventory_products' ||
+      row.entity_type === 'invoices' ||
+      row.entity_type === 'payments' ||
       row.entity_type === 'clinical_images'
     ) {
       const table = row.entity_type;
@@ -1220,6 +1267,8 @@ export async function queueImportBatch(input: {
   sourceSystem?: string | null;
   ownerIdByExternal?: Record<string, string>;
   patientIdByExternal?: Record<string, string>;
+  productIdByExternal?: Record<string, string>;
+  invoiceIdByExternal?: Record<string, string>;
   branchId: string;
   rowDecisions?: Record<number, RowConflictDecision>;
 }) {
@@ -1287,6 +1336,8 @@ export async function queueImportBatch(input: {
         branchId: input.branchId,
         ownerIdByExternal: input.ownerIdByExternal ?? {},
         patientIdByExternal: input.patientIdByExternal ?? {},
+        productIdByExternal: input.productIdByExternal ?? {},
+        invoiceIdByExternal: input.invoiceIdByExternal ?? {},
       },
     })
     .eq('id', input.batchId);

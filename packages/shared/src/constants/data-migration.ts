@@ -12,6 +12,10 @@ export const IMPORT_TYPES = [
   'surgeries',
   'prescriptions',
   'hospitalizations',
+  'appointments',
+  'inventory_products',
+  'invoices',
+  'payments',
   'attachments',
   'full_migration',
   'migration_zip',
@@ -27,6 +31,10 @@ export const IMPORT_TYPE_LABELS: Record<ImportType, string> = {
   surgeries: 'Cirugías',
   prescriptions: 'Recetas / farmacia',
   hospitalizations: 'Internaciones',
+  appointments: 'Agenda / citas',
+  inventory_products: 'Inventario / farmacia',
+  invoices: 'Facturas (con ítems)',
+  payments: 'Pagos (sin caja)',
   attachments: 'Adjuntos (ZIP)',
   full_migration: 'Migración completa (guiada)',
   migration_zip: 'Paquete ZIP SyncVete',
@@ -41,6 +49,10 @@ export const IMPORT_ENTITY_TYPES = [
   'surgeries',
   'prescriptions',
   'hospitalizations',
+  'appointments',
+  'inventory_products',
+  'invoices',
+  'payments',
 ] as const;
 export type ImportEntityType = (typeof IMPORT_ENTITY_TYPES)[number];
 
@@ -61,6 +73,10 @@ export const FULL_MIGRATION_STEPS = [
   'surgeries',
   'prescriptions',
   'hospitalizations',
+  'appointments',
+  'inventory_products',
+  'invoices',
+  'payments',
   'attachments',
 ] as const;
 export type FullMigrationStep = (typeof FULL_MIGRATION_STEPS)[number];
@@ -74,7 +90,11 @@ export const FULL_MIGRATION_STEP_LABELS: Record<FullMigrationStep, string> = {
   surgeries: '6. Cirugías',
   prescriptions: '7. Recetas',
   hospitalizations: '8. Internaciones',
-  attachments: '9. Adjuntos ZIP',
+  appointments: '9. Agenda / citas',
+  inventory_products: '10. Inventario',
+  invoices: '11. Facturas',
+  payments: '12. Pagos',
+  attachments: '13. Adjuntos ZIP',
 };
 
 export function nextFullMigrationStep(current: FullMigrationStep): FullMigrationStep | null {
@@ -99,6 +119,8 @@ export const DATA_MIGRATION_AUDIT_ACTIONS = {
   exportQueued: 'data_export.queued',
   exportCancelled: 'data_export.cancelled',
   exportDownloaded: 'data_export.downloaded',
+  locksReleased: 'data_migration.locks_released',
+  orphansPruned: 'data_migration.orphans_pruned',
 } as const;
 
 export const IDEMPOTENCY_MODES = ['off', 'skip_existing_source'] as const;
@@ -118,6 +140,10 @@ export const EXPORT_TYPES = [
   'surgeries',
   'prescriptions',
   'hospitalizations',
+  'appointments',
+  'inventory_products',
+  'invoices',
+  'payments',
   'patient_clinical',
   'full_clinic',
 ] as const;
@@ -132,6 +158,10 @@ export const EXPORT_TYPE_LABELS: Record<ExportType, string> = {
   surgeries: 'Cirugías',
   prescriptions: 'Recetas (con ítems)',
   hospitalizations: 'Internaciones',
+  appointments: 'Agenda / citas',
+  inventory_products: 'Inventario / farmacia',
+  invoices: 'Facturas (con ítems y pagos)',
+  payments: 'Pagos',
   patient_clinical: 'Historia de un paciente',
   full_clinic: 'Exportación completa de la clínica',
 };
@@ -695,6 +725,267 @@ export const HOSPITALIZATION_IMPORT_FIELDS: ImportFieldDef[] = [
   },
 ];
 
+export const APPOINTMENT_IMPORT_FIELDS: ImportFieldDef[] = [
+  {
+    key: 'external_appointment_id',
+    label: 'ID externo cita',
+    required: true,
+    aliases: ['external_appointment_id', 'appointment_id', 'id_cita', 'id_turno'],
+  },
+  {
+    key: 'external_patient_id',
+    label: 'ID externo paciente',
+    required: true,
+    aliases: ['external_patient_id', 'patient_id', 'id_paciente'],
+  },
+  {
+    key: 'starts_at',
+    label: 'Inicio',
+    required: true,
+    aliases: ['starts_at', 'inicio', 'fecha_hora', 'start', 'fecha'],
+  },
+  {
+    key: 'ends_at',
+    label: 'Fin',
+    aliases: ['ends_at', 'fin', 'end', 'hasta'],
+  },
+  {
+    key: 'appointment_type',
+    label: 'Tipo',
+    aliases: ['appointment_type', 'tipo', 'type'],
+  },
+  {
+    key: 'status',
+    label: 'Estado',
+    aliases: ['status', 'estado'],
+  },
+  {
+    key: 'title',
+    label: 'Título',
+    aliases: ['title', 'titulo', 'título', 'asunto'],
+  },
+  {
+    key: 'notes',
+    label: 'Notas',
+    aliases: ['notes', 'notas', 'observaciones'],
+  },
+  {
+    key: 'source_system',
+    label: 'Sistema origen',
+    aliases: ['source_system', 'sistema', 'origen'],
+  },
+];
+
+export const INVENTORY_PRODUCT_IMPORT_FIELDS: ImportFieldDef[] = [
+  {
+    key: 'external_product_id',
+    label: 'ID externo producto',
+    required: true,
+    aliases: ['external_product_id', 'product_id', 'id_producto', 'sku_externo'],
+  },
+  {
+    key: 'name',
+    label: 'Nombre',
+    required: true,
+    aliases: ['name', 'nombre', 'producto', 'product_name'],
+  },
+  {
+    key: 'sku',
+    label: 'SKU',
+    aliases: ['sku', 'codigo', 'código', 'code'],
+  },
+  {
+    key: 'category',
+    label: 'Categoría',
+    aliases: ['category', 'categoria', 'categoría', 'tipo'],
+  },
+  {
+    key: 'unit',
+    label: 'Unidad',
+    aliases: ['unit', 'unidad', 'uom'],
+  },
+  {
+    key: 'quantity',
+    label: 'Cantidad',
+    aliases: ['quantity', 'cantidad', 'stock', 'qty'],
+  },
+  {
+    key: 'min_quantity',
+    label: 'Stock mínimo',
+    aliases: ['min_quantity', 'stock_minimo', 'stock_mínimo', 'min'],
+  },
+  {
+    key: 'unit_cost',
+    label: 'Costo unitario',
+    aliases: ['unit_cost', 'costo', 'cost'],
+  },
+  {
+    key: 'unit_price',
+    label: 'Precio unitario',
+    aliases: ['unit_price', 'precio', 'price'],
+  },
+  {
+    key: 'manufacturer',
+    label: 'Fabricante',
+    aliases: ['manufacturer', 'fabricante', 'laboratorio', 'marca'],
+  },
+  {
+    key: 'notes',
+    label: 'Notas',
+    aliases: ['notes', 'notas', 'observaciones'],
+  },
+  {
+    key: 'source_system',
+    label: 'Sistema origen',
+    aliases: ['source_system', 'sistema', 'origen'],
+  },
+];
+
+export const INVOICE_IMPORT_FIELDS: ImportFieldDef[] = [
+  {
+    key: 'external_invoice_id',
+    label: 'ID externo factura',
+    required: true,
+    aliases: ['external_invoice_id', 'invoice_id', 'id_factura', 'factura'],
+  },
+  {
+    key: 'external_owner_id',
+    label: 'ID externo propietario',
+    aliases: ['external_owner_id', 'owner_id', 'id_propietario', 'id_tutor'],
+  },
+  {
+    key: 'external_patient_id',
+    label: 'ID externo paciente',
+    aliases: ['external_patient_id', 'patient_id', 'id_paciente'],
+  },
+  {
+    key: 'number',
+    label: 'Número',
+    aliases: ['number', 'numero', 'número', 'invoice_number'],
+  },
+  {
+    key: 'status',
+    label: 'Estado',
+    aliases: ['status', 'estado'],
+  },
+  {
+    key: 'issued_at',
+    label: 'Fecha emisión',
+    aliases: ['issued_at', 'fecha', 'emision', 'emisión', 'fecha_emision'],
+  },
+  {
+    key: 'currency',
+    label: 'Moneda',
+    aliases: ['currency', 'moneda'],
+  },
+  {
+    key: 'subtotal',
+    label: 'Subtotal',
+    aliases: ['subtotal'],
+  },
+  {
+    key: 'tax_amount',
+    label: 'Impuestos',
+    aliases: ['tax_amount', 'impuestos', 'iva'],
+  },
+  {
+    key: 'total',
+    label: 'Total',
+    aliases: ['total', 'importe'],
+  },
+  {
+    key: 'paid_amount',
+    label: 'Pagado',
+    aliases: ['paid_amount', 'pagado', 'abonado'],
+  },
+  {
+    key: 'balance',
+    label: 'Saldo',
+    aliases: ['balance', 'saldo', 'pendiente'],
+  },
+  {
+    key: 'description',
+    label: 'Descripción ítem',
+    aliases: ['description', 'descripcion', 'descripción', 'concepto', 'item'],
+  },
+  {
+    key: 'quantity',
+    label: 'Cantidad ítem',
+    aliases: ['quantity', 'cantidad', 'qty'],
+  },
+  {
+    key: 'unit_price',
+    label: 'Precio unitario',
+    aliases: ['unit_price', 'precio', 'precio_unitario'],
+  },
+  {
+    key: 'line_total',
+    label: 'Total línea',
+    aliases: ['line_total', 'total_linea', 'total_línea', 'importe_linea'],
+  },
+  {
+    key: 'external_product_id',
+    label: 'ID externo producto',
+    aliases: ['external_product_id', 'product_id', 'id_producto', 'sku_externo'],
+  },
+  {
+    key: 'notes',
+    label: 'Notas',
+    aliases: ['notes', 'notas', 'observaciones'],
+  },
+  {
+    key: 'source_system',
+    label: 'Sistema origen',
+    aliases: ['source_system', 'sistema', 'origen'],
+  },
+];
+
+export const PAYMENT_IMPORT_FIELDS: ImportFieldDef[] = [
+  {
+    key: 'external_payment_id',
+    label: 'ID externo pago',
+    required: true,
+    aliases: ['external_payment_id', 'payment_id', 'id_pago'],
+  },
+  {
+    key: 'external_invoice_id',
+    label: 'ID externo factura',
+    required: true,
+    aliases: ['external_invoice_id', 'invoice_id', 'id_factura', 'factura'],
+  },
+  {
+    key: 'amount',
+    label: 'Monto',
+    required: true,
+    aliases: ['amount', 'monto', 'importe', 'pago'],
+  },
+  {
+    key: 'method',
+    label: 'Método',
+    aliases: ['method', 'metodo', 'método', 'forma_pago', 'medio'],
+  },
+  {
+    key: 'paid_at',
+    label: 'Fecha de pago',
+    aliases: ['paid_at', 'fecha', 'fecha_pago', 'pago_at'],
+  },
+  {
+    key: 'reference',
+    label: 'Referencia',
+    aliases: ['reference', 'referencia', 'comprobante', 'tx'],
+  },
+  {
+    key: 'notes',
+    label: 'Notas',
+    aliases: ['notes', 'notas', 'observaciones'],
+  },
+  {
+    key: 'source_system',
+    label: 'Sistema origen',
+    aliases: ['source_system', 'sistema', 'origen'],
+  },
+];
+
 export function normalizeHeader(value: string): string {
   return value
     .normalize('NFD')
@@ -815,6 +1106,45 @@ export function parseImportDate(raw: string | null | undefined, locale: DateLoca
   }
 
   return { ok: false, reason: 'invalid' };
+}
+
+export type ParsedDateTime =
+  | { ok: true; iso: string }
+  | { ok: false; reason: 'empty' | 'invalid' };
+
+/** Accepts ISO datetime, `YYYY-MM-DD HH:mm`, `DD/MM/YYYY HH:mm`, or date-only (noon UTC). */
+export function parseImportDateTime(
+  raw: string | null | undefined,
+  locale: DateLocale
+): ParsedDateTime {
+  const value = (raw ?? '').trim();
+  if (!value) return { ok: false, reason: 'empty' };
+
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)) {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return { ok: false, reason: 'invalid' };
+    return { ok: true, iso: d.toISOString() };
+  }
+
+  const withTime = value.match(
+    /^(\d{4}-\d{2}-\d{2}|\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?$/
+  );
+  if (withTime) {
+    const datePart = parseImportDate(withTime[1], locale);
+    if (!datePart.ok) return { ok: false, reason: 'invalid' };
+    const hh = Number(withTime[2]);
+    const mm = Number(withTime[3]);
+    const ss = Number(withTime[4] ?? 0);
+    if (hh > 23 || mm > 59 || ss > 59) return { ok: false, reason: 'invalid' };
+    const iso = `${datePart.isoDate}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}.000Z`;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return { ok: false, reason: 'invalid' };
+    return { ok: true, iso: d.toISOString() };
+  }
+
+  const dateOnly = parseImportDate(value, locale);
+  if (!dateOnly.ok) return { ok: false, reason: 'invalid' };
+  return { ok: true, iso: `${dateOnly.isoDate}T12:00:00.000Z` };
 }
 
 export function isValidEmail(value: string): boolean {
@@ -1403,6 +1733,10 @@ export function buildSampleMigrationManifest(sourceSystem = 'VetLegacy'): Migrat
       surgeries: 1,
       prescriptions: 1,
       hospitalizations: 1,
+      appointments: 1,
+      inventoryProducts: 1,
+      invoices: 1,
+      payments: 1,
     },
   };
 }
@@ -1890,6 +2224,497 @@ export function buildHospitalizationTemplateCsv(): string {
   ]);
 }
 
+export type AppointmentImportRow = {
+  rowNumber: number;
+  externalAppointmentId: string;
+  externalPatientId: string;
+  startsAt: string;
+  endsAt: string | null;
+  appointmentType: string | null;
+  status: string | null;
+  title: string | null;
+  notes: string | null;
+  sourceSystem: string | null;
+};
+
+export function validateAppointmentRows(
+  rows: AppointmentImportRow[],
+  options?: { knownPatientExternalIds?: Set<string>; locale?: DateLocale }
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const locale = options?.locale ?? 'es-AR';
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (!row.externalAppointmentId) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'appointments',
+        field: 'external_appointment_id',
+        code: 'required',
+        message: 'Falta ID externo de cita',
+        severity: 'error',
+      });
+    } else if (seen.has(row.externalAppointmentId)) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'appointments',
+        field: 'external_appointment_id',
+        code: 'duplicate_in_file',
+        message: 'ID externo duplicado en el archivo',
+        severity: 'error',
+      });
+    } else {
+      seen.add(row.externalAppointmentId);
+    }
+    pushMissingPatient(
+      issues,
+      row.rowNumber,
+      'appointments',
+      row.externalPatientId,
+      options?.knownPatientExternalIds
+    );
+    const starts = parseImportDateTime(row.startsAt, locale);
+    if (!starts.ok) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'appointments',
+        field: 'starts_at',
+        code: 'invalid_datetime',
+        message: 'Inicio inválido (usá YYYY-MM-DD HH:mm o ISO)',
+        severity: 'error',
+      });
+    }
+    if (row.endsAt) {
+      const ends = parseImportDateTime(row.endsAt, locale);
+      if (!ends.ok) {
+        issues.push({
+          rowNumber: row.rowNumber,
+          entityType: 'appointments',
+          field: 'ends_at',
+          code: 'invalid_datetime',
+          message: 'Fin inválido',
+          severity: 'error',
+        });
+      } else if (starts.ok && ends.iso <= starts.iso) {
+        issues.push({
+          rowNumber: row.rowNumber,
+          entityType: 'appointments',
+          field: 'ends_at',
+          code: 'invalid_range',
+          message: 'Fin debe ser posterior al inicio',
+          severity: 'error',
+        });
+      }
+    }
+  }
+
+  // Soft overlap warnings within the same file (same patient).
+  const timed = rows
+    .map((row) => {
+      const starts = parseImportDateTime(row.startsAt, locale);
+      if (!starts.ok || !row.externalPatientId) return null;
+      const ends = row.endsAt
+        ? parseImportDateTime(row.endsAt, locale)
+        : ({ ok: true as const, iso: new Date(new Date(starts.iso).getTime() + 30 * 60 * 1000).toISOString() });
+      if (!ends.ok) return null;
+      return {
+        rowNumber: row.rowNumber,
+        patient: row.externalPatientId,
+        startMs: new Date(starts.iso).getTime(),
+        endMs: new Date(ends.iso).getTime(),
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null);
+
+  for (let i = 0; i < timed.length; i++) {
+    for (let j = i + 1; j < timed.length; j++) {
+      const a = timed[i]!;
+      const b = timed[j]!;
+      if (a.patient !== b.patient) continue;
+      if (a.startMs < b.endMs && b.startMs < a.endMs) {
+        issues.push({
+          rowNumber: a.rowNumber,
+          entityType: 'appointments',
+          field: 'starts_at',
+          code: 'possible_overlap',
+          message: `Posible solapamiento con fila ${b.rowNumber} del mismo paciente`,
+          severity: 'warning',
+          sourceReference: String(b.rowNumber),
+        });
+      }
+    }
+  }
+  return issues;
+}
+
+export function buildAppointmentTemplateCsv(): string {
+  return toCsv(APPOINTMENT_IMPORT_FIELDS.map((f) => f.key), [
+    {
+      external_appointment_id: 'APT-001',
+      external_patient_id: 'PAT-001',
+      starts_at: '2024-10-01 10:00',
+      ends_at: '2024-10-01 10:30',
+      appointment_type: 'consulta',
+      status: 'programada',
+      title: 'Control anual',
+      notes: '',
+      source_system: 'legacy',
+    },
+  ]);
+}
+
+export type InventoryProductImportRow = {
+  rowNumber: number;
+  externalProductId: string;
+  name: string;
+  sku: string | null;
+  category: string | null;
+  unit: string | null;
+  quantity: string | null;
+  minQuantity: string | null;
+  unitCost: string | null;
+  unitPrice: string | null;
+  manufacturer: string | null;
+  notes: string | null;
+  sourceSystem: string | null;
+};
+
+export function validateInventoryProductRows(rows: InventoryProductImportRow[]): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (!row.externalProductId) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'inventory_products',
+        field: 'external_product_id',
+        code: 'required',
+        message: 'Falta ID externo de producto',
+        severity: 'error',
+      });
+    } else if (seen.has(row.externalProductId)) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'inventory_products',
+        field: 'external_product_id',
+        code: 'duplicate_in_file',
+        message: 'ID externo duplicado en el archivo',
+        severity: 'error',
+      });
+    } else {
+      seen.add(row.externalProductId);
+    }
+    if (!row.name || row.name.trim().length < 2) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'inventory_products',
+        field: 'name',
+        code: 'required',
+        message: 'Falta nombre de producto',
+        severity: 'error',
+      });
+    }
+    if (row.quantity != null && row.quantity !== '' && Number.isNaN(Number(row.quantity))) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'inventory_products',
+        field: 'quantity',
+        code: 'invalid_number',
+        message: 'Cantidad inválida',
+        severity: 'error',
+      });
+    }
+    if (row.minQuantity != null && row.minQuantity !== '' && Number.isNaN(Number(row.minQuantity))) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'inventory_products',
+        field: 'min_quantity',
+        code: 'invalid_number',
+        message: 'Stock mínimo inválido',
+        severity: 'error',
+      });
+    }
+  }
+  return issues;
+}
+
+export function buildInventoryProductTemplateCsv(): string {
+  return toCsv(INVENTORY_PRODUCT_IMPORT_FIELDS.map((f) => f.key), [
+    {
+      external_product_id: 'PROD-001',
+      name: 'Amoxicilina 250mg',
+      sku: 'AMOX-250',
+      category: 'medicamento',
+      unit: 'caja',
+      quantity: '12',
+      min_quantity: '2',
+      unit_cost: '1500',
+      unit_price: '2800',
+      manufacturer: 'Lab Vet',
+      notes: '',
+      source_system: 'legacy',
+    },
+  ]);
+}
+
+export type InvoiceImportRow = {
+  rowNumber: number;
+  externalInvoiceId: string;
+  externalOwnerId: string | null;
+  externalPatientId: string | null;
+  number: string | null;
+  status: string | null;
+  issuedAt: string | null;
+  currency: string | null;
+  subtotal: string | null;
+  taxAmount: string | null;
+  total: string | null;
+  paidAmount: string | null;
+  balance: string | null;
+  description: string | null;
+  quantity: string | null;
+  unitPrice: string | null;
+  lineTotal: string | null;
+  externalProductId: string | null;
+  notes: string | null;
+  sourceSystem: string | null;
+};
+
+export function validateInvoiceRows(
+  rows: InvoiceImportRow[],
+  options?: {
+    knownOwnerExternalIds?: Set<string>;
+    knownPatientExternalIds?: Set<string>;
+  }
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const knownOwners = options?.knownOwnerExternalIds;
+  const knownPatients = options?.knownPatientExternalIds;
+  for (const row of rows) {
+    if (!row.externalInvoiceId) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'invoices',
+        field: 'external_invoice_id',
+        code: 'required',
+        message: 'Falta ID externo de factura',
+        severity: 'error',
+      });
+    }
+    if (!row.externalOwnerId && !row.externalPatientId) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'invoices',
+        field: 'external_owner_id',
+        code: 'required',
+        message: 'Indicá propietario o paciente externo',
+        severity: 'error',
+      });
+    }
+    if (row.externalOwnerId && knownOwners && !knownOwners.has(row.externalOwnerId)) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'invoices',
+        field: 'external_owner_id',
+        code: 'unknown_owner',
+        message: 'Propietario externo no mapeado',
+        severity: 'error',
+      });
+    }
+    if (row.externalPatientId && knownPatients && !knownPatients.has(row.externalPatientId)) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'invoices',
+        field: 'external_patient_id',
+        code: 'unknown_patient',
+        message: 'Paciente externo no mapeado',
+        severity: 'error',
+      });
+    }
+    const hasLine =
+      Boolean(row.description?.trim()) ||
+      (row.quantity != null && row.quantity !== '') ||
+      (row.unitPrice != null && row.unitPrice !== '');
+    if (hasLine && !row.description?.trim()) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'invoices',
+        field: 'description',
+        code: 'required',
+        message: 'Falta descripción del ítem',
+        severity: 'error',
+      });
+    }
+    for (const [field, value] of [
+      ['quantity', row.quantity],
+      ['unit_price', row.unitPrice],
+      ['line_total', row.lineTotal],
+      ['subtotal', row.subtotal],
+      ['tax_amount', row.taxAmount],
+      ['total', row.total],
+      ['paid_amount', row.paidAmount],
+      ['balance', row.balance],
+    ] as const) {
+      if (value != null && value !== '' && Number.isNaN(Number(String(value).replace(',', '.')))) {
+        issues.push({
+          rowNumber: row.rowNumber,
+          entityType: 'invoices',
+          field,
+          code: 'invalid_number',
+          message: `Número inválido en ${field}`,
+          severity: 'error',
+        });
+      }
+    }
+  }
+  return issues;
+}
+
+export function buildInvoiceTemplateCsv(): string {
+  return toCsv(INVOICE_IMPORT_FIELDS.map((f) => f.key), [
+    {
+      external_invoice_id: 'INV-001',
+      external_owner_id: 'OWN-001',
+      external_patient_id: 'PAT-001',
+      number: 'A-0001',
+      status: 'emitida',
+      issued_at: '2024-11-01',
+      currency: 'ARS',
+      subtotal: '5000',
+      tax_amount: '0',
+      total: '5000',
+      paid_amount: '0',
+      balance: '5000',
+      description: 'Consulta general',
+      quantity: '1',
+      unit_price: '5000',
+      line_total: '5000',
+      external_product_id: '',
+      notes: '',
+      source_system: 'legacy',
+    },
+  ]);
+}
+
+export type PaymentImportRow = {
+  rowNumber: number;
+  externalPaymentId: string;
+  externalInvoiceId: string;
+  amount: string;
+  method: string | null;
+  paidAt: string | null;
+  reference: string | null;
+  notes: string | null;
+  sourceSystem: string | null;
+};
+
+export function validatePaymentRows(
+  rows: PaymentImportRow[],
+  options?: {
+    knownInvoiceExternalIds?: Set<string>;
+    invoicePaidAmountByExternal?: Map<string, number>;
+  }
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const knownInvoices = options?.knownInvoiceExternalIds;
+  const paidByInvoice = options?.invoicePaidAmountByExternal;
+  const seen = new Set<string>();
+  const sums = new Map<string, { total: number; firstRow: number }>();
+  for (const row of rows) {
+    if (!row.externalPaymentId) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'payments',
+        field: 'external_payment_id',
+        code: 'required',
+        message: 'Falta ID externo de pago',
+        severity: 'error',
+      });
+    } else if (seen.has(row.externalPaymentId)) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'payments',
+        field: 'external_payment_id',
+        code: 'duplicate_in_file',
+        message: 'ID externo de pago duplicado en el archivo',
+        severity: 'error',
+      });
+    } else {
+      seen.add(row.externalPaymentId);
+    }
+    if (!row.externalInvoiceId) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'payments',
+        field: 'external_invoice_id',
+        code: 'required',
+        message: 'Falta ID externo de factura',
+        severity: 'error',
+      });
+    } else if (knownInvoices && !knownInvoices.has(row.externalInvoiceId)) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'payments',
+        field: 'external_invoice_id',
+        code: 'unknown_invoice',
+        message: 'Factura externa no mapeada',
+        severity: 'error',
+      });
+    }
+    const amount = Number(String(row.amount ?? '').replace(',', '.'));
+    if (!row.amount || Number.isNaN(amount) || amount <= 0) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'payments',
+        field: 'amount',
+        code: 'invalid_number',
+        message: 'Monto de pago inválido',
+        severity: 'error',
+      });
+    } else if (row.externalInvoiceId) {
+      const prev = sums.get(row.externalInvoiceId);
+      if (prev) {
+        prev.total += amount;
+      } else {
+        sums.set(row.externalInvoiceId, { total: amount, firstRow: row.rowNumber });
+      }
+    }
+  }
+  if (paidByInvoice && paidByInvoice.size > 0) {
+    for (const [invoiceId, agg] of sums) {
+      if (!paidByInvoice.has(invoiceId)) continue;
+      const expected = paidByInvoice.get(invoiceId) ?? 0;
+      if (Math.abs(expected - agg.total) > 0.009) {
+        issues.push({
+          rowNumber: agg.firstRow,
+          entityType: 'payments',
+          field: 'amount',
+          code: 'paid_amount_mismatch',
+          message: `Suma de pagos (${agg.total}) ≠ paid_amount de factura (${expected})`,
+          severity: 'warning',
+          recommendedAction: 'Revisá CSV de facturas/pagos; no se recalcula automáticamente',
+        });
+      }
+    }
+  }
+  return issues;
+}
+
+export function buildPaymentTemplateCsv(): string {
+  return toCsv(PAYMENT_IMPORT_FIELDS.map((f) => f.key), [
+    {
+      external_payment_id: 'PAY-001',
+      external_invoice_id: 'INV-001',
+      amount: '5000',
+      method: 'transferencia',
+      paid_at: '2024-11-02',
+      reference: 'TRX-123',
+      notes: '',
+      source_system: 'legacy',
+    },
+  ]);
+}
+
 /** Default unresolved duplicate warnings to review (never silent create/link). */
 export function defaultDecisionForIssue(issue: ValidationIssue): ConflictPolicy {
   if (issue.code !== 'possible_duplicate') return 'create';
@@ -1978,5 +2803,222 @@ export function buildBatchErrorsReportCsv(
       source_reference: row.sourceReference ?? '',
       recommended_action: row.recommendedAction ?? '',
     }))
+  );
+}
+
+export function sumOrphanCounts(counts: Record<string, number> | null | undefined): number {
+  if (!counts) return 0;
+  return Object.values(counts).reduce((acc, n) => acc + (Number.isFinite(n) ? Number(n) : 0), 0);
+}
+
+export function buildIntegrityReportCsv(input: {
+  organizationId: string;
+  generatedAt?: string | null;
+  imports?: Record<string, unknown>;
+  exports?: Record<string, unknown>;
+  createdRowsTracked?: number;
+  idMapEntries?: number;
+  orphansCreated?: Record<string, number>;
+  orphansIdMap?: Record<string, number>;
+  stuckImports?: number;
+  stuckExports?: number;
+}): string {
+  const metricRows: Array<Record<string, unknown>> = [
+    { section: 'meta', key: 'organization_id', value: input.organizationId },
+    { section: 'meta', key: 'generated_at', value: input.generatedAt ?? '' },
+    { section: 'meta', key: 'created_rows_tracked', value: input.createdRowsTracked ?? 0 },
+    { section: 'meta', key: 'id_map_entries', value: input.idMapEntries ?? 0 },
+    { section: 'stuck_locks', key: 'imports', value: input.stuckImports ?? 0 },
+    { section: 'stuck_locks', key: 'exports', value: input.stuckExports ?? 0 },
+  ];
+  for (const [key, value] of Object.entries(input.imports ?? {})) {
+    metricRows.push({ section: 'imports', key, value });
+  }
+  for (const [key, value] of Object.entries(input.exports ?? {})) {
+    metricRows.push({ section: 'exports', key, value });
+  }
+  for (const [key, value] of Object.entries(input.orphansCreated ?? {})) {
+    metricRows.push({ section: 'orphans_created_rows', key, value });
+  }
+  for (const [key, value] of Object.entries(input.orphansIdMap ?? {})) {
+    metricRows.push({ section: 'orphans_id_map', key, value });
+  }
+  return toCsv(['section', 'key', 'value'], metricRows);
+}
+
+export function buildIdMapReportCsv(
+  rows: Array<{
+    entityType: string;
+    externalId: string;
+    internalId: string;
+    createdAt?: string | null;
+  }>
+): string {
+  return toCsv(
+    ['entity_type', 'external_id', 'internal_id', 'created_at'],
+    rows.map((row) => ({
+      entity_type: row.entityType,
+      external_id: row.externalId,
+      internal_id: row.internalId,
+      created_at: row.createdAt ?? '',
+    }))
+  );
+}
+
+export type MigrationChecklistItem = {
+  key: string;
+  label: string;
+  status: 'ok' | 'warn' | 'fail' | string;
+  count?: number | null;
+  detail?: string | null;
+};
+
+export function summarizeMigrationChecklist(items: MigrationChecklistItem[]): {
+  ok: number;
+  warn: number;
+  fail: number;
+  total: number;
+} {
+  let ok = 0;
+  let warn = 0;
+  let fail = 0;
+  for (const item of items) {
+    if (item.status === 'ok') ok += 1;
+    else if (item.status === 'fail') fail += 1;
+    else warn += 1;
+  }
+  return { ok, warn, fail, total: items.length };
+}
+
+export function buildMigrationChecklistCsv(
+  items: MigrationChecklistItem[],
+  meta?: { organizationId?: string; generatedAt?: string | null; readyForGolive?: boolean }
+): string {
+  const rows: Array<Record<string, unknown>> = [
+    {
+      section: 'meta',
+      key: 'organization_id',
+      status: '',
+      count: '',
+      detail: meta?.organizationId ?? '',
+    },
+    {
+      section: 'meta',
+      key: 'generated_at',
+      status: '',
+      count: '',
+      detail: meta?.generatedAt ?? '',
+    },
+    {
+      section: 'meta',
+      key: 'ready_for_golive',
+      status: meta?.readyForGolive ? 'ok' : 'warn',
+      count: '',
+      detail: meta?.readyForGolive ? 'true' : 'false',
+    },
+    ...items.map((item) => ({
+      section: 'check',
+      key: item.key,
+      status: item.status,
+      count: item.count ?? '',
+      detail: item.detail ?? item.label,
+    })),
+  ];
+  return toCsv(['section', 'key', 'status', 'count', 'detail'], rows);
+}
+
+export type BillingReconcileRow = {
+  invoiceId: string;
+  invoiceNumber?: string | null;
+  status?: string | null;
+  total?: number | null;
+  paidAmount?: number | null;
+  balance?: number | null;
+  paymentsSum?: number | null;
+  paymentsCount?: number | null;
+  delta?: number | null;
+};
+
+export function buildBillingReconcileCsv(
+  rows: BillingReconcileRow[],
+  meta?: {
+    organizationId?: string;
+    generatedAt?: string | null;
+    summary?: Record<string, number | string | null | undefined>;
+  }
+): string {
+  const out: Array<Record<string, unknown>> = [
+    {
+      section: 'meta',
+      invoice_id: '',
+      invoice_number: '',
+      status: '',
+      total: '',
+      paid_amount: '',
+      balance: '',
+      payments_sum: '',
+      payments_count: '',
+      delta: '',
+      note: meta?.organizationId ?? '',
+    },
+    {
+      section: 'meta',
+      invoice_id: '',
+      invoice_number: '',
+      status: '',
+      total: '',
+      paid_amount: '',
+      balance: '',
+      payments_sum: '',
+      payments_count: '',
+      delta: '',
+      note: meta?.generatedAt ?? '',
+    },
+  ];
+  for (const [key, value] of Object.entries(meta?.summary ?? {})) {
+    out.push({
+      section: 'summary',
+      invoice_id: key,
+      invoice_number: '',
+      status: '',
+      total: '',
+      paid_amount: '',
+      balance: '',
+      payments_sum: '',
+      payments_count: '',
+      delta: '',
+      note: value ?? '',
+    });
+  }
+  for (const row of rows) {
+    out.push({
+      section: 'invoice',
+      invoice_id: row.invoiceId,
+      invoice_number: row.invoiceNumber ?? '',
+      status: row.status ?? '',
+      total: row.total ?? '',
+      paid_amount: row.paidAmount ?? '',
+      balance: row.balance ?? '',
+      payments_sum: row.paymentsSum ?? '',
+      payments_count: row.paymentsCount ?? '',
+      delta: row.delta ?? '',
+      note: '',
+    });
+  }
+  return toCsv(
+    [
+      'section',
+      'invoice_id',
+      'invoice_number',
+      'status',
+      'total',
+      'paid_amount',
+      'balance',
+      'payments_sum',
+      'payments_count',
+      'delta',
+      'note',
+    ],
+    out
   );
 }

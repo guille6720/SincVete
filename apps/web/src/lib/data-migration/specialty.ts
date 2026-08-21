@@ -1,19 +1,32 @@
 import 'server-only';
 
 import {
+  APPOINTMENT_IMPORT_FIELDS,
   HOSPITALIZATION_IMPORT_FIELDS,
+  INVENTORY_PRODUCT_IMPORT_FIELDS,
+  INVOICE_IMPORT_FIELDS,
+  PAYMENT_IMPORT_FIELDS,
   LAB_ORDER_IMPORT_FIELDS,
   PRESCRIPTION_IMPORT_FIELDS,
   SURGERY_IMPORT_FIELDS,
   mapRow,
   parseImportDate,
+  parseImportDateTime,
+  validateAppointmentRows,
   validateHospitalizationRows,
+  validateInventoryProductRows,
+  validateInvoiceRows,
+  validatePaymentRows,
   validateLabOrderRows,
   validatePrescriptionRows,
   validateSurgeryRows,
+  type AppointmentImportRow,
   type DateLocale,
   type HospitalizationImportRow,
   type IdempotencyMode,
+  type InventoryProductImportRow,
+  type InvoiceImportRow,
+  type PaymentImportRow,
   type LabOrderImportRow,
   type PrescriptionImportRow,
   type SurgeryImportRow,
@@ -25,7 +38,11 @@ export type SpecialtyEntity =
   | 'lab_orders'
   | 'surgeries'
   | 'prescriptions'
-  | 'hospitalizations';
+  | 'hospitalizations'
+  | 'appointments'
+  | 'inventory_products'
+  | 'invoices'
+  | 'payments';
 
 async function findSpecialtyBySource(input: {
   supabase: MigrationDb;
@@ -49,6 +66,10 @@ export function fieldsForSpecialty(entity: SpecialtyEntity) {
   if (entity === 'lab_orders') return LAB_ORDER_IMPORT_FIELDS;
   if (entity === 'surgeries') return SURGERY_IMPORT_FIELDS;
   if (entity === 'hospitalizations') return HOSPITALIZATION_IMPORT_FIELDS;
+  if (entity === 'appointments') return APPOINTMENT_IMPORT_FIELDS;
+  if (entity === 'inventory_products') return INVENTORY_PRODUCT_IMPORT_FIELDS;
+  if (entity === 'invoices') return INVOICE_IMPORT_FIELDS;
+  if (entity === 'payments') return PAYMENT_IMPORT_FIELDS;
   return PRESCRIPTION_IMPORT_FIELDS;
 }
 
@@ -146,13 +167,117 @@ export function asHospitalizationRows(
   });
 }
 
+export function asAppointmentRows(
+  rawRows: Record<string, string>[],
+  mapping: Record<string, string | null>
+): AppointmentImportRow[] {
+  return rawRows.map((raw, index) => {
+    const mapped = mapRow(raw, mapping);
+    return {
+      rowNumber: index + 2,
+      externalAppointmentId: mapped.external_appointment_id ?? '',
+      externalPatientId: mapped.external_patient_id ?? '',
+      startsAt: mapped.starts_at ?? '',
+      endsAt: mapped.ends_at || null,
+      appointmentType: mapped.appointment_type || null,
+      status: mapped.status || null,
+      title: mapped.title || null,
+      notes: mapped.notes || null,
+      sourceSystem: mapped.source_system || null,
+    };
+  });
+}
+
+export function asInventoryProductRows(
+  rawRows: Record<string, string>[],
+  mapping: Record<string, string | null>
+): InventoryProductImportRow[] {
+  return rawRows.map((raw, index) => {
+    const mapped = mapRow(raw, mapping);
+    return {
+      rowNumber: index + 2,
+      externalProductId: mapped.external_product_id ?? '',
+      name: mapped.name ?? '',
+      sku: mapped.sku || null,
+      category: mapped.category || null,
+      unit: mapped.unit || null,
+      quantity: mapped.quantity || null,
+      minQuantity: mapped.min_quantity || null,
+      unitCost: mapped.unit_cost || null,
+      unitPrice: mapped.unit_price || null,
+      manufacturer: mapped.manufacturer || null,
+      notes: mapped.notes || null,
+      sourceSystem: mapped.source_system || null,
+    };
+  });
+}
+
+export function asInvoiceRows(
+  rawRows: Record<string, string>[],
+  mapping: Record<string, string | null>
+): InvoiceImportRow[] {
+  return rawRows.map((raw, index) => {
+    const mapped = mapRow(raw, mapping);
+    return {
+      rowNumber: index + 2,
+      externalInvoiceId: mapped.external_invoice_id ?? '',
+      externalOwnerId: mapped.external_owner_id || null,
+      externalPatientId: mapped.external_patient_id || null,
+      number: mapped.number || null,
+      status: mapped.status || null,
+      issuedAt: mapped.issued_at || null,
+      currency: mapped.currency || null,
+      subtotal: mapped.subtotal || null,
+      taxAmount: mapped.tax_amount || null,
+      total: mapped.total || null,
+      paidAmount: mapped.paid_amount || null,
+      balance: mapped.balance || null,
+      description: mapped.description || null,
+      quantity: mapped.quantity || null,
+      unitPrice: mapped.unit_price || null,
+      lineTotal: mapped.line_total || null,
+      externalProductId: mapped.external_product_id || null,
+      notes: mapped.notes || null,
+      sourceSystem: mapped.source_system || null,
+    };
+  });
+}
+
+export function asPaymentRows(
+  rawRows: Record<string, string>[],
+  mapping: Record<string, string | null>
+): PaymentImportRow[] {
+  return rawRows.map((raw, index) => {
+    const mapped = mapRow(raw, mapping);
+    return {
+      rowNumber: index + 2,
+      externalPaymentId: mapped.external_payment_id ?? '',
+      externalInvoiceId: mapped.external_invoice_id ?? '',
+      amount: mapped.amount ?? '',
+      method: mapped.method || null,
+      paidAt: mapped.paid_at || null,
+      reference: mapped.reference || null,
+      notes: mapped.notes || null,
+      sourceSystem: mapped.source_system || null,
+    };
+  });
+}
+
 export function validateSpecialtyRows(
   entity: SpecialtyEntity,
   rawRows: Record<string, string>[],
   mapping: Record<string, string | null>,
-  options: { knownPatientExternalIds?: string[]; locale?: DateLocale }
+  options: {
+    knownPatientExternalIds?: string[];
+    knownOwnerExternalIds?: string[];
+    knownInvoiceExternalIds?: string[];
+    invoicePaidAmountByExternal?: Map<string, number>;
+    locale?: DateLocale;
+  }
 ): { issues: ValidationIssue[]; readyCount: number; rows: unknown[] } {
   const known = new Set(options.knownPatientExternalIds ?? []);
+  const knownOwners = new Set(options.knownOwnerExternalIds ?? []);
+  const knownInvoices = new Set(options.knownInvoiceExternalIds ?? []);
   const locale = options.locale ?? 'es-AR';
   if (entity === 'lab_orders') {
     const rows = asLabOrderRows(rawRows, mapping);
@@ -177,6 +302,52 @@ export function validateSpecialtyRows(
   if (entity === 'hospitalizations') {
     const rows = asHospitalizationRows(rawRows, mapping);
     const issues = validateHospitalizationRows(rows, { knownPatientExternalIds: known, locale });
+    const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
+    return {
+      issues,
+      readyCount: rows.filter((r) => !errorRows.has(r.rowNumber)).length,
+      rows,
+    };
+  }
+  if (entity === 'appointments') {
+    const rows = asAppointmentRows(rawRows, mapping);
+    const issues = validateAppointmentRows(rows, { knownPatientExternalIds: known, locale });
+    const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
+    return {
+      issues,
+      readyCount: rows.filter((r) => !errorRows.has(r.rowNumber)).length,
+      rows,
+    };
+  }
+  if (entity === 'inventory_products') {
+    const rows = asInventoryProductRows(rawRows, mapping);
+    const issues = validateInventoryProductRows(rows);
+    const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
+    return {
+      issues,
+      readyCount: rows.filter((r) => !errorRows.has(r.rowNumber)).length,
+      rows,
+    };
+  }
+  if (entity === 'invoices') {
+    const rows = asInvoiceRows(rawRows, mapping);
+    const issues = validateInvoiceRows(rows, {
+      knownOwnerExternalIds: knownOwners.size > 0 ? knownOwners : undefined,
+      knownPatientExternalIds: known.size > 0 ? known : undefined,
+    });
+    const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
+    return {
+      issues,
+      readyCount: rows.filter((r) => !errorRows.has(r.rowNumber)).length,
+      rows,
+    };
+  }
+  if (entity === 'payments') {
+    const rows = asPaymentRows(rawRows, mapping);
+    const issues = validatePaymentRows(rows, {
+      knownInvoiceExternalIds: knownInvoices.size > 0 ? knownInvoices : undefined,
+      invoicePaidAmountByExternal: options.invoicePaidAmountByExternal,
+    });
     const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
     return {
       issues,
@@ -250,6 +421,9 @@ export async function commitSpecialtySlice(input: {
   mapping: Record<string, string | null>;
   locale: DateLocale;
   patientIdByExternal: Record<string, string>;
+  ownerIdByExternal?: Record<string, string>;
+  productIdByExternal?: Record<string, string>;
+  invoiceIdByExternal?: Record<string, string>;
   organizationId: string;
   branchId: string;
   batchId: string;
@@ -557,6 +731,526 @@ export async function commitSpecialtySlice(input: {
         entity_type: 'hospitalizations',
         entity_id: data.id,
         external_id: row.externalHospitalizationId,
+      });
+    }
+    return { imported, failed, skipped, idMap };
+  }
+
+  if (input.entity === 'appointments') {
+    const appointmentRows = asAppointmentRows(slice, input.mapping).map((row, idx) => ({
+      ...row,
+      rowNumber: input.offset + idx + 2,
+    }));
+    for (const row of appointmentRows) {
+      const patientId = input.patientIdByExternal[row.externalPatientId];
+      const starts = parseImportDateTime(row.startsAt, input.locale);
+      const ends = row.endsAt ? parseImportDateTime(row.endsAt, input.locale) : null;
+      if (!patientId || !starts.ok || (row.endsAt && (!ends || !ends.ok))) {
+        failed += 1;
+        continue;
+      }
+      const endsIso =
+        ends && ends.ok
+          ? ends.iso
+          : new Date(new Date(starts.iso).getTime() + 30 * 60 * 1000).toISOString();
+      if (endsIso <= starts.iso) {
+        failed += 1;
+        continue;
+      }
+      const sourceSystem = row.sourceSystem ?? input.sourceSystem ?? '';
+      if (skipExisting) {
+        const existingId = await findSpecialtyBySource({
+          supabase: input.supabase,
+          table: 'appointments',
+          organizationId: input.organizationId,
+          sourceSystem,
+          sourceRecordId: row.externalAppointmentId,
+        });
+        if (existingId) {
+          idMap[row.externalAppointmentId] = existingId;
+          skipped += 1;
+          await input.supabase.from('data_import_id_map').insert({
+            batch_id: input.batchId,
+            organization_id: input.organizationId,
+            entity_type: 'appointments',
+            external_id: row.externalAppointmentId,
+            internal_id: existingId,
+          });
+          continue;
+        }
+      }
+      const { data: patient } = await input.supabase
+        .from('patients')
+        .select('id, owner_id')
+        .eq('id', patientId)
+        .eq('organization_id', input.organizationId)
+        .maybeSingle();
+      if (!patient) {
+        failed += 1;
+        continue;
+      }
+      const typeRaw = (row.appointmentType ?? '').trim().toLowerCase();
+      const appointmentType =
+        typeRaw === 'vacunacion' || typeRaw === 'vacunación'
+          ? 'vacunacion'
+          : typeRaw === 'cirugia' || typeRaw === 'cirugía'
+            ? 'cirugia'
+            : typeRaw === 'control'
+              ? 'control'
+              : typeRaw === 'emergencia'
+                ? 'emergencia'
+                : typeRaw === 'otro'
+                  ? 'otro'
+                  : 'consulta';
+      const statusRaw = (row.status ?? '').trim().toLowerCase();
+      const status =
+        statusRaw === 'confirmada'
+          ? 'confirmada'
+          : statusRaw === 'en_curso' || statusRaw === 'en curso'
+            ? 'en_curso'
+            : statusRaw === 'completada'
+              ? 'completada'
+              : statusRaw === 'cancelada'
+                ? 'cancelada'
+                : statusRaw === 'ausente'
+                  ? 'ausente'
+                  : 'programada';
+      const { data, error } = await input.supabase
+        .from('appointments')
+        .insert({
+          organization_id: input.organizationId,
+          branch_id: input.branchId,
+          patient_id: patient.id,
+          owner_id: patient.owner_id,
+          starts_at: starts.iso,
+          ends_at: endsIso,
+          status,
+          appointment_type: appointmentType,
+          title: row.title?.trim() || null,
+          notes: row.notes?.trim() || null,
+          import_batch_id: input.batchId,
+          source_system: row.sourceSystem ?? input.sourceSystem,
+          source_record_id: row.externalAppointmentId,
+          imported_at: nowIso,
+          imported_by: input.userId,
+        })
+        .select('id')
+        .single();
+      if (error || !data) {
+        failed += 1;
+        continue;
+      }
+      imported += 1;
+      idMap[row.externalAppointmentId] = data.id;
+      await input.supabase.from('data_import_created_rows').insert({
+        batch_id: input.batchId,
+        organization_id: input.organizationId,
+        entity_type: 'appointments',
+        entity_id: data.id,
+        external_id: row.externalAppointmentId,
+      });
+      await input.supabase.from('data_import_id_map').insert({
+        batch_id: input.batchId,
+        organization_id: input.organizationId,
+        entity_type: 'appointments',
+        external_id: row.externalAppointmentId,
+        internal_id: data.id,
+      });
+    }
+    return { imported, failed, skipped, idMap };
+  }
+
+  if (input.entity === 'inventory_products') {
+    const productRows = asInventoryProductRows(slice, input.mapping).map((row, idx) => ({
+      ...row,
+      rowNumber: input.offset + idx + 2,
+    }));
+    for (const row of productRows) {
+      if (!row.name.trim() || !row.externalProductId.trim()) {
+        failed += 1;
+        continue;
+      }
+      const quantity = row.quantity != null && row.quantity !== '' ? Number(row.quantity) : 0;
+      const minQuantity =
+        row.minQuantity != null && row.minQuantity !== '' ? Number(row.minQuantity) : 0;
+      if (Number.isNaN(quantity) || Number.isNaN(minQuantity)) {
+        failed += 1;
+        continue;
+      }
+      const sourceSystem = row.sourceSystem ?? input.sourceSystem ?? '';
+      if (skipExisting) {
+        const existingId = await findSpecialtyBySource({
+          supabase: input.supabase,
+          table: 'inventory_products',
+          organizationId: input.organizationId,
+          sourceSystem,
+          sourceRecordId: row.externalProductId,
+        });
+        if (existingId) {
+          idMap[row.externalProductId] = existingId;
+          skipped += 1;
+          await input.supabase.from('data_import_id_map').insert({
+            batch_id: input.batchId,
+            organization_id: input.organizationId,
+            entity_type: 'inventory_products',
+            external_id: row.externalProductId,
+            internal_id: existingId,
+          });
+          continue;
+        }
+      }
+      const catRaw = (row.category ?? '').trim().toLowerCase();
+      const category =
+        catRaw === 'vacuna'
+          ? 'vacuna'
+          : catRaw === 'insumo'
+            ? 'insumo'
+            : catRaw === 'alimento'
+              ? 'alimento'
+              : catRaw === 'laboratorio'
+                ? 'laboratorio'
+                : catRaw === 'otro'
+                  ? 'otro'
+                  : 'medicamento';
+      const unitRaw = (row.unit ?? '').trim().toLowerCase();
+      const unit =
+        unitRaw === 'caja'
+          ? 'caja'
+          : unitRaw === 'frasco'
+            ? 'frasco'
+            : unitRaw === 'ml'
+              ? 'ml'
+              : unitRaw === 'mg'
+                ? 'mg'
+                : unitRaw === 'g'
+                  ? 'g'
+                  : unitRaw === 'kg'
+                    ? 'kg'
+                    : unitRaw === 'dosis'
+                      ? 'dosis'
+                      : unitRaw === 'otro'
+                        ? 'otro'
+                        : 'unidad';
+      const unitCost =
+        row.unitCost != null && row.unitCost !== '' && !Number.isNaN(Number(row.unitCost))
+          ? Number(row.unitCost)
+          : null;
+      const unitPrice =
+        row.unitPrice != null && row.unitPrice !== '' && !Number.isNaN(Number(row.unitPrice))
+          ? Number(row.unitPrice)
+          : null;
+      const { data, error } = await input.supabase
+        .from('inventory_products')
+        .insert({
+          organization_id: input.organizationId,
+          branch_id: input.branchId,
+          name: row.name.trim(),
+          sku: row.sku?.trim() || null,
+          category,
+          unit,
+          quantity,
+          min_quantity: minQuantity,
+          unit_cost: unitCost,
+          unit_price: unitPrice,
+          manufacturer: row.manufacturer?.trim() || null,
+          notes: row.notes?.trim() || null,
+          is_active: true,
+          import_batch_id: input.batchId,
+          source_system: row.sourceSystem ?? input.sourceSystem,
+          source_record_id: row.externalProductId,
+          imported_at: nowIso,
+          imported_by: input.userId,
+        })
+        .select('id')
+        .single();
+      if (error || !data) {
+        failed += 1;
+        continue;
+      }
+      imported += 1;
+      idMap[row.externalProductId] = data.id;
+      await input.supabase.from('data_import_created_rows').insert({
+        batch_id: input.batchId,
+        organization_id: input.organizationId,
+        entity_type: 'inventory_products',
+        entity_id: data.id,
+        external_id: row.externalProductId,
+      });
+      await input.supabase.from('data_import_id_map').insert({
+        batch_id: input.batchId,
+        organization_id: input.organizationId,
+        entity_type: 'inventory_products',
+        external_id: row.externalProductId,
+        internal_id: data.id,
+      });
+    }
+    return { imported, failed, skipped, idMap };
+  }
+
+  if (input.entity === 'invoices') {
+    const invoiceRows = asInvoiceRows(slice, input.mapping).map((row, idx) => ({
+      ...row,
+      rowNumber: input.offset + idx + 2,
+    }));
+    const ownerMap = input.ownerIdByExternal ?? {};
+    const productMap = input.productIdByExternal ?? {};
+    const parseMoney = (value: string | null | undefined): number | null => {
+      if (value == null || value === '') return null;
+      const n = Number(String(value).replace(',', '.'));
+      return Number.isNaN(n) ? null : n;
+    };
+    for (const row of invoiceRows) {
+      if (!row.externalInvoiceId.trim()) {
+        failed += 1;
+        continue;
+      }
+      let ownerId = row.externalOwnerId ? ownerMap[row.externalOwnerId] : undefined;
+      let patientId = row.externalPatientId
+        ? input.patientIdByExternal[row.externalPatientId]
+        : undefined;
+      if (patientId && !ownerId) {
+        const { data: patient } = await input.supabase
+          .from('patients')
+          .select('id, owner_id')
+          .eq('id', patientId)
+          .eq('organization_id', input.organizationId)
+          .maybeSingle();
+        if (!patient) {
+          failed += 1;
+          continue;
+        }
+        ownerId = patient.owner_id;
+        patientId = patient.id;
+      }
+      if (!ownerId) {
+        failed += 1;
+        continue;
+      }
+      const sourceSystem = row.sourceSystem ?? input.sourceSystem ?? '';
+      let invoiceId = idMap[row.externalInvoiceId];
+      if (!invoiceId) {
+        const existingId = await findSpecialtyBySource({
+          supabase: input.supabase,
+          table: 'invoices',
+          organizationId: input.organizationId,
+          sourceSystem,
+          sourceRecordId: row.externalInvoiceId,
+        });
+        if (existingId) {
+          const { data: existingInv } = await input.supabase
+            .from('invoices')
+            .select('id, import_batch_id')
+            .eq('id', existingId)
+            .eq('organization_id', input.organizationId)
+            .maybeSingle();
+          if (existingInv?.import_batch_id === input.batchId) {
+            invoiceId = existingId;
+            idMap[row.externalInvoiceId] = existingId;
+          } else if (skipExisting) {
+            idMap[row.externalInvoiceId] = existingId;
+            skipped += 1;
+            await input.supabase.from('data_import_id_map').insert({
+              batch_id: input.batchId,
+              organization_id: input.organizationId,
+              entity_type: 'invoices',
+              external_id: row.externalInvoiceId,
+              internal_id: existingId,
+            });
+            continue;
+          } else {
+            // No silent mutation of invoices from other batches/sources.
+            failed += 1;
+            continue;
+          }
+        }
+        if (!invoiceId) {
+        const issued = row.issuedAt ? parseImportDate(row.issuedAt, input.locale) : null;
+        const statusRaw = (row.status ?? '').trim().toLowerCase();
+        const status =
+          statusRaw === 'pagada'
+            ? 'pagada'
+            : statusRaw === 'anulada'
+              ? 'anulada'
+              : statusRaw === 'borrador'
+                ? 'borrador'
+                : 'emitida';
+        const total = parseMoney(row.total) ?? parseMoney(row.lineTotal) ?? 0;
+        const subtotal = parseMoney(row.subtotal) ?? total;
+        const taxAmount = parseMoney(row.taxAmount) ?? 0;
+        const paidAmount = parseMoney(row.paidAmount) ?? 0;
+        const balance = parseMoney(row.balance) ?? Math.max(total - paidAmount, 0);
+        const { data, error } = await input.supabase
+          .from('invoices')
+          .insert({
+            organization_id: input.organizationId,
+            branch_id: input.branchId,
+            owner_id: ownerId,
+            patient_id: patientId ?? null,
+            created_by: input.userId,
+            status,
+            number: row.number?.trim() || null,
+            currency: (row.currency?.trim() || 'ARS').slice(0, 8),
+            issued_at: issued?.ok ? `${issued.isoDate}T12:00:00.000Z` : nowIso,
+            subtotal,
+            tax_amount: taxAmount,
+            total,
+            paid_amount: paidAmount,
+            balance,
+            notes: row.notes?.trim() || null,
+            import_batch_id: input.batchId,
+            source_system: row.sourceSystem ?? input.sourceSystem,
+            source_record_id: row.externalInvoiceId,
+            imported_at: nowIso,
+            imported_by: input.userId,
+          })
+          .select('id')
+          .single();
+        if (error || !data) {
+          failed += 1;
+          continue;
+        }
+        invoiceId = data.id;
+        idMap[row.externalInvoiceId] = invoiceId;
+        imported += 1;
+        await input.supabase.from('data_import_created_rows').insert({
+          batch_id: input.batchId,
+          organization_id: input.organizationId,
+          entity_type: 'invoices',
+          entity_id: invoiceId,
+          external_id: row.externalInvoiceId,
+        });
+        await input.supabase.from('data_import_id_map').insert({
+          batch_id: input.batchId,
+          organization_id: input.organizationId,
+          entity_type: 'invoices',
+          external_id: row.externalInvoiceId,
+          internal_id: invoiceId,
+        });
+        }
+      }
+      const description = row.description?.trim();
+      if (description) {
+        const qty = parseMoney(row.quantity) ?? 1;
+        const unitPrice = parseMoney(row.unitPrice) ?? 0;
+        const lineTotal = parseMoney(row.lineTotal) ?? qty * unitPrice;
+        const productId = row.externalProductId
+          ? productMap[row.externalProductId] ?? null
+          : null;
+        const { error: itemError } = await input.supabase.from('invoice_items').insert({
+          organization_id: input.organizationId,
+          invoice_id: invoiceId,
+          inventory_product_id: productId,
+          description: description.slice(0, 240),
+          quantity: qty,
+          unit_price: unitPrice,
+          line_total: lineTotal,
+          sort_order: 0,
+        });
+        if (itemError) {
+          failed += 1;
+        }
+      }
+    }
+    return { imported, failed, skipped, idMap };
+  }
+
+  if (input.entity === 'payments') {
+    const paymentRows = asPaymentRows(slice, input.mapping).map((row, idx) => ({
+      ...row,
+      rowNumber: input.offset + idx + 2,
+    }));
+    const invoiceMap = input.invoiceIdByExternal ?? {};
+    for (const row of paymentRows) {
+      const invoiceId = invoiceMap[row.externalInvoiceId];
+      const amount = Number(String(row.amount).replace(',', '.'));
+      if (!invoiceId || !row.externalPaymentId.trim() || Number.isNaN(amount) || amount <= 0) {
+        failed += 1;
+        continue;
+      }
+      const { data: invoice } = await input.supabase
+        .from('invoices')
+        .select('id')
+        .eq('id', invoiceId)
+        .eq('organization_id', input.organizationId)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (!invoice) {
+        failed += 1;
+        continue;
+      }
+      const sourceSystem = row.sourceSystem ?? input.sourceSystem ?? '';
+      if (skipExisting) {
+        const existingId = await findSpecialtyBySource({
+          supabase: input.supabase,
+          table: 'payments',
+          organizationId: input.organizationId,
+          sourceSystem,
+          sourceRecordId: row.externalPaymentId,
+        });
+        if (existingId) {
+          idMap[row.externalPaymentId] = existingId;
+          skipped += 1;
+          await input.supabase.from('data_import_id_map').insert({
+            batch_id: input.batchId,
+            organization_id: input.organizationId,
+            entity_type: 'payments',
+            external_id: row.externalPaymentId,
+            internal_id: existingId,
+          });
+          continue;
+        }
+      }
+      const methodRaw = (row.method ?? '').trim().toLowerCase();
+      const method =
+        methodRaw === 'transferencia'
+          ? 'transferencia'
+          : methodRaw === 'tarjeta'
+            ? 'tarjeta'
+            : methodRaw === 'mercadopago' || methodRaw === 'mp'
+              ? 'mercadopago'
+              : methodRaw === 'otro'
+                ? 'otro'
+                : 'efectivo';
+      const paid = row.paidAt ? parseImportDate(row.paidAt, input.locale) : null;
+      const paidAt = paid?.ok ? `${paid.isoDate}T12:00:00.000Z` : nowIso;
+      const { data, error } = await input.supabase
+        .from('payments')
+        .insert({
+          organization_id: input.organizationId,
+          invoice_id: invoiceId,
+          recorded_by: input.userId,
+          method,
+          amount,
+          paid_at: paidAt,
+          reference: row.reference?.trim() || null,
+          notes: row.notes?.trim() || null,
+          import_batch_id: input.batchId,
+          source_system: row.sourceSystem ?? input.sourceSystem,
+          source_record_id: row.externalPaymentId,
+          imported_at: nowIso,
+          imported_by: input.userId,
+        })
+        .select('id')
+        .single();
+      if (error || !data) {
+        failed += 1;
+        continue;
+      }
+      imported += 1;
+      idMap[row.externalPaymentId] = data.id;
+      await input.supabase.from('data_import_created_rows').insert({
+        batch_id: input.batchId,
+        organization_id: input.organizationId,
+        entity_type: 'payments',
+        entity_id: data.id,
+        external_id: row.externalPaymentId,
+      });
+      await input.supabase.from('data_import_id_map').insert({
+        batch_id: input.batchId,
+        organization_id: input.organizationId,
+        entity_type: 'payments',
+        external_id: row.externalPaymentId,
+        internal_id: data.id,
       });
     }
     return { imported, failed, skipped, idMap };

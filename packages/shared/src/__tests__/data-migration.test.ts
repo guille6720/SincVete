@@ -22,6 +22,21 @@ import {
   EXPORT_TYPE_LABELS,
   MAX_IMPORT_CSV_BYTES,
   MAX_IMPORT_ZIP_BYTES,
+  buildIntegrityReportCsv,
+  buildIdMapReportCsv,
+  sumOrphanCounts,
+  parseImportDateTime,
+  validateAppointmentRows,
+  buildAppointmentTemplateCsv,
+  buildInventoryProductTemplateCsv,
+  validateInventoryProductRows,
+  buildInvoiceTemplateCsv,
+  validateInvoiceRows,
+  buildPaymentTemplateCsv,
+  validatePaymentRows,
+  buildBillingReconcileCsv,
+  buildMigrationChecklistCsv,
+  summarizeMigrationChecklist,
   validateClinicalRows,
   validateLabOrderRows,
   validateOwnerRows,
@@ -351,7 +366,11 @@ describe('data-migration specialty + chunks', () => {
     expect(nextFullMigrationStep('owners')).toBe('patients');
     expect(nextFullMigrationStep('attachments')).toBeNull();
     expect(previousFullMigrationStep('patients')).toBe('owners');
-    expect(FULL_MIGRATION_STEPS).toHaveLength(9);
+    expect(FULL_MIGRATION_STEPS).toHaveLength(13);
+    expect(FULL_MIGRATION_STEPS).toContain('appointments');
+    expect(FULL_MIGRATION_STEPS).toContain('inventory_products');
+    expect(FULL_MIGRATION_STEPS).toContain('invoices');
+    expect(FULL_MIGRATION_STEPS).toContain('payments');
   });
 
   it('builds validation report csv', () => {
@@ -390,8 +409,204 @@ describe('data-migration specialty + chunks', () => {
     expect(EXPORT_TYPE_LABELS.lab_orders).toMatch(/ítems/i);
   });
 
+  it('parses appointment datetimes and validates rows', () => {
+    expect(parseImportDateTime('2024-10-01 10:00', 'es-AR').ok).toBe(true);
+    expect(parseImportDateTime('01/10/2024 10:30', 'es-AR').ok).toBe(true);
+    const issues = validateAppointmentRows(
+      [
+        {
+          rowNumber: 2,
+          externalAppointmentId: 'A1',
+          externalPatientId: 'P1',
+          startsAt: '2024-10-01 10:00',
+          endsAt: '2024-10-01 10:30',
+          appointmentType: 'consulta',
+          status: 'programada',
+          title: 'Control',
+          notes: null,
+          sourceSystem: 'legacy',
+        },
+      ],
+      { knownPatientExternalIds: new Set(['P1']), locale: 'es-AR' }
+    );
+    expect(issues.filter((i) => i.severity === 'error')).toHaveLength(0);
+    expect(buildAppointmentTemplateCsv()).toContain('external_appointment_id');
+  });
+
+  it('validates inventory product rows', () => {
+    const issues = validateInventoryProductRows([
+      {
+        rowNumber: 2,
+        externalProductId: 'P1',
+        name: 'Amox',
+        sku: 'A1',
+        category: 'medicamento',
+        unit: 'caja',
+        quantity: '10',
+        minQuantity: '1',
+        unitCost: '100',
+        unitPrice: '200',
+        manufacturer: null,
+        notes: null,
+        sourceSystem: 'legacy',
+      },
+    ]);
+    expect(issues.filter((i) => i.severity === 'error')).toHaveLength(0);
+    expect(buildInventoryProductTemplateCsv()).toContain('external_product_id');
+  });
+
+  it('validates invoice rows', () => {
+    const issues = validateInvoiceRows([
+      {
+        rowNumber: 2,
+        externalInvoiceId: 'INV-1',
+        externalOwnerId: 'OWN-1',
+        externalPatientId: 'PAT-1',
+        number: 'A-1',
+        status: 'emitida',
+        issuedAt: '2024-01-01',
+        currency: 'ARS',
+        subtotal: '100',
+        taxAmount: '0',
+        total: '100',
+        paidAmount: '0',
+        balance: '100',
+        description: 'Consulta',
+        quantity: '1',
+        unitPrice: '100',
+        lineTotal: '100',
+        externalProductId: null,
+        notes: null,
+        sourceSystem: 'legacy',
+      },
+    ]);
+    expect(issues.filter((i) => i.severity === 'error')).toHaveLength(0);
+    expect(buildInvoiceTemplateCsv()).toContain('external_invoice_id');
+  });
+
+  it('validates payment rows', () => {
+    const issues = validatePaymentRows([
+      {
+        rowNumber: 2,
+        externalPaymentId: 'PAY-1',
+        externalInvoiceId: 'INV-1',
+        amount: '100',
+        method: 'transferencia',
+        paidAt: '2024-01-02',
+        reference: 'TRX',
+        notes: null,
+        sourceSystem: 'legacy',
+      },
+    ]);
+    expect(issues.filter((i) => i.severity === 'error')).toHaveLength(0);
+    expect(buildPaymentTemplateCsv()).toContain('external_payment_id');
+  });
+
+  it('warns when payment sum mismatches invoice paid_amount', () => {
+    const issues = validatePaymentRows(
+      [
+        {
+          rowNumber: 2,
+          externalPaymentId: 'PAY-1',
+          externalInvoiceId: 'INV-1',
+          amount: '50',
+          method: 'efectivo',
+          paidAt: null,
+          reference: null,
+          notes: null,
+          sourceSystem: 'legacy',
+        },
+      ],
+      { invoicePaidAmountByExternal: new Map([['INV-1', 100]]) }
+    );
+    expect(issues.some((i) => i.code === 'paid_amount_mismatch')).toBe(true);
+  });
+
+  it('builds billing reconcile csv', () => {
+    const csv = buildBillingReconcileCsv(
+      [{ invoiceId: 'i1', invoiceNumber: 'A-1', paidAmount: 100, paymentsSum: 80, delta: 20 }],
+      { organizationId: 'org', summary: { mismatch: 1 } }
+    );
+    expect(csv).toContain('invoice_id');
+    expect(csv).toContain('delta');
+  });
+
+  it('labels appointments export', () => {
+    expect(EXPORT_TYPE_LABELS.appointments).toMatch(/agenda|citas/i);
+    expect(EXPORT_TYPE_LABELS.inventory_products).toMatch(/inventario/i);
+    expect(EXPORT_TYPE_LABELS.invoices).toMatch(/factura/i);
+    expect(EXPORT_TYPE_LABELS.payments).toMatch(/pago/i);
+  });
+
+  it('warns appointment overlaps in file', () => {
+    const issues = validateAppointmentRows(
+      [
+        {
+          rowNumber: 2,
+          externalAppointmentId: 'A1',
+          externalPatientId: 'P1',
+          startsAt: '2024-10-01 10:00',
+          endsAt: '2024-10-01 10:30',
+          appointmentType: 'consulta',
+          status: 'programada',
+          title: null,
+          notes: null,
+          sourceSystem: null,
+        },
+        {
+          rowNumber: 3,
+          externalAppointmentId: 'A2',
+          externalPatientId: 'P1',
+          startsAt: '2024-10-01 10:15',
+          endsAt: '2024-10-01 10:45',
+          appointmentType: 'consulta',
+          status: 'programada',
+          title: null,
+          notes: null,
+          sourceSystem: null,
+        },
+      ],
+      { knownPatientExternalIds: new Set(['P1']), locale: 'es-AR' }
+    );
+    expect(issues.some((i) => i.code === 'possible_overlap')).toBe(true);
+  });
+
+  it('builds migration checklist csv', () => {
+    const items = [
+      { key: 'owners', label: 'Owners', status: 'ok', count: 2, detail: null },
+      { key: 'stuck', label: 'Locks', status: 'fail', count: 1, detail: 'x' },
+    ];
+    expect(summarizeMigrationChecklist(items)).toEqual({ ok: 1, warn: 0, fail: 1, total: 2 });
+    expect(buildMigrationChecklistCsv(items, { organizationId: 'o1', readyForGolive: false })).toContain(
+      'ready_for_golive'
+    );
+  });
+
   it('defines upload size caps', () => {
     expect(MAX_IMPORT_CSV_BYTES).toBe(25 * 1024 * 1024);
     expect(MAX_IMPORT_ZIP_BYTES).toBe(80 * 1024 * 1024);
+  });
+
+  it('builds integrity and id-map reports', () => {
+    expect(sumOrphanCounts({ owners: 2, patients: 1 })).toBe(3);
+    const integrity = buildIntegrityReportCsv({
+      organizationId: 'org-1',
+      generatedAt: '2026-08-21T00:00:00Z',
+      imports: { total: 3 },
+      orphansCreated: { owners: 1 },
+      stuckImports: 0,
+    });
+    expect(integrity).toContain('orphans_created_rows');
+    expect(integrity).toContain('owners');
+    const idMap = buildIdMapReportCsv([
+      {
+        entityType: 'owners',
+        externalId: 'ext-1',
+        internalId: 'uuid-1',
+        createdAt: '2026-08-21T00:00:00Z',
+      },
+    ]);
+    expect(idMap).toContain('external_id');
+    expect(idMap).toContain('ext-1');
   });
 });

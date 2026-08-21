@@ -104,6 +104,112 @@ export async function listExportJobs(limit = 30) {
   return data ?? [];
 }
 
+async function fetchInventoryProducts(
+  organizationId: string,
+  db?: Awaited<ReturnType<typeof migrationDb>>
+) {
+  const supabase = db ?? (await migrationDb());
+  const { data, error } = await supabase
+    .from('inventory_products')
+    .select(
+      'id, branch_id, name, sku, category, unit, quantity, min_quantity, unit_cost, unit_price, manufacturer, notes, is_active, created_at'
+    )
+    .eq('organization_id', organizationId)
+    .is('deleted_at', null)
+    .order('name', { ascending: true })
+    .limit(20000);
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+async function fetchInvoices(
+  organizationId: string,
+  patientId?: string | null,
+  bounds?: DateBounds,
+  db?: Awaited<ReturnType<typeof migrationDb>>
+) {
+  const supabase = db ?? (await migrationDb());
+  let query = supabase
+    .from('invoices')
+    .select(
+      'id, branch_id, owner_id, patient_id, status, number, currency, issued_at, due_at, paid_at, voided_at, subtotal, tax_amount, total, paid_amount, balance, notes, created_at'
+    )
+    .eq('organization_id', organizationId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: true })
+    .limit(10000);
+  if (patientId) query = query.eq('patient_id', patientId);
+  if (bounds) query = applyDateFilter(query, 'created_at', bounds);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+async function fetchInvoiceItems(
+  organizationId: string,
+  invoiceIds: string[],
+  db?: Awaited<ReturnType<typeof migrationDb>>
+) {
+  if (invoiceIds.length === 0) return [];
+  const supabase = db ?? (await migrationDb());
+  const { data, error } = await supabase
+    .from('invoice_items')
+    .select(
+      'id, invoice_id, inventory_product_id, description, quantity, unit_price, line_total, sort_order, created_at'
+    )
+    .eq('organization_id', organizationId)
+    .is('deleted_at', null)
+    .in('invoice_id', invoiceIds.slice(0, 2000))
+    .order('sort_order', { ascending: true })
+    .limit(20000);
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+async function fetchInvoicePayments(
+  organizationId: string,
+  invoiceIds: string[],
+  db?: Awaited<ReturnType<typeof migrationDb>>
+) {
+  if (invoiceIds.length === 0) return [];
+  const supabase = db ?? (await migrationDb());
+  const { data, error } = await supabase
+    .from('payments')
+    .select(
+      'id, invoice_id, method, amount, paid_at, reference, notes, created_at'
+    )
+    .eq('organization_id', organizationId)
+    .is('deleted_at', null)
+    .in('invoice_id', invoiceIds.slice(0, 2000))
+    .order('paid_at', { ascending: true })
+    .limit(20000);
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+async function fetchAppointments(
+  organizationId: string,
+  patientId?: string | null,
+  bounds?: DateBounds,
+  db?: Awaited<ReturnType<typeof migrationDb>>
+) {
+  const supabase = db ?? (await migrationDb());
+  let query = supabase
+    .from('appointments')
+    .select(
+      'id, branch_id, patient_id, owner_id, assigned_user_id, starts_at, ends_at, status, appointment_type, title, notes, cancellation_reason, created_at'
+    )
+    .eq('organization_id', organizationId)
+    .is('deleted_at', null)
+    .order('starts_at', { ascending: true })
+    .limit(20000);
+  if (patientId) query = query.eq('patient_id', patientId);
+  if (bounds) query = applyDateFilter(query, 'starts_at', bounds);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
 async function fetchOwners(organizationId: string, db?: Awaited<ReturnType<typeof migrationDb>>) {
   const supabase = db ?? (await migrationDb());
   const { data, error } = await supabase
@@ -540,11 +646,6 @@ export async function runExportJob(
       .update({ progress_message: 'Leyendo registros del tenant…' })
       .eq('id', jobId);
 
-    const needOwners =
-      exportType === 'owners' ||
-      exportType === 'full_clinic' ||
-      exportType === 'patient_clinical' ||
-      exportType === 'patients';
     const needPatients =
       exportType !== 'owners' &&
       (exportType === 'patients' ||
@@ -552,7 +653,14 @@ export async function runExportJob(
         exportType === 'patient_clinical' ||
         exportType === 'clinical_entries' ||
         exportType === 'vaccinations' ||
+        exportType === 'appointments' ||
         specialtyOnly);
+    const needOwners =
+      exportType === 'owners' ||
+      exportType === 'full_clinic' ||
+      exportType === 'patient_clinical' ||
+      exportType === 'patients' ||
+      exportType === 'appointments';
     const needClinical =
       exportType === 'clinical_entries' ||
       exportType === 'patient_clinical' ||
@@ -571,6 +679,17 @@ export async function runExportJob(
       exportType === 'patient_clinical';
     const needHosp =
       exportType === 'hospitalizations' ||
+      exportType === 'full_clinic' ||
+      exportType === 'patient_clinical';
+    const needAppointments =
+      exportType === 'appointments' ||
+      exportType === 'full_clinic' ||
+      exportType === 'patient_clinical';
+    const needInventory =
+      exportType === 'inventory_products' || exportType === 'full_clinic';
+    const needInvoices =
+      exportType === 'invoices' ||
+      exportType === 'payments' ||
       exportType === 'full_clinic' ||
       exportType === 'patient_clinical';
 
@@ -608,6 +727,29 @@ export async function runExportJob(
     const hospitalizations = needHosp
       ? await fetchHospitalizations(organizationId, job.patient_id, bounds, supabase)
       : [];
+    const appointments = needAppointments
+      ? await fetchAppointments(organizationId, job.patient_id, bounds, supabase)
+      : [];
+    const inventoryProducts = needInventory
+      ? await fetchInventoryProducts(organizationId, supabase)
+      : [];
+    const invoices = needInvoices
+      ? await fetchInvoices(organizationId, job.patient_id, bounds, supabase)
+      : [];
+    const invoiceItems = needInvoices
+      ? await fetchInvoiceItems(
+          organizationId,
+          invoices.map((row: { id: string }) => row.id),
+          supabase
+        )
+      : [];
+    const invoicePayments = needInvoices
+      ? await fetchInvoicePayments(
+          organizationId,
+          invoices.map((row: { id: string }) => row.id),
+          supabase
+        )
+      : [];
 
     const filteredPatients = job.patient_id
       ? patients.filter((p: { id: string }) => p.id === job.patient_id)
@@ -628,6 +770,11 @@ export async function runExportJob(
       prescriptions: prescriptions.length,
       prescriptionItems: prescriptionItems.length,
       hospitalizations: hospitalizations.length,
+      appointments: appointments.length,
+      inventoryProducts: inventoryProducts.length,
+      invoices: invoices.length,
+      invoiceItems: invoiceItems.length,
+      invoicePayments: invoicePayments.length,
     };
 
     const manifest = {
@@ -658,7 +805,15 @@ export async function runExportJob(
               ? hospitalizations
               : exportType === 'vaccinations'
                 ? vaccinations
-                : null;
+                : exportType === 'appointments'
+                  ? appointments
+                  : exportType === 'inventory_products'
+                    ? inventoryProducts
+                    : exportType === 'invoices'
+                      ? invoices
+                      : exportType === 'payments'
+                        ? invoicePayments
+                        : null;
 
     if (job.format === 'json') {
       body = JSON.stringify(
@@ -672,6 +827,11 @@ export async function runExportJob(
           surgeries,
           prescriptions,
           hospitalizations,
+          appointments,
+          inventoryProducts,
+          invoices,
+          invoiceItems,
+          invoicePayments,
         },
         null,
         2
@@ -855,6 +1015,130 @@ export async function runExportJob(
             'source_record_id',
           ],
           hospitalizations
+        );
+      } else if (exportType === 'appointments') {
+        csv = toCsv(
+          [
+            'id',
+            'branch_id',
+            'patient_id',
+            'owner_id',
+            'starts_at',
+            'ends_at',
+            'status',
+            'appointment_type',
+            'title',
+            'notes',
+            'cancellation_reason',
+          ],
+          appointments
+        );
+      } else if (exportType === 'inventory_products') {
+        csv = toCsv(
+          [
+            'id',
+            'branch_id',
+            'name',
+            'sku',
+            'category',
+            'unit',
+            'quantity',
+            'min_quantity',
+            'unit_cost',
+            'unit_price',
+            'manufacturer',
+            'is_active',
+            'notes',
+          ],
+          inventoryProducts
+        );
+      } else if (exportType === 'invoices') {
+        const invById = new Map(invoices.map((row: { id: string }) => [row.id, row] as const));
+        csv = toCsv(
+          [
+            'invoice_id',
+            'number',
+            'status',
+            'owner_id',
+            'patient_id',
+            'issued_at',
+            'currency',
+            'total',
+            'paid_amount',
+            'balance',
+            'description',
+            'quantity',
+            'unit_price',
+            'line_total',
+            'inventory_product_id',
+          ],
+          invoiceItems.length > 0
+            ? invoiceItems.map((item: Record<string, unknown>) => {
+                const inv = invById.get(String(item.invoice_id)) as
+                  | Record<string, unknown>
+                  | undefined;
+                return {
+                  invoice_id: item.invoice_id,
+                  number: inv?.number ?? '',
+                  status: inv?.status ?? '',
+                  owner_id: inv?.owner_id ?? '',
+                  patient_id: inv?.patient_id ?? '',
+                  issued_at: inv?.issued_at ?? '',
+                  currency: inv?.currency ?? '',
+                  total: inv?.total ?? '',
+                  paid_amount: inv?.paid_amount ?? '',
+                  balance: inv?.balance ?? '',
+                  description: item.description,
+                  quantity: item.quantity,
+                  unit_price: item.unit_price,
+                  line_total: item.line_total,
+                  inventory_product_id: item.inventory_product_id ?? '',
+                };
+              })
+            : invoices.map((inv: Record<string, unknown>) => ({
+                invoice_id: inv.id,
+                number: inv.number ?? '',
+                status: inv.status,
+                owner_id: inv.owner_id,
+                patient_id: inv.patient_id ?? '',
+                issued_at: inv.issued_at ?? '',
+                currency: inv.currency,
+                total: inv.total,
+                paid_amount: inv.paid_amount,
+                balance: inv.balance,
+                description: '',
+                quantity: '',
+                unit_price: '',
+                line_total: '',
+                inventory_product_id: '',
+              }))
+        );
+      } else if (exportType === 'payments') {
+        const invById = new Map(invoices.map((row: { id: string }) => [row.id, row] as const));
+        csv = toCsv(
+          [
+            'payment_id',
+            'invoice_id',
+            'invoice_number',
+            'method',
+            'amount',
+            'paid_at',
+            'reference',
+            'notes',
+          ],
+          invoicePayments.map((pay: Record<string, unknown>) => {
+            const inv = invById.get(String(pay.invoice_id)) as Record<string, unknown> | undefined;
+            return {
+              payment_id: pay.id,
+              invoice_id: pay.invoice_id,
+              invoice_number: inv?.number ?? '',
+              method: pay.method,
+              amount: pay.amount,
+              paid_at: pay.paid_at,
+              reference: pay.reference ?? '',
+              notes: pay.notes ?? '',
+            };
+          })
         );
       } else {
         csv = toCsv(
@@ -1094,6 +1378,94 @@ export async function runExportJob(
           hospitalizations
         )
       );
+      dataFolder?.file(
+        'appointments.csv',
+        toCsv(
+          [
+            'id',
+            'branch_id',
+            'patient_id',
+            'owner_id',
+            'starts_at',
+            'ends_at',
+            'status',
+            'appointment_type',
+            'title',
+            'notes',
+            'cancellation_reason',
+          ],
+          appointments
+        )
+      );
+      dataFolder?.file(
+        'inventory_products.csv',
+        toCsv(
+          [
+            'id',
+            'branch_id',
+            'name',
+            'sku',
+            'category',
+            'unit',
+            'quantity',
+            'min_quantity',
+            'unit_cost',
+            'unit_price',
+            'manufacturer',
+            'is_active',
+            'notes',
+          ],
+          inventoryProducts
+        )
+      );
+      dataFolder?.file(
+        'invoices.csv',
+        toCsv(
+          [
+            'id',
+            'branch_id',
+            'owner_id',
+            'patient_id',
+            'status',
+            'number',
+            'currency',
+            'issued_at',
+            'due_at',
+            'paid_at',
+            'voided_at',
+            'subtotal',
+            'tax_amount',
+            'total',
+            'paid_amount',
+            'balance',
+            'notes',
+          ],
+          invoices
+        )
+      );
+      dataFolder?.file(
+        'invoice_items.csv',
+        toCsv(
+          [
+            'id',
+            'invoice_id',
+            'inventory_product_id',
+            'description',
+            'quantity',
+            'unit_price',
+            'line_total',
+            'sort_order',
+          ],
+          invoiceItems
+        )
+      );
+      dataFolder?.file(
+        'invoice_payments.csv',
+        toCsv(
+          ['id', 'invoice_id', 'method', 'amount', 'paid_at', 'reference', 'notes'],
+          invoicePayments
+        )
+      );
 
       if (specialtyRows && specialtyOnly) {
         dataFolder?.file(`${exportType}.json`, JSON.stringify(specialtyRows, null, 2));
@@ -1108,6 +1480,11 @@ export async function runExportJob(
         dataFolder?.file('prescriptions.json', JSON.stringify(prescriptions, null, 2));
         dataFolder?.file('prescription_items.json', JSON.stringify(prescriptionItems, null, 2));
         dataFolder?.file('hospitalizations.json', JSON.stringify(hospitalizations, null, 2));
+        dataFolder?.file('appointments.json', JSON.stringify(appointments, null, 2));
+        dataFolder?.file('inventory_products.json', JSON.stringify(inventoryProducts, null, 2));
+        dataFolder?.file('invoices.json', JSON.stringify(invoices, null, 2));
+        dataFolder?.file('invoice_items.json', JSON.stringify(invoiceItems, null, 2));
+        dataFolder?.file('invoice_payments.json', JSON.stringify(invoicePayments, null, 2));
       }
 
       const patientIds = filteredPatients.map((p: { id: string }) => p.id);

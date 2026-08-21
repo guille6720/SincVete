@@ -26,6 +26,10 @@ const SPECIALTY: SpecialtyEntity[] = [
   'surgeries',
   'prescriptions',
   'hospitalizations',
+  'appointments',
+  'inventory_products',
+  'invoices',
+  'payments',
 ];
 
 export function isSpecialtyCheck(entity: string): entity is SpecialtyEntity {
@@ -423,6 +427,8 @@ export async function processNextQueuedImportChunk(options?: {
       branchId?: string;
       ownerIdByExternal?: Record<string, string>;
       patientIdByExternal?: Record<string, string>;
+      productIdByExternal?: Record<string, string>;
+      invoiceIdByExternal?: Record<string, string>;
     };
     const entity = String(metadata.entity ?? '');
     const branchId = String(metadata.branchId ?? '');
@@ -510,6 +516,9 @@ export async function processNextQueuedImportChunk(options?: {
           mapping,
           locale: (batch.date_locale as DateLocale) ?? 'es-AR',
           patientIdByExternal: metadata.patientIdByExternal ?? {},
+          ownerIdByExternal: metadata.ownerIdByExternal ?? {},
+          productIdByExternal: metadata.productIdByExternal ?? {},
+          invoiceIdByExternal: metadata.invoiceIdByExternal ?? {},
           organizationId,
           branchId,
           batchId,

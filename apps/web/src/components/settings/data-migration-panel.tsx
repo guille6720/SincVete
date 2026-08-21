@@ -26,24 +26,31 @@ import {
   cancelDataImportBatchAction,
   downloadExportArtifactAction,
   downloadImportBatchErrorsAction,
+  downloadImportIdMapAction,
   downloadImportTemplate,
+  downloadIntegrityReportAction,
+  downloadMigrationChecklistAction,
+  downloadBillingReconcileAction,
   downloadSampleMigrationZipAction,
   downloadValidationReportAction,
+  getDataMigrationChecklistAction,
   getDataMigrationIntegrityAction,
   importZipAttachmentsAction,
   inspectMigrationZipAction,
   listDataExportJobsAction,
   listDataImportBatchesAction,
   pollImportBatchProgressAction,
+  pruneOrphanMigrationMapsAction,
   queueClinicExportAction,
   queueDataImportAction,
+  releaseStaleMigrationLocksAction,
   retryDataImportBatchAction,
   rollbackDataImportAction,
   runClinicExportAction,
   startDataImport,
   validateDataImport,
 } from '@/actions/data-migration';
-import type { DataMigrationIntegrity } from '@/actions/data-migration';
+import type { DataMigrationChecklist, DataMigrationIntegrity } from '@/actions/data-migration';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -104,6 +111,8 @@ export function DataMigrationPanel({
   } | null>(null);
   const [ownerIdByExternal, setOwnerIdByExternal] = useState<Record<string, string>>({});
   const [patientIdByExternal, setPatientIdByExternal] = useState<Record<string, string>>({});
+  const [productIdByExternal, setProductIdByExternal] = useState<Record<string, string>>({});
+  const [invoiceIdByExternal, setInvoiceIdByExternal] = useState<Record<string, string>>({});
   const [importReport, setImportReport] = useState<string | null>(null);
   const [zipPack, setZipPack] = useState<{
     ownersCsv: string | null;
@@ -114,6 +123,10 @@ export function DataMigrationPanel({
     surgeriesCsv: string | null;
     prescriptionsCsv: string | null;
     hospitalizationsCsv: string | null;
+    appointmentsCsv: string | null;
+    inventoryProductsCsv: string | null;
+    invoicesCsv: string | null;
+    paymentsCsv: string | null;
   } | null>(null);
   const [zipBase64, setZipBase64] = useState<string | null>(null);
   const [progressLabel, setProgressLabel] = useState<string | null>(null);
@@ -130,6 +143,7 @@ export function DataMigrationPanel({
   const [importHistory, setImportHistory] = useState<Array<Record<string, unknown>>>([]);
   const [exportHistory, setExportHistory] = useState<Array<Record<string, unknown>>>([]);
   const [integrity, setIntegrity] = useState<DataMigrationIntegrity | null>(null);
+  const [checklist, setChecklist] = useState<DataMigrationChecklist | null>(null);
 
   const entity = useMemo(() => {
     if (importType === 'full_migration' || importType === 'migration_zip') {
@@ -143,6 +157,10 @@ export function DataMigrationPanel({
     if (importType === 'surgeries') return 'surgeries' as const;
     if (importType === 'prescriptions') return 'prescriptions' as const;
     if (importType === 'hospitalizations') return 'hospitalizations' as const;
+    if (importType === 'appointments') return 'appointments' as const;
+    if (importType === 'inventory_products') return 'inventory_products' as const;
+    if (importType === 'invoices') return 'invoices' as const;
+    if (importType === 'payments') return 'payments' as const;
     if (importType === 'attachments') return 'owners' as const;
     return 'owners' as const;
   }, [importType, guideStep]);
@@ -157,6 +175,10 @@ export function DataMigrationPanel({
       | 'surgeries'
       | 'prescriptions'
       | 'hospitalizations'
+      | 'appointments'
+      | 'inventory_products'
+      | 'invoices'
+      | 'payments'
   ) {
     setMessage(null);
     const form = new FormData();
@@ -228,10 +250,14 @@ export function DataMigrationPanel({
         surgeriesCsv: result.data.surgeriesCsv,
         prescriptionsCsv: result.data.prescriptionsCsv,
         hospitalizationsCsv: result.data.hospitalizationsCsv,
+        appointmentsCsv: result.data.appointmentsCsv,
+        inventoryProductsCsv: result.data.inventoryProductsCsv,
+        invoicesCsv: result.data.invoicesCsv,
+        paymentsCsv: result.data.paymentsCsv,
       });
       const summary = result.data.summary;
       setMessage(
-        `ZIP SyncVete · owners ${summary.owners} · patients ${summary.patients} · clinical ${summary.clinicalRecords} · vacunas ${summary.vaccinations} · lab ${summary.labOrders} · cirugías ${summary.surgeries} · recetas ${summary.prescriptions} · internaciones ${summary.hospitalizations} · adjuntos ${summary.attachments}`
+        `ZIP SyncVete · owners ${summary.owners} · patients ${summary.patients} · clinical ${summary.clinicalRecords} · vacunas ${summary.vaccinations} · lab ${summary.labOrders} · cirugías ${summary.surgeries} · recetas ${summary.prescriptions} · internaciones ${summary.hospitalizations} · agenda ${summary.appointments} · inventario ${summary.inventoryProducts} · facturas ${summary.invoices} · pagos ${summary.payments} · adjuntos ${summary.attachments}`
       );
       if (result.data.ownersCsv) {
         setImportType('owners');
@@ -289,6 +315,8 @@ export function DataMigrationPanel({
     form.set('mapping', JSON.stringify(mapping));
     form.set('knownOwnerExternalIds', Object.keys(ownerIdByExternal).join(','));
     form.set('knownPatientExternalIds', Object.keys(patientIdByExternal).join(','));
+    form.set('knownInvoiceExternalIds', Object.keys(invoiceIdByExternal).join(','));
+    form.set('invoiceIdByExternal', JSON.stringify(invoiceIdByExternal));
     const result = await run(() => validateDataImport(form));
     if (!result?.success || !result.data) {
       setMessage(result?.error ?? 'Validación fallida');
@@ -350,6 +378,8 @@ export function DataMigrationPanel({
       form.set('mapping', JSON.stringify(mapping));
       form.set('ownerIdByExternal', JSON.stringify(ownerIdByExternal));
       form.set('patientIdByExternal', JSON.stringify(patientIdByExternal));
+      form.set('productIdByExternal', JSON.stringify(productIdByExternal));
+      form.set('invoiceIdByExternal', JSON.stringify(invoiceIdByExternal));
       form.set('sourceSystem', sourceSystem);
       form.set('offset', String(offset));
       form.set('chunkSize', String(DEFAULT_IMPORT_CHUNK_SIZE));
@@ -378,6 +408,12 @@ export function DataMigrationPanel({
     if (entity === 'patients') {
       setPatientIdByExternal((prev) => ({ ...prev, ...mergedIdMap }));
     }
+    if (entity === 'inventory_products') {
+      setProductIdByExternal((prev) => ({ ...prev, ...mergedIdMap }));
+    }
+    if (entity === 'invoices') {
+      setInvoiceIdByExternal((prev) => ({ ...prev, ...mergedIdMap }));
+    }
     setImportReport(`Import ${lastStatus}: ${totalImported} ok · ${totalFailed} fallidos`);
     setMessage(null);
     setProgressLabel(null);
@@ -395,6 +431,8 @@ export function DataMigrationPanel({
     form.set('mapping', JSON.stringify(mapping));
     form.set('ownerIdByExternal', JSON.stringify(ownerIdByExternal));
     form.set('patientIdByExternal', JSON.stringify(patientIdByExternal));
+    form.set('productIdByExternal', JSON.stringify(productIdByExternal));
+    form.set('invoiceIdByExternal', JSON.stringify(invoiceIdByExternal));
     form.set('sourceSystem', sourceSystem);
     form.set('rowDecisions', JSON.stringify(rowDecisions));
     form.set('validationIssues', JSON.stringify(validation.issues));
@@ -563,6 +601,31 @@ export function DataMigrationPanel({
     else setMessage(result?.error ?? 'No se pudo cargar integridad');
   }
 
+  async function refreshChecklist() {
+    const result = await run(() => getDataMigrationChecklistAction());
+    if (result?.success && result.data) setChecklist(result.data);
+    else setMessage(result?.error ?? 'No se pudo cargar checklist');
+  }
+
+  async function onDownloadChecklist() {
+    const result = await run(() => downloadMigrationChecklistAction());
+    if (!result?.success || !result.data) {
+      setMessage(result?.error ?? 'No se pudo descargar checklist');
+      return;
+    }
+    downloadText(result.data.filename, result.data.csv);
+  }
+
+  async function onDownloadBillingReconcile() {
+    const result = await run(() => downloadBillingReconcileAction());
+    if (!result?.success || !result.data) {
+      setMessage(result?.error ?? 'No se pudo descargar conciliación');
+      return;
+    }
+    downloadText(result.data.filename, result.data.csv);
+    setMessage('Conciliación de facturación descargada');
+  }
+
   async function onDownloadBatchErrors(id: string) {
     const form = new FormData();
     form.set('batchId', id);
@@ -572,6 +635,60 @@ export function DataMigrationPanel({
       return;
     }
     downloadText(result.data.filename, result.data.csv);
+  }
+
+  async function onDownloadIntegrityReport() {
+    const result = await run(() => downloadIntegrityReportAction());
+    if (!result?.success || !result.data) {
+      setMessage(result?.error ?? 'No se pudo generar el reporte');
+      return;
+    }
+    downloadText(result.data.filename, result.data.csv);
+  }
+
+  async function onDownloadIdMap(id: string) {
+    const form = new FormData();
+    form.set('batchId', id);
+    const result = await run(() => downloadImportIdMapAction(form));
+    if (!result?.success || !result.data) {
+      setMessage(result?.error ?? 'Sin id-map para descargar');
+      return;
+    }
+    downloadText(result.data.filename, result.data.csv);
+  }
+
+  async function onReleaseStaleLocks() {
+    const form = new FormData();
+    form.set('staleMinutes', '30');
+    const result = await run(() => releaseStaleMigrationLocksAction(form));
+    if (!result?.success || !result.data) {
+      setMessage(result?.error ?? 'No se pudieron liberar locks');
+      return;
+    }
+    setMessage(
+      `Locks liberados: ${result.data.importsReleased} imports · ${result.data.exportsReleased} exports`
+    );
+    await refreshIntegrity();
+  }
+
+  async function onPruneOrphans(dryRun: boolean) {
+    const form = new FormData();
+    form.set('dryRun', dryRun ? 'true' : 'false');
+    const result = await run(() => pruneOrphanMigrationMapsAction(form));
+    if (!result?.success || !result.data) {
+      setMessage(result?.error ?? 'No se pudo podar huérfanos');
+      return;
+    }
+    if (result.data.dryRun) {
+      setMessage(
+        `Simulación: ${result.data.orphanCreatedRows} created_rows · ${result.data.orphanIdMap} id-map huérfanos`
+      );
+    } else {
+      setMessage(
+        `Poda aplicada: ${result.data.deletedCreatedRows} created_rows · ${result.data.deletedIdMap} id-map`
+      );
+    }
+    await refreshIntegrity();
   }
 
   async function onRollback(id: string) {
@@ -676,8 +793,7 @@ export function DataMigrationPanel({
           <CardHeader>
             <CardTitle>Importar datos</CardTitle>
             <CardDescription>
-              Fase 11: notificación in-app al completar import/export, límites de tamaño de
-              archivo (CSV 25 MB / ZIP 80 MB), force-cancel Superadmin e integridad del tenant.
+              Fase 20: export de pagos y conciliación paid_amount vs pagos.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -724,6 +840,18 @@ export function DataMigrationPanel({
                             } else if (step === 'hospitalizations' && zipPack.hospitalizationsCsv) {
                               setCsvText(zipPack.hospitalizationsCsv);
                               setSourceFilename('hospitalizations.csv');
+                            } else if (step === 'appointments' && zipPack.appointmentsCsv) {
+                              setCsvText(zipPack.appointmentsCsv);
+                              setSourceFilename('appointments.csv');
+                            } else if (step === 'inventory_products' && zipPack.inventoryProductsCsv) {
+                              setCsvText(zipPack.inventoryProductsCsv);
+                              setSourceFilename('inventory_products.csv');
+                            } else if (step === 'invoices' && zipPack.invoicesCsv) {
+                              setCsvText(zipPack.invoicesCsv);
+                              setSourceFilename('invoices.csv');
+                            } else if (step === 'payments' && zipPack.paymentsCsv) {
+                              setCsvText(zipPack.paymentsCsv);
+                              setSourceFilename('payments.csv');
                             }
                           }
                         }}
@@ -797,6 +925,18 @@ export function DataMigrationPanel({
                     } else if (next === 'hospitalizations' && zipPack.hospitalizationsCsv) {
                       setCsvText(zipPack.hospitalizationsCsv);
                       setSourceFilename('hospitalizations.csv');
+                    } else if (next === 'appointments' && zipPack.appointmentsCsv) {
+                      setCsvText(zipPack.appointmentsCsv);
+                      setSourceFilename('appointments.csv');
+                    } else if (next === 'inventory_products' && zipPack.inventoryProductsCsv) {
+                      setCsvText(zipPack.inventoryProductsCsv);
+                      setSourceFilename('inventory_products.csv');
+                    } else if (next === 'invoices' && zipPack.invoicesCsv) {
+                      setCsvText(zipPack.invoicesCsv);
+                      setSourceFilename('invoices.csv');
+                    } else if (next === 'payments' && zipPack.paymentsCsv) {
+                      setCsvText(zipPack.paymentsCsv);
+                      setSourceFilename('payments.csv');
                     }
                   }}
                 >
@@ -850,6 +990,18 @@ export function DataMigrationPanel({
               </Button>
               <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadTemplate('hospitalizations')}>
                 Plantilla internaciones
+              </Button>
+              <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadTemplate('appointments')}>
+                Plantilla agenda
+              </Button>
+              <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadTemplate('inventory_products')}>
+                Plantilla inventario
+              </Button>
+              <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadTemplate('invoices')}>
+                Plantilla facturas
+              </Button>
+              <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadTemplate('payments')}>
+                Plantilla pagos
               </Button>
               <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadSampleZip()}>
                 ZIP migración de ejemplo
@@ -1087,13 +1239,94 @@ export function DataMigrationPanel({
             <CardTitle>Historial de importación</CardTitle>
             {integrity ? (
               <CardDescription>
-                Integridad: {String(integrity.imports.total ?? 0)} lotes · creados trackeados{' '}
-                {integrity.createdRowsTracked} · id-map {integrity.idMapEntries}
+                Integridad: {String(integrity.imports.total ?? 0)} lotes · creados{' '}
+                {integrity.createdRowsTracked} · id-map {integrity.idMapEntries} · huérfanos creados{' '}
+                {integrity.orphanCreatedTotal} · huérfanos id-map {integrity.orphanIdMapTotal}
+                {integrity.stuckImports + integrity.stuckExports > 0
+                  ? ` · locks trabados ${integrity.stuckImports + integrity.stuckExports}`
+                  : ''}
               </CardDescription>
             ) : null}
           </CardHeader>
           <CardContent className="space-y-2">
-            {importHistory.length === 0 ? (
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => void refreshIntegrity()}>
+                Actualizar integridad
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending || !integrity}
+                onClick={() => void onDownloadIntegrityReport()}
+              >
+                Reporte integridad CSV
+              </Button>
+              <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => void refreshChecklist()}>
+                Checklist go-live
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending || !checklist}
+                onClick={() => void onDownloadChecklist()}
+              >
+                Checklist CSV
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending}
+                onClick={() => void onDownloadBillingReconcile()}
+              >
+                Conciliación facturación
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending}
+                onClick={() => void onReleaseStaleLocks()}
+              >
+                Liberar locks trabados
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending}
+                onClick={() => void onPruneOrphans(true)}
+              >
+                Simular poda huérfanos
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending || !integrity || integrity.orphanCreatedTotal + integrity.orphanIdMapTotal === 0}
+                onClick={() => void onPruneOrphans(false)}
+              >
+                Podar huérfanos
+              </Button>
+            </div>
+            {checklist ? (
+              <div className="rounded-md border p-3 text-sm">
+                <p className="font-medium">
+                  Checklist: {checklist.scoreOk}/{checklist.scoreTotal} OK
+                  {checklist.readyForGolive ? ' · listo para go-live' : ' · revisar pendientes'}
+                </p>
+                <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                  {checklist.items.map((item) => (
+                    <li key={item.key}>
+                      [{item.status}] {item.label}: {item.count}
+                      {item.detail ? ` · ${item.detail}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}            {importHistory.length === 0 ? (
               <p className="text-sm text-muted-foreground">Sin lotes todavía.</p>
             ) : (
               <ul className="space-y-2 text-sm">
@@ -1156,6 +1389,19 @@ export function DataMigrationPanel({
                             onClick={() => void onRetryImport(String(batch.id))}
                           >
                             Reintentar
+                          </Button>
+                        ) : null}
+                        {['completed', 'completed_with_warnings', 'failed', 'cancelled', 'rolled_back'].includes(
+                          String(batch.status)
+                        ) ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={pending}
+                            onClick={() => void onDownloadIdMap(String(batch.id))}
+                          >
+                            Id-map CSV
                           </Button>
                         ) : null}
                         {['completed', 'completed_with_warnings'].includes(String(batch.status)) ? (

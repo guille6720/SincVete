@@ -9,7 +9,7 @@ export async function logDataMigrationAudit(input: {
   organizationId: string;
   userId: string | null;
   action: (typeof DATA_MIGRATION_AUDIT_ACTIONS)[keyof typeof DATA_MIGRATION_AUDIT_ACTIONS];
-  entityType: 'data_import_batches' | 'data_export_jobs';
+  entityType: 'data_import_batches' | 'data_export_jobs' | 'data_migration';
   entityId: string;
   newData?: Record<string, unknown>;
 }) {

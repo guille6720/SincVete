@@ -4,9 +4,18 @@ import { revalidatePath } from 'next/cache';
 import {
   DEFAULT_IMPORT_CHUNK_SIZE,
   IDEMPOTENCY_MODES,
+  buildAppointmentTemplateCsv,
   buildBatchErrorsReportCsv,
   buildClinicalTemplateCsv,
   buildHospitalizationTemplateCsv,
+  buildIdMapReportCsv,
+  buildIntegrityReportCsv,
+  buildInventoryProductTemplateCsv,
+  buildInvoiceTemplateCsv,
+  buildPaymentTemplateCsv,
+  buildMigrationChecklistCsv,
+  buildBillingReconcileCsv,
+  summarizeMigrationChecklist,
   buildLabOrderTemplateCsv,
   buildOwnerTemplateCsv,
   buildPatientTemplateCsv,
@@ -14,6 +23,7 @@ import {
   buildSurgeryTemplateCsv,
   buildVaccinationTemplateCsv,
   buildValidationReportCsv,
+  sumOrphanCounts,
   unresolvedConflictRows,
   IMPORT_TYPES,
   EXPORT_FORMATS,
@@ -55,6 +65,10 @@ const IMPORT_ENTITIES = [
   'surgeries',
   'prescriptions',
   'hospitalizations',
+  'appointments',
+  'inventory_products',
+  'invoices',
+  'payments',
 ] as const;
 type ImportEntityArg = (typeof IMPORT_ENTITIES)[number];
 
@@ -163,6 +177,42 @@ export async function downloadImportTemplate(
         },
       };
     }
+    if (kind === 'appointments') {
+      return {
+        success: true,
+        data: {
+          filename: 'SyncVete-Appointments-Template.csv',
+          csv: buildAppointmentTemplateCsv(),
+        },
+      };
+    }
+    if (kind === 'inventory_products') {
+      return {
+        success: true,
+        data: {
+          filename: 'SyncVete-Inventory-Template.csv',
+          csv: buildInventoryProductTemplateCsv(),
+        },
+      };
+    }
+    if (kind === 'invoices') {
+      return {
+        success: true,
+        data: {
+          filename: 'SyncVete-Invoices-Template.csv',
+          csv: buildInvoiceTemplateCsv(),
+        },
+      };
+    }
+    if (kind === 'payments') {
+      return {
+        success: true,
+        data: {
+          filename: 'SyncVete-Payments-Template.csv',
+          csv: buildPaymentTemplateCsv(),
+        },
+      };
+    }
     return { success: false, error: 'Plantilla inválida' };
   } catch (error) {
     return actionError(error);
@@ -253,6 +303,13 @@ export async function validateDataImport(formData: FormData): Promise<
       .split(',')
       .map((v) => v.trim())
       .filter(Boolean);
+    const knownInvoices = String(formData.get('knownInvoiceExternalIds') ?? '')
+      .split(',')
+      .map((v) => v.trim())
+      .filter(Boolean);
+    const invoiceIdByExternal = JSON.parse(
+      String(formData.get('invoiceIdByExternal') ?? '{}')
+    ) as Record<string, string>;
     const mapping = JSON.parse(mappingJson) as Record<string, string | null>;
     if (!entity) return { success: false, error: 'Entidad inválida' };
     const result = await dryRunImport({
@@ -262,6 +319,8 @@ export async function validateDataImport(formData: FormData): Promise<
       mapping,
       knownOwnerExternalIds: knownOwners,
       knownPatientExternalIds: knownPatients,
+      knownInvoiceExternalIds: knownInvoices,
+      invoiceIdByExternal,
     });
     return { success: true, data: result };
   } catch (error) {
@@ -296,6 +355,12 @@ export async function commitDataImport(formData: FormData): Promise<
     ) as Record<string, string>;
     const patientIdByExternal = JSON.parse(
       String(formData.get('patientIdByExternal') ?? '{}')
+    ) as Record<string, string>;
+    const productIdByExternal = JSON.parse(
+      String(formData.get('productIdByExternal') ?? '{}')
+    ) as Record<string, string>;
+    const invoiceIdByExternal = JSON.parse(
+      String(formData.get('invoiceIdByExternal') ?? '{}')
     ) as Record<string, string>;
     const sourceSystem = String(formData.get('sourceSystem') ?? '').trim() || null;
     const offset = Number(formData.get('offset') ?? 0) || 0;
@@ -343,6 +408,8 @@ export async function commitDataImport(formData: FormData): Promise<
       sourceSystem,
       ownerIdByExternal,
       patientIdByExternal,
+      productIdByExternal,
+      invoiceIdByExternal,
       branchId: branch.id,
       offset,
       chunkSize,
@@ -357,6 +424,7 @@ export async function commitDataImport(formData: FormData): Promise<
     revalidatePath('/cirugias');
     revalidatePath('/farmacia');
     revalidatePath('/internacion');
+    revalidatePath('/facturacion');
     return { success: true, data: result };
   } catch (error) {
     return actionError(error);
@@ -383,6 +451,12 @@ export async function queueDataImportAction(formData: FormData): Promise<
     ) as Record<string, string>;
     const patientIdByExternal = JSON.parse(
       String(formData.get('patientIdByExternal') ?? '{}')
+    ) as Record<string, string>;
+    const productIdByExternal = JSON.parse(
+      String(formData.get('productIdByExternal') ?? '{}')
+    ) as Record<string, string>;
+    const invoiceIdByExternal = JSON.parse(
+      String(formData.get('invoiceIdByExternal') ?? '{}')
     ) as Record<string, string>;
     const sourceSystem = String(formData.get('sourceSystem') ?? '').trim() || null;
     const rowDecisions = JSON.parse(
@@ -418,6 +492,8 @@ export async function queueDataImportAction(formData: FormData): Promise<
       sourceSystem,
       ownerIdByExternal,
       patientIdByExternal,
+      productIdByExternal,
+      invoiceIdByExternal,
       branchId: branch.id,
       rowDecisions,
     });
@@ -533,6 +609,10 @@ export async function inspectMigrationZipAction(formData: FormData): Promise<
     surgeriesCsv: string | null;
     prescriptionsCsv: string | null;
     hospitalizationsCsv: string | null;
+    appointmentsCsv: string | null;
+    inventoryProductsCsv: string | null;
+    invoicesCsv: string | null;
+    paymentsCsv: string | null;
   }>
 > {
   try {
@@ -555,6 +635,10 @@ export async function inspectMigrationZipAction(formData: FormData): Promise<
         surgeriesCsv: parsed.surgeriesCsv,
         prescriptionsCsv: parsed.prescriptionsCsv,
         hospitalizationsCsv: parsed.hospitalizationsCsv,
+        appointmentsCsv: parsed.appointmentsCsv,
+        inventoryProductsCsv: parsed.inventoryProductsCsv,
+        invoicesCsv: parsed.invoicesCsv,
+        paymentsCsv: parsed.paymentsCsv,
       },
     };
   } catch (error) {
@@ -966,7 +1050,22 @@ export type DataMigrationIntegrity = {
   exports: Record<string, unknown>;
   createdRowsTracked: number;
   idMapEntries: number;
+  orphansCreated: Record<string, number>;
+  orphansIdMap: Record<string, number>;
+  orphanCreatedTotal: number;
+  orphanIdMapTotal: number;
+  stuckImports: number;
+  stuckExports: number;
 };
+
+function asNumberRecord(value: unknown): Record<string, number> {
+  if (!value || typeof value !== 'object') return {};
+  const out: Record<string, number> = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    out[key] = Number(raw ?? 0);
+  }
+  return out;
+}
 
 export async function getDataMigrationIntegrityAction(): Promise<ActionResult<DataMigrationIntegrity>> {
   try {
@@ -981,6 +1080,16 @@ export async function getDataMigrationIntegrityAction(): Promise<ActionResult<Da
     const { data, error } = await supabase.rpc('own_data_migration_integrity');
     if (error) return { success: false, error: error.message };
     const payload = (data ?? {}) as Record<string, unknown>;
+    const orphans =
+      typeof payload.orphans === 'object' && payload.orphans
+        ? (payload.orphans as Record<string, unknown>)
+        : {};
+    const stuck =
+      typeof payload.stuck_locks === 'object' && payload.stuck_locks
+        ? (payload.stuck_locks as Record<string, unknown>)
+        : {};
+    const orphansCreated = asNumberRecord(orphans.created_rows);
+    const orphansIdMap = asNumberRecord(orphans.id_map);
     return {
       success: true,
       data: {
@@ -996,10 +1105,107 @@ export async function getDataMigrationIntegrityAction(): Promise<ActionResult<Da
             : {},
         createdRowsTracked: Number(payload.created_rows_tracked ?? 0),
         idMapEntries: Number(payload.id_map_entries ?? 0),
+        orphansCreated,
+        orphansIdMap,
+        orphanCreatedTotal: sumOrphanCounts(orphansCreated),
+        orphanIdMapTotal: sumOrphanCounts(orphansIdMap),
+        stuckImports: Number(stuck.imports ?? 0),
+        stuckExports: Number(stuck.exports ?? 0),
       },
     };
   } catch (error) {
     return actionError(error);
+  }
+}
+
+export async function downloadIntegrityReportAction(): Promise<ActionResult<{ csv: string; filename: string }>> {
+  try {
+    const result = await getDataMigrationIntegrityAction();
+    if (!result.success || !result.data) {
+      return { success: false, error: result.error ?? 'No se pudo leer integridad' };
+    }
+    const csv = buildIntegrityReportCsv({
+      organizationId: result.data.organizationId,
+      generatedAt: result.data.generatedAt,
+      imports: result.data.imports,
+      exports: result.data.exports,
+      createdRowsTracked: result.data.createdRowsTracked,
+      idMapEntries: result.data.idMapEntries,
+      orphansCreated: result.data.orphansCreated,
+      orphansIdMap: result.data.orphansIdMap,
+      stuckImports: result.data.stuckImports,
+      stuckExports: result.data.stuckExports,
+    });
+    return {
+      success: true,
+      data: {
+        csv,
+        filename: `integridad-migracion-${new Date().toISOString().slice(0, 10)}.csv`,
+      },
+    };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function downloadImportIdMapAction(
+  formData: FormData
+): Promise<ActionResult<{ csv: string; filename: string }>> {
+  try {
+    await requireImportAccess();
+    const batchId = String(formData.get('batchId') ?? '');
+    if (!batchId) return { success: false, error: 'Lote inválido' };
+    const supabase = await createServerClient();
+    const { data, error } = await supabase.rpc('own_data_import_id_map', {
+      p_batch_id: batchId,
+    });
+    if (error) return { success: false, error: error.message };
+    const rows = (data ?? []) as Array<{
+      entity_type: string;
+      external_id: string;
+      internal_id: string;
+      created_at: string | null;
+    }>;
+    const csv = buildIdMapReportCsv(
+      rows.map((row) => ({
+        entityType: row.entity_type,
+        externalId: row.external_id,
+        internalId: row.internal_id,
+        createdAt: row.created_at,
+      }))
+    );
+    return {
+      success: true,
+      data: { csv, filename: `id-map-${batchId.slice(0, 8)}.csv` },
+    };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export type SuperadminMigrationWorkerStatus = {
+  generatedAt: string | null;
+  workers: Array<Record<string, unknown>>;
+};
+
+export async function getSuperadminDataMigrationWorkerStatus(): Promise<SuperadminMigrationWorkerStatus | null> {
+  try {
+    await requireSuperadmin();
+    const supabase = await createServerClient();
+    const { data, error } = await supabase.rpc('superadmin_data_migration_worker_status');
+    if (error) {
+      console.error(error);
+      return null;
+    }
+    const payload = (data ?? {}) as Record<string, unknown>;
+    return {
+      generatedAt: payload.generated_at ? String(payload.generated_at) : null,
+      workers: Array.isArray(payload.workers)
+        ? (payload.workers as Array<Record<string, unknown>>)
+        : [],
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -1041,6 +1247,323 @@ export async function forceCancelDataExportJobAction(
     return {
       success: true,
       data: { id: String((data as { id?: string } | null)?.id ?? jobId) },
+    };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function forceRetryDataImportBatchAction(
+  formData: FormData
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    await requireSuperadmin();
+    const batchId = String(formData.get('batchId') ?? '');
+    if (!batchId) return { success: false, error: 'Lote inválido' };
+    const supabase = await createServerClient();
+    const { data, error } = await supabase.rpc('superadmin_force_retry_data_import_batch', {
+      p_batch_id: batchId,
+    });
+    if (error) return { success: false, error: error.message };
+    revalidatePath('/superadmin');
+    return {
+      success: true,
+      data: { id: String((data as { id?: string } | null)?.id ?? batchId) },
+    };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export type MigrationLocksReleaseResult = {
+  importsReleased: number;
+  exportsReleased: number;
+  staleMinutes: number;
+};
+
+export async function releaseStaleMigrationLocksAction(
+  formData: FormData
+): Promise<ActionResult<MigrationLocksReleaseResult>> {
+  try {
+    const canImport = await canPermissionAndFeature('data:import', FEATURES.DATA_IMPORT_EXPORT);
+    const canExport = await canPermissionAndFeature('data:export', FEATURES.DATA_IMPORT_EXPORT);
+    if (!canImport && !canExport) {
+      return { success: false, error: 'No tenés permisos para esta acción' };
+    }
+    const session = canImport ? await requireImportAccess() : await requireExportAccess();
+    const minutesRaw = Number(formData.get('staleMinutes') ?? 30);
+    const supabase = await createServerClient();
+    const { data, error } = await supabase.rpc('own_release_stale_migration_locks', {
+      p_stale_minutes: Number.isFinite(minutesRaw) ? minutesRaw : 30,
+    });
+    if (error) return { success: false, error: error.message };
+    const payload = (data ?? {}) as Record<string, unknown>;
+    await logDataMigrationAudit({
+      organizationId: session.organizationId,
+      userId: session.userId,
+      action: 'data_migration.locks_released',
+      entityType: 'data_migration',
+      entityId: session.organizationId,
+      newData: payload,
+    });
+    revalidatePath('/configuracion');
+    return {
+      success: true,
+      data: {
+        importsReleased: Number(payload.imports_released ?? 0),
+        exportsReleased: Number(payload.exports_released ?? 0),
+        staleMinutes: Number(payload.stale_minutes ?? 30),
+      },
+    };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export type MigrationOrphanPruneResult = {
+  dryRun: boolean;
+  orphanCreatedRows: number;
+  orphanIdMap: number;
+  deletedCreatedRows: number;
+  deletedIdMap: number;
+};
+
+export async function pruneOrphanMigrationMapsAction(
+  formData: FormData
+): Promise<ActionResult<MigrationOrphanPruneResult>> {
+  try {
+    await requireImportAccess();
+    const dryRun = String(formData.get('dryRun') ?? 'true') !== 'false';
+    const supabase = await createServerClient();
+    const { data, error } = await supabase.rpc('own_prune_orphan_migration_maps', {
+      p_dry_run: dryRun,
+    });
+    if (error) return { success: false, error: error.message };
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const session = await requireImportAccess();
+    if (!dryRun) {
+      await logDataMigrationAudit({
+        organizationId: session.organizationId,
+        userId: session.userId,
+        action: 'data_migration.orphans_pruned',
+        entityType: 'data_migration',
+        entityId: session.organizationId,
+        newData: payload,
+      });
+    }
+    revalidatePath('/configuracion');
+    return {
+      success: true,
+      data: {
+        dryRun: Boolean(payload.dry_run ?? dryRun),
+        orphanCreatedRows: Number(payload.orphan_created_rows ?? 0),
+        orphanIdMap: Number(payload.orphan_id_map ?? 0),
+        deletedCreatedRows: Number(payload.deleted_created_rows ?? 0),
+        deletedIdMap: Number(payload.deleted_id_map ?? 0),
+      },
+    };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export type DataMigrationChecklistItem = {
+  key: string;
+  label: string;
+  status: string;
+  count: number;
+  detail: string | null;
+};
+
+export type DataMigrationChecklist = {
+  organizationId: string;
+  generatedAt: string | null;
+  scoreOk: number;
+  scoreTotal: number;
+  readyForGolive: boolean;
+  items: DataMigrationChecklistItem[];
+};
+
+export async function getDataMigrationChecklistAction(): Promise<
+  ActionResult<DataMigrationChecklist>
+> {
+  try {
+    const canImport = await canPermissionAndFeature('data:import', FEATURES.DATA_IMPORT_EXPORT);
+    const canExport = await canPermissionAndFeature('data:export', FEATURES.DATA_IMPORT_EXPORT);
+    if (!canImport && !canExport) {
+      return { success: false, error: 'No tenés permisos para esta acción' };
+    }
+    if (canImport) await requireImportAccess();
+    else await requireExportAccess();
+    const supabase = await createServerClient();
+    const { data, error } = await supabase.rpc('own_data_migration_checklist');
+    if (error) return { success: false, error: error.message };
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const rawItems = Array.isArray(payload.items) ? payload.items : [];
+    const items: DataMigrationChecklistItem[] = rawItems.map((row) => {
+      const item = row as Record<string, unknown>;
+      return {
+        key: String(item.key ?? ''),
+        label: String(item.label ?? item.key ?? ''),
+        status: String(item.status ?? 'warn'),
+        count: Number(item.count ?? 0),
+        detail: item.detail != null ? String(item.detail) : null,
+      };
+    });
+    return {
+      success: true,
+      data: {
+        organizationId: String(payload.organization_id ?? ''),
+        generatedAt: payload.generated_at ? String(payload.generated_at) : null,
+        scoreOk: Number(payload.score_ok ?? summarizeMigrationChecklist(items).ok),
+        scoreTotal: Number(payload.score_total ?? items.length),
+        readyForGolive: Boolean(payload.ready_for_golive),
+        items,
+      },
+    };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function downloadMigrationChecklistAction(): Promise<
+  ActionResult<{ csv: string; filename: string }>
+> {
+  try {
+    const result = await getDataMigrationChecklistAction();
+    if (!result.success || !result.data) {
+      return { success: false, error: result.error ?? 'No se pudo armar el checklist' };
+    }
+    const csv = buildMigrationChecklistCsv(result.data.items, {
+      organizationId: result.data.organizationId,
+      generatedAt: result.data.generatedAt,
+      readyForGolive: result.data.readyForGolive,
+    });
+    return {
+      success: true,
+      data: {
+        csv,
+        filename: `checklist-migracion-${new Date().toISOString().slice(0, 10)}.csv`,
+      },
+    };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export type BillingReconcileSummary = {
+  invoices: number;
+  payments: number;
+  paidWithoutPaymentRows: number;
+  paymentsWithoutInvoice: number;
+  paidAmountVsPaymentsMismatch: number;
+};
+
+export type BillingReconcileResult = {
+  organizationId: string;
+  generatedAt: string | null;
+  summary: BillingReconcileSummary;
+  rows: Array<{
+    invoiceId: string;
+    invoiceNumber: string | null;
+    status: string | null;
+    total: number;
+    paidAmount: number;
+    balance: number;
+    paymentsSum: number;
+    paymentsCount: number;
+    delta: number;
+  }>;
+};
+
+export async function getBillingReconcileAction(): Promise<ActionResult<BillingReconcileResult>> {
+  try {
+    const canImport = await canPermissionAndFeature('data:import', FEATURES.DATA_IMPORT_EXPORT);
+    const canExport = await canPermissionAndFeature('data:export', FEATURES.DATA_IMPORT_EXPORT);
+    if (!canImport && !canExport) {
+      return { success: false, error: 'No tenés permisos para esta acción' };
+    }
+    if (canImport) await requireImportAccess();
+    else await requireExportAccess();
+    const supabase = await createServerClient();
+    const { data, error } = await supabase.rpc('own_data_migration_billing_reconcile');
+    if (error) return { success: false, error: error.message };
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const summaryRaw = (payload.summary ?? {}) as Record<string, unknown>;
+    const rawRows = Array.isArray(payload.rows) ? payload.rows : [];
+    return {
+      success: true,
+      data: {
+        organizationId: String(payload.organization_id ?? ''),
+        generatedAt: payload.generated_at ? String(payload.generated_at) : null,
+        summary: {
+          invoices: Number(summaryRaw.invoices ?? 0),
+          payments: Number(summaryRaw.payments ?? 0),
+          paidWithoutPaymentRows: Number(summaryRaw.paid_without_payment_rows ?? 0),
+          paymentsWithoutInvoice: Number(summaryRaw.payments_without_invoice ?? 0),
+          paidAmountVsPaymentsMismatch: Number(
+            summaryRaw.paid_amount_vs_payments_mismatch ?? 0
+          ),
+        },
+        rows: rawRows.map((row) => {
+          const item = row as Record<string, unknown>;
+          return {
+            invoiceId: String(item.invoice_id ?? ''),
+            invoiceNumber: item.invoice_number != null ? String(item.invoice_number) : null,
+            status: item.status != null ? String(item.status) : null,
+            total: Number(item.total ?? 0),
+            paidAmount: Number(item.paid_amount ?? 0),
+            balance: Number(item.balance ?? 0),
+            paymentsSum: Number(item.payments_sum ?? 0),
+            paymentsCount: Number(item.payments_count ?? 0),
+            delta: Number(item.delta ?? 0),
+          };
+        }),
+      },
+    };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function downloadBillingReconcileAction(): Promise<
+  ActionResult<{ csv: string; filename: string }>
+> {
+  try {
+    const result = await getBillingReconcileAction();
+    if (!result.success || !result.data) {
+      return { success: false, error: result.error ?? 'No se pudo armar la conciliación' };
+    }
+    const csv = buildBillingReconcileCsv(
+      result.data.rows.map((row) => ({
+        invoiceId: row.invoiceId,
+        invoiceNumber: row.invoiceNumber,
+        status: row.status,
+        total: row.total,
+        paidAmount: row.paidAmount,
+        balance: row.balance,
+        paymentsSum: row.paymentsSum,
+        paymentsCount: row.paymentsCount,
+        delta: row.delta,
+      })),
+      {
+        organizationId: result.data.organizationId,
+        generatedAt: result.data.generatedAt,
+        summary: {
+          invoices: result.data.summary.invoices,
+          payments: result.data.summary.payments,
+          paid_without_payment_rows: result.data.summary.paidWithoutPaymentRows,
+          payments_without_invoice: result.data.summary.paymentsWithoutInvoice,
+          paid_amount_vs_payments_mismatch: result.data.summary.paidAmountVsPaymentsMismatch,
+        },
+      }
+    );
+    return {
+      success: true,
+      data: {
+        csv,
+        filename: `conciliacion-facturacion-${new Date().toISOString().slice(0, 10)}.csv`,
+      },
     };
   } catch (error) {
     return actionError(error);

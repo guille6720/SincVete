@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getSuperadminDataMigrationOpsQueue } from '@/actions/data-migration';
+import { getSuperadminDataMigrationOpsQueue, getSuperadminDataMigrationWorkerStatus } from '@/actions/data-migration';
 import { SuperadminDataMigrationOpsQueue } from '@/components/superadmin/data-migration-ops-queue';
 import {
   getSuperadminCommercialSummary,
@@ -177,6 +177,7 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
       recommendationSettings,
       savedViews,
       migrationOpsResult,
+      migrationWorkersResult,
     ] = await Promise.all([
       listSuperadminOrganizationsRecommended({
         page,
@@ -230,10 +231,12 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
       getSuperadminRecommendationSettings().catch(() => null),
       listSuperadminRecommendationSavedViews().catch(() => []),
       getSuperadminDataMigrationOpsQueue(40).catch(() => null),
+      getSuperadminDataMigrationWorkerStatus().catch(() => null),
     ]);
 
     const migrationOps =
       migrationOpsResult && migrationOpsResult.success ? migrationOpsResult.data : null;
+    const migrationWorkers = migrationWorkersResult;
 
     const savedViewCurrentParams = sanitizeCommercialSavedViewParams({
       assignee: assigneeFilter || undefined,
@@ -296,7 +299,10 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
           </p>
         </div>
         <SuperadminCommercialOps summary={summary} />
-        <SuperadminDataMigrationOpsQueue queue={migrationOps ?? null} />
+        <SuperadminDataMigrationOpsQueue
+          queue={migrationOps ?? null}
+          workers={migrationWorkers ?? null}
+        />
         <SuperadminRecommendationSavedViews
           views={savedViews}
           currentParams={savedViewCurrentParams}

@@ -1690,6 +1690,11 @@ export interface Database {
           title: string | null;
           notes: string | null;
           cancellation_reason: string | null;
+          source_system: string | null;
+          source_record_id: string | null;
+          import_batch_id: string | null;
+          imported_at: string | null;
+          imported_by: string | null;
           created_at: string;
           updated_at: string;
           deleted_at: string | null;
@@ -1708,6 +1713,11 @@ export interface Database {
           title?: string | null;
           notes?: string | null;
           cancellation_reason?: string | null;
+          source_system?: string | null;
+          source_record_id?: string | null;
+          import_batch_id?: string | null;
+          imported_at?: string | null;
+          imported_by?: string | null;
           created_at?: string;
           updated_at?: string;
           deleted_at?: string | null;
@@ -1726,6 +1736,11 @@ export interface Database {
           title?: string | null;
           notes?: string | null;
           cancellation_reason?: string | null;
+          source_system?: string | null;
+          source_record_id?: string | null;
+          import_batch_id?: string | null;
+          imported_at?: string | null;
+          imported_by?: string | null;
           created_at?: string;
           updated_at?: string;
           deleted_at?: string | null;
@@ -2690,6 +2705,11 @@ export interface Database {
           manufacturer: string | null;
           notes: string | null;
           is_active: boolean;
+          source_system: string | null;
+          source_record_id: string | null;
+          import_batch_id: string | null;
+          imported_at: string | null;
+          imported_by: string | null;
           created_at: string;
           updated_at: string;
           deleted_at: string | null;
@@ -2709,6 +2729,11 @@ export interface Database {
           manufacturer?: string | null;
           notes?: string | null;
           is_active?: boolean;
+          source_system?: string | null;
+          source_record_id?: string | null;
+          import_batch_id?: string | null;
+          imported_at?: string | null;
+          imported_by?: string | null;
           created_at?: string;
           updated_at?: string;
           deleted_at?: string | null;
@@ -2728,6 +2753,11 @@ export interface Database {
           manufacturer?: string | null;
           notes?: string | null;
           is_active?: boolean;
+          source_system?: string | null;
+          source_record_id?: string | null;
+          import_batch_id?: string | null;
+          imported_at?: string | null;
+          imported_by?: string | null;
           created_at?: string;
           updated_at?: string;
           deleted_at?: string | null;
@@ -2848,6 +2878,11 @@ export interface Database {
           paid_amount: number;
           balance: number;
           notes: string | null;
+          source_system: string | null;
+          source_record_id: string | null;
+          import_batch_id: string | null;
+          imported_at: string | null;
+          imported_by: string | null;
           created_at: string;
           updated_at: string;
           deleted_at: string | null;
@@ -2874,6 +2909,11 @@ export interface Database {
           paid_amount?: number;
           balance?: number;
           notes?: string | null;
+          source_system?: string | null;
+          source_record_id?: string | null;
+          import_batch_id?: string | null;
+          imported_at?: string | null;
+          imported_by?: string | null;
           created_at?: string;
           updated_at?: string;
           deleted_at?: string | null;
@@ -2900,6 +2940,11 @@ export interface Database {
           paid_amount?: number;
           balance?: number;
           notes?: string | null;
+          source_system?: string | null;
+          source_record_id?: string | null;
+          import_batch_id?: string | null;
+          imported_at?: string | null;
+          imported_by?: string | null;
           created_at?: string;
           updated_at?: string;
           deleted_at?: string | null;
@@ -3020,6 +3065,11 @@ export interface Database {
           paid_at: string;
           reference: string | null;
           notes: string | null;
+          source_system: string | null;
+          source_record_id: string | null;
+          import_batch_id: string | null;
+          imported_at: string | null;
+          imported_by: string | null;
           created_at: string;
           updated_at: string;
           deleted_at: string | null;
@@ -3034,6 +3084,11 @@ export interface Database {
           paid_at?: string;
           reference?: string | null;
           notes?: string | null;
+          source_system?: string | null;
+          source_record_id?: string | null;
+          import_batch_id?: string | null;
+          imported_at?: string | null;
+          imported_by?: string | null;
           created_at?: string;
           updated_at?: string;
           deleted_at?: string | null;
@@ -3048,6 +3103,11 @@ export interface Database {
           paid_at?: string;
           reference?: string | null;
           notes?: string | null;
+          source_system?: string | null;
+          source_record_id?: string | null;
+          import_batch_id?: string | null;
+          imported_at?: string | null;
+          imported_by?: string | null;
           created_at?: string;
           updated_at?: string;
           deleted_at?: string | null;
@@ -4026,6 +4086,30 @@ export interface Database {
           payload?: Json;
           processed_at?: string;
           applied_at?: string | null;
+        };
+        Relationships: [];
+      };
+      data_migration_worker_heartbeats: {
+        Row: {
+          worker_name: string;
+          last_run_at: string;
+          last_ok: boolean;
+          last_detail: Json;
+          updated_at: string;
+        };
+        Insert: {
+          worker_name: string;
+          last_run_at?: string;
+          last_ok?: boolean;
+          last_detail?: Json;
+          updated_at?: string;
+        };
+        Update: {
+          worker_name?: string;
+          last_run_at?: string;
+          last_ok?: boolean;
+          last_detail?: Json;
+          updated_at?: string;
         };
         Relationships: [];
       };
@@ -5792,6 +5876,47 @@ export interface Database {
           p_dedupe_hours?: number | null;
         };
         Returns: string;
+      };
+      touch_data_migration_worker_heartbeat: {
+        Args: {
+          p_worker_name: string;
+          p_ok?: boolean;
+          p_detail?: Json;
+        };
+        Returns: undefined;
+      };
+      superadmin_data_migration_worker_status: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      own_data_import_id_map: {
+        Args: { p_batch_id: string };
+        Returns: {
+          entity_type: string;
+          external_id: string;
+          internal_id: string;
+          created_at: string;
+        }[];
+      };
+      superadmin_force_retry_data_import_batch: {
+        Args: { p_batch_id: string };
+        Returns: Json;
+      };
+      own_release_stale_migration_locks: {
+        Args: { p_stale_minutes?: number };
+        Returns: Json;
+      };
+      own_prune_orphan_migration_maps: {
+        Args: { p_dry_run?: boolean };
+        Returns: Json;
+      };
+      own_data_migration_checklist: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      own_data_migration_billing_reconcile: {
+        Args: Record<string, never>;
+        Returns: Json;
       };
       count_unread_notifications: {
         Args: Record<string, never>;

@@ -343,6 +343,30 @@ export function UserManual({ toolbar }: { toolbar?: ReactNode }) {
             <strong>Límites:</strong> CSV hasta 25 MB; ZIP de adjuntos hasta 80 MB.
           </li>
           <li>
+            <strong>Integridad:</strong> el historial muestra huérfanos de id-map / filas creadas y locks
+            trabados; podés descargar el reporte CSV y el id-map de cada lote. También liberar locks
+            stale y podar mapas huérfanos (simulá primero).
+          </li>
+          <li>
+            <strong>Agenda:</strong> exportá e importá citas (CSV con `starts_at`/`ends_at`). En la
+            migración guiada van después de internaciones y antes de adjuntos. El dry-run avisa
+            solapamientos del mismo paciente en el archivo.
+          </li>
+          <li>
+            <strong>Checklist go-live:</strong> en el historial de importación podés correr un
+            checklist (propietarios, pacientes, citas 30d, vacunas, inventario, locks/huérfanos) y
+            descargarlo en CSV.
+          </li>
+          <li>
+            <strong>Inventario:</strong> exportá e importá productos (CSV con SKU/categoría/stock). En
+            la migración guiada van antes de adjuntos.
+          </li>
+          <li>
+            <strong>Facturas:</strong> exportá e importá facturas con ítems. Los pagos se importan
+            aparte (histórico, sin caja) y también se pueden exportar solos. Usá la conciliación de
+            facturación para comparar `paid_amount` vs suma de pagos antes del go-live.
+          </li>
+          <li>
             <strong>Rollback:</strong> solo revierte filas creadas por ese lote (no toca datos previos).
           </li>
         </ul>

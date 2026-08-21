@@ -12,6 +12,10 @@ import {
   buildSurgeryTemplateCsv,
   buildVaccinationTemplateCsv,
   buildHospitalizationTemplateCsv,
+  buildAppointmentTemplateCsv,
+  buildInventoryProductTemplateCsv,
+  buildInvoiceTemplateCsv,
+  buildPaymentTemplateCsv,
   parseCsv,
   parseMigrationManifest,
   type MigrationZipManifest,
@@ -28,6 +32,10 @@ export type ParsedMigrationZip = {
   surgeriesCsv: string | null;
   prescriptionsCsv: string | null;
   hospitalizationsCsv: string | null;
+  appointmentsCsv: string | null;
+  inventoryProductsCsv: string | null;
+  invoicesCsv: string | null;
+  paymentsCsv: string | null;
   attachmentPaths: string[];
 };
 
@@ -70,6 +78,18 @@ export async function parseSyncveteMigrationZip(buffer: ArrayBuffer): Promise<Pa
     'hospitalizations.csv',
     'data/hospitalizations.csv',
   ]);
+  const appointments = findEntry(zip, ['appointments.csv', 'data/appointments.csv']);
+  const inventoryProducts = findEntry(zip, [
+    'inventory_products.csv',
+    'data/inventory_products.csv',
+  ]);
+  const invoices = findEntry(zip, ['invoices.csv', 'data/invoices.csv']);
+  const payments = findEntry(zip, [
+    'payments.csv',
+    'data/payments.csv',
+    'invoice_payments.csv',
+    'data/invoice_payments.csv',
+  ]);
 
   const attachmentPaths = Object.keys(zip.files).filter((path) => {
     const normalized = path.replace(/\\/g, '/');
@@ -89,6 +109,10 @@ export async function parseSyncveteMigrationZip(buffer: ArrayBuffer): Promise<Pa
     surgeriesCsv: surgeries ? await surgeries.async('string') : null,
     prescriptionsCsv: prescriptions ? await prescriptions.async('string') : null,
     hospitalizationsCsv: hospitalizations ? await hospitalizations.async('string') : null,
+    appointmentsCsv: appointments ? await appointments.async('string') : null,
+    inventoryProductsCsv: inventoryProducts ? await inventoryProducts.async('string') : null,
+    invoicesCsv: invoices ? await invoices.async('string') : null,
+    paymentsCsv: payments ? await payments.async('string') : null,
     attachmentPaths,
   };
 }
@@ -105,6 +129,10 @@ export async function buildSampleMigrationZip(sourceSystem = 'VetLegacy'): Promi
   zip.file('surgeries.csv', buildSurgeryTemplateCsv());
   zip.file('prescriptions.csv', buildPrescriptionTemplateCsv());
   zip.file('hospitalizations.csv', buildHospitalizationTemplateCsv());
+  zip.file('appointments.csv', buildAppointmentTemplateCsv());
+  zip.file('inventory_products.csv', buildInventoryProductTemplateCsv());
+  zip.file('invoices.csv', buildInvoiceTemplateCsv());
+  zip.file('payments.csv', buildPaymentTemplateCsv());
   zip.folder('attachments')?.folder('PAT-001')?.file(
     'README.txt',
     'Colocá aquí PDFs/JPG/PNG del paciente externo PAT-001.\n'
@@ -140,6 +168,10 @@ export function summarizeZipContents(parsed: ParsedMigrationZip) {
     surgeries: countRows(parsed.surgeriesCsv),
     prescriptions: countRows(parsed.prescriptionsCsv),
     hospitalizations: countRows(parsed.hospitalizationsCsv),
+    appointments: countRows(parsed.appointmentsCsv),
+    inventoryProducts: countRows(parsed.inventoryProductsCsv),
+    invoices: countRows(parsed.invoicesCsv),
+    payments: countRows(parsed.paymentsCsv),
     attachments: parsed.attachmentPaths.length,
   };
 }
