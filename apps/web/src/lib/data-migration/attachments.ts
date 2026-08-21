@@ -16,10 +16,7 @@ import JSZip from 'jszip';
 import { createServerClient } from '@/lib/supabase/server';
 import { requirePermission } from '@/lib/permissions';
 import { canUseFeature, consumeMeteredFeature } from '@/lib/entitlements';
-
-async function migrationDb() {
-  return (await createServerClient()) as unknown as { from: (table: string) => any };
-}
+import { migrationDb } from '@/lib/data-migration/db';
 
 function kindFromMime(mime: string): ClinicalImageKind {
   if (mime === 'application/pdf') return 'documento';

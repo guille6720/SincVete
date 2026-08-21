@@ -10,10 +10,7 @@ import {
 import JSZip from 'jszip';
 import { createServerClient } from '@/lib/supabase/server';
 import { requirePermission } from '@/lib/permissions';
-
-async function migrationDb() {
-  return (await createServerClient()) as unknown as { from: (table: string) => any };
-}
+import { migrationDb } from '@/lib/data-migration/db';
 
 const EXPORT_RETENTION_DAYS = 7;
 

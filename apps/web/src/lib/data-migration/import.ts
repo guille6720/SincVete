@@ -30,7 +30,6 @@ import {
   type VaccinationImportRow,
   type ValidationIssue,
 } from '@sincvete/shared';
-import { createServerClient } from '@/lib/supabase/server';
 import { requirePermission } from '@/lib/permissions';
 import {
   commitSpecialtySlice,
@@ -38,6 +37,7 @@ import {
   validateSpecialtyRows,
   type SpecialtyEntity,
 } from '@/lib/data-migration/specialty';
+import { migrationDb } from '@/lib/data-migration/db';
 
 type ImportEntity =
   | 'owners'
@@ -48,13 +48,6 @@ type ImportEntity =
 
 function isSpecialtyEntity(entity: ImportEntity): entity is SpecialtyEntity {
   return entity === 'lab_orders' || entity === 'surgeries' || entity === 'prescriptions';
-}
-
-/** Temporary until generated Database types include data_migration tables. */
-async function migrationDb() {
-  return (await createServerClient()) as unknown as {
-    from: (table: string) => any;
-  };
 }
 
 type ExistingOwnerHit = {
@@ -440,7 +433,7 @@ export async function commitImport(input: {
 
   let imported = 0;
   let failed = 0;
-  let linked = 0;
+  const linked = 0;
   const idMap: Record<string, string> = {};
 
   try {

@@ -181,8 +181,10 @@ function normalizeRxRoute(
   return 'otro';
 }
 
+import type { MigrationDb } from '@/lib/data-migration/db';
+
 export async function commitSpecialtySlice(input: {
-  supabase: { from: (table: string) => any };
+  supabase: MigrationDb;
   entity: SpecialtyEntity;
   rows: Record<string, string>[];
   mapping: Record<string, string | null>;
