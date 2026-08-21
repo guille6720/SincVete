@@ -8,7 +8,12 @@ export const IMPORT_TYPES = [
   'patients',
   'clinical_entries',
   'vaccinations',
+  'lab_orders',
+  'surgeries',
+  'prescriptions',
+  'attachments',
   'full_migration',
+  'migration_zip',
 ] as const;
 export type ImportType = (typeof IMPORT_TYPES)[number];
 
@@ -17,8 +22,26 @@ export const IMPORT_TYPE_LABELS: Record<ImportType, string> = {
   patients: 'Pacientes',
   clinical_entries: 'Historias clínicas',
   vaccinations: 'Vacunaciones',
-  full_migration: 'Migración completa',
+  lab_orders: 'Laboratorio',
+  surgeries: 'Cirugías',
+  prescriptions: 'Recetas / farmacia',
+  attachments: 'Adjuntos (ZIP)',
+  full_migration: 'Migración completa (guiada)',
+  migration_zip: 'Paquete ZIP SyncVete',
 };
+
+export const IMPORT_ENTITY_TYPES = [
+  'owners',
+  'patients',
+  'clinical_entries',
+  'vaccinations',
+  'lab_orders',
+  'surgeries',
+  'prescriptions',
+] as const;
+export type ImportEntityType = (typeof IMPORT_ENTITY_TYPES)[number];
+
+export const DEFAULT_IMPORT_CHUNK_SIZE = 50;
 
 export const EXPORT_TYPES = [
   'owners',
@@ -238,6 +261,256 @@ export const CLINICAL_IMPORT_FIELDS: ImportFieldDef[] = [
     key: 'observations',
     label: 'Observaciones / plan',
     aliases: ['observations', 'plan', 'observaciones', 'notas'],
+  },
+  {
+    key: 'source_system',
+    label: 'Sistema origen',
+    aliases: ['source_system', 'sistema', 'origen'],
+  },
+];
+
+export const VACCINATION_IMPORT_FIELDS: ImportFieldDef[] = [
+  {
+    key: 'external_vaccination_id',
+    label: 'ID externo vacunación',
+    required: true,
+    aliases: ['external_vaccination_id', 'vaccination_id', 'id_vacuna', 'id_vacunacion'],
+  },
+  {
+    key: 'external_patient_id',
+    label: 'ID externo paciente',
+    required: true,
+    aliases: ['external_patient_id', 'patient_id', 'id_paciente'],
+  },
+  {
+    key: 'vaccine_name',
+    label: 'Vacuna',
+    required: true,
+    aliases: ['vaccine_name', 'vacuna', 'nombre_vacuna'],
+  },
+  {
+    key: 'administered_at',
+    label: 'Fecha aplicación',
+    required: true,
+    aliases: ['administered_at', 'fecha', 'fecha_aplicacion', 'application_date'],
+  },
+  {
+    key: 'next_due_at',
+    label: 'Próxima dosis',
+    aliases: ['next_due_at', 'proxima', 'próxima', 'next_due'],
+  },
+  {
+    key: 'manufacturer',
+    label: 'Laboratorio',
+    aliases: ['manufacturer', 'laboratorio', 'fabricante'],
+  },
+  {
+    key: 'lot_number',
+    label: 'Lote',
+    aliases: ['lot_number', 'lote', 'lot'],
+  },
+  {
+    key: 'original_veterinarian',
+    label: 'Profesional original',
+    aliases: ['original_veterinarian', 'veterinario', 'profesional'],
+  },
+  {
+    key: 'notes',
+    label: 'Notas',
+    aliases: ['notes', 'notas', 'observaciones'],
+  },
+  {
+    key: 'source_system',
+    label: 'Sistema origen',
+    aliases: ['source_system', 'sistema', 'origen'],
+  },
+];
+
+export const LAB_ORDER_IMPORT_FIELDS: ImportFieldDef[] = [
+  {
+    key: 'external_lab_order_id',
+    label: 'ID externo lab',
+    required: true,
+    aliases: ['external_lab_order_id', 'lab_order_id', 'id_lab', 'id_laboratorio'],
+  },
+  {
+    key: 'external_patient_id',
+    label: 'ID externo paciente',
+    required: true,
+    aliases: ['external_patient_id', 'patient_id', 'id_paciente'],
+  },
+  {
+    key: 'ordered_at',
+    label: 'Fecha solicitud',
+    required: true,
+    aliases: ['ordered_at', 'fecha', 'fecha_solicitud', 'order_date'],
+  },
+  {
+    key: 'title',
+    label: 'Título / estudio',
+    required: true,
+    aliases: ['title', 'estudio', 'titulo', 'título', 'test'],
+  },
+  {
+    key: 'tests',
+    label: 'Tests (separados por |)',
+    aliases: ['tests', 'items', 'analisis', 'análisis'],
+  },
+  {
+    key: 'priority',
+    label: 'Prioridad',
+    aliases: ['priority', 'prioridad'],
+  },
+  {
+    key: 'sample_type',
+    label: 'Tipo de muestra',
+    aliases: ['sample_type', 'muestra', 'tipo_muestra'],
+  },
+  {
+    key: 'interpretation',
+    label: 'Interpretación',
+    aliases: ['interpretation', 'interpretacion', 'interpretación', 'resultado'],
+  },
+  {
+    key: 'original_veterinarian',
+    label: 'Profesional original',
+    aliases: ['original_veterinarian', 'veterinario', 'profesional'],
+  },
+  {
+    key: 'notes',
+    label: 'Notas',
+    aliases: ['notes', 'notas', 'observaciones'],
+  },
+  {
+    key: 'source_system',
+    label: 'Sistema origen',
+    aliases: ['source_system', 'sistema', 'origen'],
+  },
+];
+
+export const SURGERY_IMPORT_FIELDS: ImportFieldDef[] = [
+  {
+    key: 'external_surgery_id',
+    label: 'ID externo cirugía',
+    required: true,
+    aliases: ['external_surgery_id', 'surgery_id', 'id_cirugia', 'id_cirugía'],
+  },
+  {
+    key: 'external_patient_id',
+    label: 'ID externo paciente',
+    required: true,
+    aliases: ['external_patient_id', 'patient_id', 'id_paciente'],
+  },
+  {
+    key: 'scheduled_at',
+    label: 'Fecha cirugía',
+    required: true,
+    aliases: ['scheduled_at', 'fecha', 'surgery_date', 'fecha_cirugia'],
+  },
+  {
+    key: 'procedure_name',
+    label: 'Procedimiento',
+    required: true,
+    aliases: ['procedure_name', 'procedimiento', 'cirugia', 'cirugía', 'surgery'],
+  },
+  {
+    key: 'diagnosis',
+    label: 'Diagnóstico',
+    aliases: ['diagnosis', 'diagnostico', 'diagnóstico'],
+  },
+  {
+    key: 'anesthesia',
+    label: 'Anestesia',
+    aliases: ['anesthesia', 'anestesia'],
+  },
+  {
+    key: 'asa',
+    label: 'ASA',
+    aliases: ['asa'],
+  },
+  {
+    key: 'original_veterinarian',
+    label: 'Cirujano original',
+    aliases: ['original_veterinarian', 'cirujano', 'surgeon', 'veterinario'],
+  },
+  {
+    key: 'notes',
+    label: 'Notas',
+    aliases: ['notes', 'notas', 'postop', 'observaciones'],
+  },
+  {
+    key: 'source_system',
+    label: 'Sistema origen',
+    aliases: ['source_system', 'sistema', 'origen'],
+  },
+];
+
+export const PRESCRIPTION_IMPORT_FIELDS: ImportFieldDef[] = [
+  {
+    key: 'external_prescription_id',
+    label: 'ID externo receta',
+    required: true,
+    aliases: ['external_prescription_id', 'prescription_id', 'id_receta'],
+  },
+  {
+    key: 'external_patient_id',
+    label: 'ID externo paciente',
+    required: true,
+    aliases: ['external_patient_id', 'patient_id', 'id_paciente'],
+  },
+  {
+    key: 'prescribed_at',
+    label: 'Fecha prescrita',
+    required: true,
+    aliases: ['prescribed_at', 'fecha', 'prescription_date', 'fecha_receta'],
+  },
+  {
+    key: 'medication_name',
+    label: 'Medicamento',
+    required: true,
+    aliases: ['medication_name', 'medicamento', 'drug', 'farmaco', 'fármaco'],
+  },
+  {
+    key: 'dose',
+    label: 'Dosis',
+    required: true,
+    aliases: ['dose', 'dosis'],
+  },
+  {
+    key: 'frequency',
+    label: 'Frecuencia',
+    required: true,
+    aliases: ['frequency', 'frecuencia'],
+  },
+  {
+    key: 'duration',
+    label: 'Duración',
+    aliases: ['duration', 'duracion', 'duración'],
+  },
+  {
+    key: 'route',
+    label: 'Vía',
+    aliases: ['route', 'via', 'vía'],
+  },
+  {
+    key: 'quantity',
+    label: 'Cantidad',
+    aliases: ['quantity', 'cantidad'],
+  },
+  {
+    key: 'instructions',
+    label: 'Indicaciones',
+    aliases: ['instructions', 'indicaciones', 'posologia', 'posología'],
+  },
+  {
+    key: 'original_veterinarian',
+    label: 'Profesional original',
+    aliases: ['original_veterinarian', 'veterinario', 'profesional'],
+  },
+  {
+    key: 'notes',
+    label: 'Notas',
+    aliases: ['notes', 'notas'],
   },
   {
     key: 'source_system',
@@ -764,6 +1037,557 @@ export function buildClinicalTemplateCsv(): string {
       },
     ]
   );
+}
+
+export type VaccinationImportRow = {
+  rowNumber: number;
+  externalVaccinationId: string;
+  externalPatientId: string;
+  vaccineName: string;
+  administeredAt: string;
+  nextDueAt: string | null;
+  manufacturer: string | null;
+  lotNumber: string | null;
+  originalVeterinarian: string | null;
+  notes: string | null;
+  sourceSystem: string | null;
+};
+
+export function validateVaccinationRows(
+  rows: VaccinationImportRow[],
+  options?: { knownPatientExternalIds?: Set<string>; locale?: DateLocale }
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const locale = options?.locale ?? 'es-AR';
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (!row.externalVaccinationId) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'vaccinations',
+        field: 'external_vaccination_id',
+        code: 'required',
+        message: 'Falta ID externo de vacunación',
+        severity: 'error',
+      });
+    } else if (seen.has(row.externalVaccinationId)) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'vaccinations',
+        field: 'external_vaccination_id',
+        code: 'duplicate_in_file',
+        message: 'ID externo duplicado en el archivo',
+        severity: 'error',
+      });
+    } else {
+      seen.add(row.externalVaccinationId);
+    }
+    if (!row.externalPatientId) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'vaccinations',
+        field: 'external_patient_id',
+        code: 'required',
+        message: 'Falta ID externo del paciente',
+        severity: 'error',
+      });
+    } else if (
+      options?.knownPatientExternalIds &&
+      !options.knownPatientExternalIds.has(row.externalPatientId)
+    ) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'vaccinations',
+        field: 'external_patient_id',
+        code: 'missing_patient',
+        message: 'No se encontró el paciente referenciado',
+        severity: 'error',
+        recommendedAction: 'Importar pacientes primero',
+        sourceReference: row.externalPatientId,
+      });
+    }
+    if (!row.vaccineName || row.vaccineName.trim().length < 2) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'vaccinations',
+        field: 'vaccine_name',
+        code: 'required',
+        message: 'Falta nombre de vacuna',
+        severity: 'error',
+      });
+    }
+    const administered = parseImportDate(row.administeredAt, locale);
+    if (!administered.ok) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'vaccinations',
+        field: 'administered_at',
+        code: 'invalid_date',
+        message: 'Fecha de aplicación inválida',
+        severity: 'error',
+      });
+    }
+    if (row.nextDueAt) {
+      const next = parseImportDate(row.nextDueAt, locale);
+      if (!next.ok) {
+        issues.push({
+          rowNumber: row.rowNumber,
+          entityType: 'vaccinations',
+          field: 'next_due_at',
+          code: 'invalid_date',
+          message: 'Fecha de próxima dosis inválida',
+          severity: 'error',
+        });
+      }
+    }
+  }
+  return issues;
+}
+
+export function buildVaccinationTemplateCsv(): string {
+  return toCsv(
+    VACCINATION_IMPORT_FIELDS.map((f) => f.key),
+    [
+      {
+        external_vaccination_id: 'VAC-001',
+        external_patient_id: 'PAT-001',
+        vaccine_name: 'Antirrábica',
+        administered_at: '2024-03-01',
+        next_due_at: '2025-03-01',
+        manufacturer: 'ExampleLab',
+        lot_number: 'L-123',
+        original_veterinarian: 'Dra. Garcia',
+        notes: '',
+        source_system: 'VetLegacy',
+      },
+    ]
+  );
+}
+
+export type MigrationZipManifest = {
+  format: string;
+  version: string;
+  createdAt?: string;
+  sourceSystem?: string;
+  entities?: Record<string, number>;
+};
+
+export function parseMigrationManifest(raw: unknown): MigrationZipManifest | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const obj = raw as Record<string, unknown>;
+  if (obj.format !== DATA_MIGRATION_FORMAT) return null;
+  if (typeof obj.version !== 'string') return null;
+  return {
+    format: String(obj.format),
+    version: String(obj.version),
+    createdAt: typeof obj.createdAt === 'string' ? obj.createdAt : undefined,
+    sourceSystem: typeof obj.sourceSystem === 'string' ? obj.sourceSystem : undefined,
+    entities:
+      obj.entities && typeof obj.entities === 'object' && !Array.isArray(obj.entities)
+        ? Object.fromEntries(
+            Object.entries(obj.entities as Record<string, unknown>).map(([k, v]) => [
+              k,
+              Number(v) || 0,
+            ])
+          )
+        : undefined,
+  };
+}
+
+export function buildSampleMigrationManifest(sourceSystem = 'VetLegacy'): MigrationZipManifest {
+  return {
+    format: DATA_MIGRATION_FORMAT,
+    version: DATA_MIGRATION_FORMAT_VERSION,
+    createdAt: new Date().toISOString(),
+    sourceSystem,
+    entities: {
+      owners: 1,
+      patients: 1,
+      clinicalRecords: 1,
+      vaccinations: 1,
+      labOrders: 1,
+      surgeries: 1,
+      prescriptions: 1,
+    },
+  };
+}
+
+export type LabOrderImportRow = {
+  rowNumber: number;
+  externalLabOrderId: string;
+  externalPatientId: string;
+  orderedAt: string;
+  title: string;
+  tests: string | null;
+  priority: string | null;
+  sampleType: string | null;
+  interpretation: string | null;
+  originalVeterinarian: string | null;
+  notes: string | null;
+  sourceSystem: string | null;
+};
+
+export type SurgeryImportRow = {
+  rowNumber: number;
+  externalSurgeryId: string;
+  externalPatientId: string;
+  scheduledAt: string;
+  procedureName: string;
+  diagnosis: string | null;
+  anesthesia: string | null;
+  asa: string | null;
+  originalVeterinarian: string | null;
+  notes: string | null;
+  sourceSystem: string | null;
+};
+
+export type PrescriptionImportRow = {
+  rowNumber: number;
+  externalPrescriptionId: string;
+  externalPatientId: string;
+  prescribedAt: string;
+  medicationName: string;
+  dose: string;
+  frequency: string;
+  duration: string | null;
+  route: string | null;
+  quantity: string | null;
+  instructions: string | null;
+  originalVeterinarian: string | null;
+  notes: string | null;
+  sourceSystem: string | null;
+};
+
+function pushMissingPatient(
+  issues: ValidationIssue[],
+  rowNumber: number,
+  entityType: string,
+  externalPatientId: string,
+  known?: Set<string>
+) {
+  if (!externalPatientId) {
+    issues.push({
+      rowNumber,
+      entityType,
+      field: 'external_patient_id',
+      code: 'required',
+      message: 'Falta ID externo del paciente',
+      severity: 'error',
+    });
+    return;
+  }
+  if (known && !known.has(externalPatientId)) {
+    issues.push({
+      rowNumber,
+      entityType,
+      field: 'external_patient_id',
+      code: 'missing_patient',
+      message: 'No se encontró el paciente referenciado',
+      severity: 'error',
+      recommendedAction: 'Importar pacientes primero',
+      sourceReference: externalPatientId,
+    });
+  }
+}
+
+export function validateLabOrderRows(
+  rows: LabOrderImportRow[],
+  options?: { knownPatientExternalIds?: Set<string>; locale?: DateLocale }
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const locale = options?.locale ?? 'es-AR';
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (!row.externalLabOrderId) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'lab_orders',
+        field: 'external_lab_order_id',
+        code: 'required',
+        message: 'Falta ID externo de laboratorio',
+        severity: 'error',
+      });
+    } else if (seen.has(row.externalLabOrderId)) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'lab_orders',
+        field: 'external_lab_order_id',
+        code: 'duplicate_in_file',
+        message: 'ID externo duplicado en el archivo',
+        severity: 'error',
+      });
+    } else {
+      seen.add(row.externalLabOrderId);
+    }
+    pushMissingPatient(
+      issues,
+      row.rowNumber,
+      'lab_orders',
+      row.externalPatientId,
+      options?.knownPatientExternalIds
+    );
+    if (!row.title || row.title.trim().length < 2) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'lab_orders',
+        field: 'title',
+        code: 'required',
+        message: 'Falta título del estudio',
+        severity: 'error',
+      });
+    }
+    if (!parseImportDate(row.orderedAt, locale).ok) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'lab_orders',
+        field: 'ordered_at',
+        code: 'invalid_date',
+        message: 'Fecha de solicitud inválida',
+        severity: 'error',
+      });
+    }
+  }
+  return issues;
+}
+
+export function validateSurgeryRows(
+  rows: SurgeryImportRow[],
+  options?: { knownPatientExternalIds?: Set<string>; locale?: DateLocale }
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const locale = options?.locale ?? 'es-AR';
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (!row.externalSurgeryId) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'surgeries',
+        field: 'external_surgery_id',
+        code: 'required',
+        message: 'Falta ID externo de cirugía',
+        severity: 'error',
+      });
+    } else if (seen.has(row.externalSurgeryId)) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'surgeries',
+        field: 'external_surgery_id',
+        code: 'duplicate_in_file',
+        message: 'ID externo duplicado en el archivo',
+        severity: 'error',
+      });
+    } else {
+      seen.add(row.externalSurgeryId);
+    }
+    pushMissingPatient(
+      issues,
+      row.rowNumber,
+      'surgeries',
+      row.externalPatientId,
+      options?.knownPatientExternalIds
+    );
+    if (!row.procedureName || row.procedureName.trim().length < 2) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'surgeries',
+        field: 'procedure_name',
+        code: 'required',
+        message: 'Falta nombre del procedimiento',
+        severity: 'error',
+      });
+    }
+    if (!parseImportDate(row.scheduledAt, locale).ok) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'surgeries',
+        field: 'scheduled_at',
+        code: 'invalid_date',
+        message: 'Fecha de cirugía inválida',
+        severity: 'error',
+      });
+    }
+  }
+  return issues;
+}
+
+export function validatePrescriptionRows(
+  rows: PrescriptionImportRow[],
+  options?: { knownPatientExternalIds?: Set<string>; locale?: DateLocale }
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const locale = options?.locale ?? 'es-AR';
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (!row.externalPrescriptionId) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'prescriptions',
+        field: 'external_prescription_id',
+        code: 'required',
+        message: 'Falta ID externo de receta',
+        severity: 'error',
+      });
+    } else if (seen.has(row.externalPrescriptionId)) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'prescriptions',
+        field: 'external_prescription_id',
+        code: 'duplicate_in_file',
+        message: 'ID externo duplicado en el archivo',
+        severity: 'error',
+      });
+    } else {
+      seen.add(row.externalPrescriptionId);
+    }
+    pushMissingPatient(
+      issues,
+      row.rowNumber,
+      'prescriptions',
+      row.externalPatientId,
+      options?.knownPatientExternalIds
+    );
+    if (!row.medicationName) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'prescriptions',
+        field: 'medication_name',
+        code: 'required',
+        message: 'Falta medicamento',
+        severity: 'error',
+      });
+    }
+    if (!row.dose) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'prescriptions',
+        field: 'dose',
+        code: 'required',
+        message: 'Falta dosis',
+        severity: 'error',
+      });
+    }
+    if (!row.frequency) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'prescriptions',
+        field: 'frequency',
+        code: 'required',
+        message: 'Falta frecuencia',
+        severity: 'error',
+      });
+    }
+    if (!parseImportDate(row.prescribedAt, locale).ok) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'prescriptions',
+        field: 'prescribed_at',
+        code: 'invalid_date',
+        message: 'Fecha de receta inválida',
+        severity: 'error',
+      });
+    }
+  }
+  return issues;
+}
+
+export function buildLabOrderTemplateCsv(): string {
+  return toCsv(LAB_ORDER_IMPORT_FIELDS.map((f) => f.key), [
+    {
+      external_lab_order_id: 'LAB-001',
+      external_patient_id: 'PAT-001',
+      ordered_at: '2024-06-01',
+      title: 'Hemograma',
+      tests: 'Hemograma|Glucemia',
+      priority: 'rutina',
+      sample_type: 'sangre',
+      interpretation: 'Dentro de parámetros',
+      original_veterinarian: 'Dr. Lopez',
+      notes: '',
+      source_system: 'VetLegacy',
+    },
+  ]);
+}
+
+export function buildSurgeryTemplateCsv(): string {
+  return toCsv(SURGERY_IMPORT_FIELDS.map((f) => f.key), [
+    {
+      external_surgery_id: 'SUR-001',
+      external_patient_id: 'PAT-001',
+      scheduled_at: '2024-07-10',
+      procedure_name: 'Ovariohisterectomía',
+      diagnosis: 'Electiva',
+      anesthesia: 'general',
+      asa: 'I',
+      original_veterinarian: 'Dra. Garcia',
+      notes: 'Sin complicaciones',
+      source_system: 'VetLegacy',
+    },
+  ]);
+}
+
+export function buildPrescriptionTemplateCsv(): string {
+  return toCsv(PRESCRIPTION_IMPORT_FIELDS.map((f) => f.key), [
+    {
+      external_prescription_id: 'RX-001',
+      external_patient_id: 'PAT-001',
+      prescribed_at: '2024-08-01',
+      medication_name: 'Amoxicilina',
+      dose: '250 mg',
+      frequency: 'cada 12 h',
+      duration: '7 días',
+      route: 'oral',
+      quantity: '14',
+      instructions: 'Con comida',
+      original_veterinarian: 'Dr. Lopez',
+      notes: '',
+      source_system: 'VetLegacy',
+    },
+  ]);
+}
+
+export function chunkRange(total: number, offset: number, chunkSize = DEFAULT_IMPORT_CHUNK_SIZE) {
+  const safeOffset = Math.max(0, offset);
+  const safeChunk = Math.min(500, Math.max(1, chunkSize));
+  const end = Math.min(total, safeOffset + safeChunk);
+  return {
+    offset: safeOffset,
+    end,
+    size: Math.max(0, end - safeOffset),
+    done: end >= total,
+    nextOffset: end,
+    total,
+  };
+}
+
+export type MigrationAttachmentRef = {
+  zipPath: string;
+  externalPatientId: string;
+  filename: string;
+};
+
+/** attachments/<externalPatientId>/<filename> */
+export function parseMigrationAttachmentPath(zipPath: string): MigrationAttachmentRef | null {
+  const normalized = zipPath.replace(/\\/g, '/').replace(/^\.\//, '');
+  const marker = 'attachments/';
+  const idx = normalized.indexOf(marker);
+  if (idx < 0) return null;
+  const rest = normalized.slice(idx + marker.length);
+  const parts = rest.split('/').filter(Boolean);
+  if (parts.length < 2) return null;
+  const externalPatientId = parts[0]!;
+  const filename = parts.slice(1).join('/');
+  if (!externalPatientId || !filename || filename.toLowerCase() === 'readme.txt') return null;
+  return { zipPath: normalized, externalPatientId, filename };
+}
+
+export function guessMimeFromFilename(filename: string): string | null {
+  const lower = filename.toLowerCase();
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.gif')) return 'image/gif';
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  return null;
 }
 
 export function summarizeIssues(issues: ValidationIssue[]) {

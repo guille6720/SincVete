@@ -109,7 +109,7 @@ async function fetchVaccinations(organizationId: string, patientId?: string | nu
   let query = supabase
     .from('vaccinations')
     .select(
-      'id, patient_id, owner_id, vaccine_name, administered_at, next_due_at, lot_number, notes, created_at'
+      'id, patient_id, owner_id, vaccine_name, manufacturer, lot_number, administered_at, next_due_at, notes, source_system, source_record_id, original_created_at, original_professional_name, imported_at, created_at'
     )
     .eq('organization_id', organizationId)
     .is('deleted_at', null)
@@ -117,6 +117,23 @@ async function fetchVaccinations(organizationId: string, patientId?: string | nu
     .limit(10000);
   if (patientId) query = query.eq('patient_id', patientId);
   const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+async function fetchClinicalImages(organizationId: string, patientIds: string[]) {
+  if (patientIds.length === 0) return [];
+  const supabase = await migrationDb();
+  const { data, error } = await supabase
+    .from('clinical_images')
+    .select(
+      'id, patient_id, kind, title, notes, storage_path, mime_type, file_size, original_name, taken_at, created_at'
+    )
+    .eq('organization_id', organizationId)
+    .is('deleted_at', null)
+    .in('patient_id', patientIds.slice(0, 200))
+    .order('taken_at', { ascending: true })
+    .limit(100);
   if (error) throw new Error(error.message);
   return data ?? [];
 }
@@ -346,18 +363,168 @@ export async function runExportJob(jobId: string): Promise<{
       });
       filename = `syncvete-clinical-${String(patient.name ?? 'patient')}-${Date.now()}.html`;
       contentType = 'text/html;charset=utf-8';
+    } else if (job.format === 'xlsx') {
+      const { csvTextToXlsxBase64 } = await import('./xlsx');
+      let csv: string;
+      if (job.export_type === 'owners') {
+        csv = toCsv(
+          [
+            'id',
+            'full_name',
+            'document_type',
+            'document_number',
+            'phone',
+            'email',
+            'city',
+            'source_record_id',
+          ],
+          filteredOwners
+        );
+      } else if (job.export_type === 'patients') {
+        csv = toCsv(
+          [
+            'id',
+            'owner_id',
+            'name',
+            'species',
+            'breed',
+            'sex',
+            'birth_date',
+            'microchip',
+            'source_record_id',
+          ],
+          filteredPatients
+        );
+      } else {
+        csv = toCsv(
+          [
+            'id',
+            'patient_id',
+            'entry_date',
+            'entry_type',
+            'title',
+            'diagnosis',
+            'treatment',
+            'original_professional_name',
+            'source_system',
+          ],
+          clinical
+        );
+      }
+      const xlsx = csvTextToXlsxBase64(String(job.export_type), csv);
+      body = Buffer.from(xlsx.base64, 'base64');
+      filename = xlsx.filename;
+      contentType =
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     } else {
       const zip = new JSZip();
       zip.file('manifest.json', JSON.stringify(manifest, null, 2));
+      zip.folder('data')?.file('owners.csv', toCsv(
+        [
+          'id',
+          'full_name',
+          'document_type',
+          'document_number',
+          'phone',
+          'email',
+          'address',
+          'city',
+          'province',
+          'postal_code',
+          'notes',
+          'source_system',
+          'source_record_id',
+        ],
+        filteredOwners
+      ));
+      zip.folder('data')?.file('patients.csv', toCsv(
+        [
+          'id',
+          'owner_id',
+          'name',
+          'species',
+          'breed',
+          'sex',
+          'birth_date',
+          'microchip',
+          'color',
+          'notes',
+          'source_system',
+          'source_record_id',
+        ],
+        filteredPatients
+      ));
+      zip.folder('data')?.file('clinical_records.csv', toCsv(
+        [
+          'id',
+          'patient_id',
+          'entry_date',
+          'entry_type',
+          'title',
+          'anamnesis',
+          'physical_exam',
+          'diagnosis',
+          'treatment',
+          'plan',
+          'original_professional_name',
+          'source_system',
+          'source_record_id',
+        ],
+        clinical
+      ));
+      zip.folder('data')?.file('vaccinations.csv', toCsv(
+        [
+          'id',
+          'patient_id',
+          'vaccine_name',
+          'administered_at',
+          'next_due_at',
+          'manufacturer',
+          'lot_number',
+          'notes',
+          'source_system',
+          'source_record_id',
+        ],
+        vaccinations
+      ));
       zip.folder('data')?.file('owners.json', JSON.stringify(filteredOwners, null, 2));
       zip.folder('data')?.file('patients.json', JSON.stringify(filteredPatients, null, 2));
       zip.folder('data')?.file('clinical-records.json', JSON.stringify(clinical, null, 2));
       zip.folder('data')?.file('vaccinations.json', JSON.stringify(vaccinations, null, 2));
+
+      const patientIds = filteredPatients.map((p: { id: string }) => p.id);
+      const images = await fetchClinicalImages(session.organizationId, patientIds);
+      const storageClient = await createServerClient();
+      let attachmentCount = 0;
+      let attachmentBytes = 0;
+      const MAX_ATTACHMENTS = 40;
+      const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+      for (const image of images) {
+        if (attachmentCount >= MAX_ATTACHMENTS || attachmentBytes >= MAX_ATTACHMENT_BYTES) break;
+        const { data: blob, error: downloadError } = await storageClient.storage
+          .from('clinical-images')
+          .download(image.storage_path);
+        if (downloadError || !blob) continue;
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        if (attachmentBytes + bytes.byteLength > MAX_ATTACHMENT_BYTES) break;
+        const safeName = String(image.original_name || `${image.id}.bin`).replace(
+          /[\\/:*?"<>|]+/g,
+          '_'
+        );
+        zip
+          .folder('attachments')
+          ?.folder(String(image.patient_id))
+          ?.file(safeName, bytes);
+        attachmentCount += 1;
+        attachmentBytes += bytes.byteLength;
+      }
+      (recordCounts as Record<string, number>).attachments = attachmentCount;
+
       zip
         .folder('reports')
         ?.file(
           'export-summary.txt',
-          `SyncVete export\nType: ${job.export_type}\nOwners: ${recordCounts.owners}\nPatients: ${recordCounts.patients}\nClinical: ${recordCounts.clinicalEntries}\nVaccinations: ${recordCounts.vaccinations}\n`
+          `SyncVete export\nType: ${job.export_type}\nOwners: ${recordCounts.owners}\nPatients: ${recordCounts.patients}\nClinical: ${recordCounts.clinicalEntries}\nVaccinations: ${recordCounts.vaccinations}\nAttachments: ${attachmentCount}\n`
         );
       body = await zip.generateAsync({ type: 'uint8array' });
       filename = `SyncVete-Clinic-Export-${new Date().toISOString().slice(0, 10)}.zip`;

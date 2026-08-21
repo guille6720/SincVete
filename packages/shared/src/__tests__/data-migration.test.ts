@@ -2,13 +2,20 @@ import { describe, expect, it } from 'vitest';
 import {
   autoMapColumns,
   buildOwnerTemplateCsv,
+  buildVaccinationTemplateCsv,
+  chunkRange,
+  guessMimeFromFilename,
   normalizeDocument,
   OWNER_IMPORT_FIELDS,
   parseCsv,
   parseImportDate,
+  parseMigrationAttachmentPath,
+  parseMigrationManifest,
   validateClinicalRows,
+  validateLabOrderRows,
   validateOwnerRows,
   validatePatientRows,
+  validateVaccinationRows,
 } from '../constants/data-migration';
 
 describe('data-migration parseCsv', () => {
@@ -211,5 +218,93 @@ describe('data-migration templates', () => {
     const csv = buildOwnerTemplateCsv();
     expect(csv).toContain('external_owner_id');
     expect(csv).toContain('OWN-001');
+  });
+
+  it('builds vaccination template', () => {
+    const csv = buildVaccinationTemplateCsv();
+    expect(csv).toContain('external_vaccination_id');
+    expect(csv).toContain('VAC-001');
+  });
+});
+
+describe('data-migration vaccination validation', () => {
+  it('flags missing patient and invalid dates', () => {
+    const issues = validateVaccinationRows(
+      [
+        {
+          rowNumber: 2,
+          externalVaccinationId: 'VAC-001',
+          externalPatientId: 'PAT-404',
+          vaccineName: 'Antirrábica',
+          administeredAt: 'no-date',
+          nextDueAt: null,
+          manufacturer: null,
+          lotNumber: null,
+          originalVeterinarian: null,
+          notes: null,
+          sourceSystem: 'VetLegacy',
+        },
+      ],
+      { knownPatientExternalIds: new Set(['PAT-001']), locale: 'iso' }
+    );
+    expect(issues.some((i) => i.code === 'missing_patient')).toBe(true);
+    expect(issues.some((i) => i.code === 'invalid_date')).toBe(true);
+  });
+});
+
+describe('data-migration zip manifest', () => {
+  it('accepts syncvete migration manifest', () => {
+    const parsed = parseMigrationManifest({
+      format: 'syncvete-migration',
+      version: '1.0',
+      sourceSystem: 'VetLegacy',
+      entities: { owners: 1 },
+    });
+    expect(parsed?.format).toBe('syncvete-migration');
+    expect(parsed?.entities?.owners).toBe(1);
+  });
+
+  it('rejects foreign manifests', () => {
+    expect(parseMigrationManifest({ format: 'other', version: '1' })).toBeNull();
+  });
+});
+
+describe('data-migration specialty + chunks', () => {
+  it('validates lab order patient link', () => {
+    const issues = validateLabOrderRows(
+      [
+        {
+          rowNumber: 2,
+          externalLabOrderId: 'LAB-1',
+          externalPatientId: 'PAT-X',
+          orderedAt: '2024-01-01',
+          title: 'Hemograma',
+          tests: 'Hemograma',
+          priority: 'rutina',
+          sampleType: 'sangre',
+          interpretation: null,
+          originalVeterinarian: null,
+          notes: null,
+          sourceSystem: null,
+        },
+      ],
+      { knownPatientExternalIds: new Set(['PAT-001']), locale: 'iso' }
+    );
+    expect(issues.some((i) => i.code === 'missing_patient')).toBe(true);
+  });
+
+  it('parses attachment paths and chunks ranges', () => {
+    const ref = parseMigrationAttachmentPath('attachments/PAT-001/rx.pdf');
+    expect(ref?.externalPatientId).toBe('PAT-001');
+    expect(ref?.filename).toBe('rx.pdf');
+    expect(guessMimeFromFilename('rx.pdf')).toBe('application/pdf');
+    expect(chunkRange(120, 50, 50)).toEqual({
+      offset: 50,
+      end: 100,
+      size: 50,
+      done: false,
+      nextOffset: 100,
+      total: 120,
+    });
   });
 });

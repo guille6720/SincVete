@@ -8,7 +8,10 @@ import {
   PATIENT_IMPORT_FIELDS,
   PATIENT_SEX,
   PATIENT_SPECIES,
+  VACCINATION_IMPORT_FIELDS,
   autoMapColumns,
+  chunkRange,
+  DEFAULT_IMPORT_CHUNK_SIZE,
   mapRow,
   normalizeDocument,
   parseCsv,
@@ -17,16 +20,35 @@ import {
   validateClinicalRows,
   validateOwnerRows,
   validatePatientRows,
+  validateVaccinationRows,
   type ClinicalImportRow,
   type ConflictPolicy,
   type DateLocale,
   type ImportType,
   type OwnerImportRow,
   type PatientImportRow,
+  type VaccinationImportRow,
   type ValidationIssue,
 } from '@sincvete/shared';
 import { createServerClient } from '@/lib/supabase/server';
 import { requirePermission } from '@/lib/permissions';
+import {
+  commitSpecialtySlice,
+  fieldsForSpecialty,
+  validateSpecialtyRows,
+  type SpecialtyEntity,
+} from '@/lib/data-migration/specialty';
+
+type ImportEntity =
+  | 'owners'
+  | 'patients'
+  | 'clinical_entries'
+  | 'vaccinations'
+  | SpecialtyEntity;
+
+function isSpecialtyEntity(entity: ImportEntity): entity is SpecialtyEntity {
+  return entity === 'lab_orders' || entity === 'surgeries' || entity === 'prescriptions';
+}
 
 /** Temporary until generated Database types include data_migration tables. */
 async function migrationDb() {
@@ -123,6 +145,28 @@ function asClinicalRows(
   });
 }
 
+function asVaccinationRows(
+  rawRows: Record<string, string>[],
+  mapping: Record<string, string | null>
+): VaccinationImportRow[] {
+  return rawRows.map((raw, index) => {
+    const mapped = mapRow(raw, mapping);
+    return {
+      rowNumber: index + 2,
+      externalVaccinationId: mapped.external_vaccination_id ?? '',
+      externalPatientId: mapped.external_patient_id ?? '',
+      vaccineName: mapped.vaccine_name ?? '',
+      administeredAt: mapped.administered_at ?? '',
+      nextDueAt: mapped.next_due_at || null,
+      manufacturer: mapped.manufacturer || null,
+      lotNumber: mapped.lot_number || null,
+      originalVeterinarian: mapped.original_veterinarian || null,
+      notes: mapped.notes || null,
+      sourceSystem: mapped.source_system || null,
+    };
+  });
+}
+
 function normalizeSpecies(value: string): (typeof PATIENT_SPECIES)[number] {
   const match = PATIENT_SPECIES.find((s) => s.toLowerCase() === value.trim().toLowerCase());
   return match ?? 'Otro';
@@ -180,16 +224,19 @@ export async function createImportBatch(input: {
 export async function analyzeImportFile(input: {
   batchId: string;
   csvText: string;
-  entity: 'owners' | 'patients' | 'clinical_entries';
+  entity: ImportEntity;
 }) {
   await requirePermission('data:import');
   const parsed = parseCsv(input.csvText);
-  const fields =
-    input.entity === 'owners'
+  const fields = isSpecialtyEntity(input.entity)
+    ? fieldsForSpecialty(input.entity)
+    : input.entity === 'owners'
       ? OWNER_IMPORT_FIELDS
       : input.entity === 'patients'
         ? PATIENT_IMPORT_FIELDS
-        : CLINICAL_IMPORT_FIELDS;
+        : input.entity === 'vaccinations'
+          ? VACCINATION_IMPORT_FIELDS
+          : CLINICAL_IMPORT_FIELDS;
   const mapping = autoMapColumns(parsed.headers, fields);
   const supabase = await migrationDb();
   const { error } = await supabase
@@ -198,6 +245,9 @@ export async function analyzeImportFile(input: {
       status: 'mapping',
       column_mapping: { [input.entity]: mapping },
       total_records: parsed.rows.length,
+      progress_total: parsed.rows.length,
+      progress_processed: 0,
+      progress_message: `Mapeo ${input.entity}: ${parsed.rows.length} filas`,
       metadata: { headers: parsed.headers, entity: input.entity },
     })
     .eq('id', input.batchId);
@@ -208,7 +258,7 @@ export async function analyzeImportFile(input: {
 export async function dryRunImport(input: {
   batchId: string;
   csvText: string;
-  entity: 'owners' | 'patients' | 'clinical_entries';
+  entity: ImportEntity;
   mapping: Record<string, string | null>;
   dateLocale?: DateLocale;
   knownOwnerExternalIds?: string[];
@@ -270,7 +320,7 @@ export async function dryRunImport(input: {
     });
     const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
     readyCount = rows.filter((r) => !errorRows.has(r.rowNumber)).length;
-  } else {
+  } else if (input.entity === 'clinical_entries') {
     const rows = asClinicalRows(parsed.rows, input.mapping);
     issues = validateClinicalRows(rows, {
       knownPatientExternalIds: new Set(input.knownPatientExternalIds ?? []),
@@ -278,6 +328,21 @@ export async function dryRunImport(input: {
     });
     const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
     readyCount = rows.filter((r) => !errorRows.has(r.rowNumber)).length;
+  } else if (input.entity === 'vaccinations') {
+    const rows = asVaccinationRows(parsed.rows, input.mapping);
+    issues = validateVaccinationRows(rows, {
+      knownPatientExternalIds: new Set(input.knownPatientExternalIds ?? []),
+      locale,
+    });
+    const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
+    readyCount = rows.filter((r) => !errorRows.has(r.rowNumber)).length;
+  } else {
+    const specialty = validateSpecialtyRows(input.entity, parsed.rows, input.mapping, {
+      knownPatientExternalIds: input.knownPatientExternalIds,
+      locale,
+    });
+    issues = specialty.issues;
+    readyCount = specialty.readyCount;
   }
 
   const summary = summarizeIssues(issues);
@@ -329,13 +394,15 @@ export async function dryRunImport(input: {
 export async function commitImport(input: {
   batchId: string;
   csvText: string;
-  entity: 'owners' | 'patients' | 'clinical_entries';
+  entity: ImportEntity;
   mapping: Record<string, string | null>;
   dateLocale?: DateLocale;
   sourceSystem?: string | null;
   ownerIdByExternal?: Record<string, string>;
   patientIdByExternal?: Record<string, string>;
   branchId: string;
+  offset?: number;
+  chunkSize?: number;
 }) {
   const session = await requirePermission('data:import');
   const supabase = await migrationDb();
@@ -351,10 +418,24 @@ export async function commitImport(input: {
   const locale = (input.dateLocale ?? batch.date_locale ?? 'es-AR') as DateLocale;
   const nowIso = new Date().toISOString();
   const sourceSystem = input.sourceSystem ?? batch.source_system ?? 'import';
+  const range = chunkRange(
+    parsed.rows.length,
+    input.offset ?? 0,
+    input.chunkSize ?? batch.chunk_size ?? DEFAULT_IMPORT_CHUNK_SIZE
+  );
+  const rowSlice = parsed.rows.slice(range.offset, range.end);
 
   await supabase
     .from('data_import_batches')
-    .update({ status: 'importing', started_at: nowIso, dry_run: false })
+    .update({
+      status: 'importing',
+      started_at: batch.started_at ?? nowIso,
+      dry_run: false,
+      progress_total: parsed.rows.length,
+      progress_processed: range.offset,
+      progress_message: `${input.entity}: ${range.offset}/${parsed.rows.length}`,
+      chunk_size: input.chunkSize ?? batch.chunk_size ?? DEFAULT_IMPORT_CHUNK_SIZE,
+    })
     .eq('id', input.batchId);
 
   let imported = 0;
@@ -363,8 +444,27 @@ export async function commitImport(input: {
   const idMap: Record<string, string> = {};
 
   try {
-    if (input.entity === 'owners') {
-      const rows = asOwnerRows(parsed.rows, input.mapping);
+    if (isSpecialtyEntity(input.entity)) {
+      const result = await commitSpecialtySlice({
+        supabase,
+        entity: input.entity,
+        rows: parsed.rows,
+        mapping: input.mapping,
+        locale,
+        patientIdByExternal: input.patientIdByExternal ?? {},
+        organizationId: session.organizationId,
+        branchId: input.branchId,
+        batchId: input.batchId,
+        userId: session.userId,
+        sourceSystem,
+        offset: range.offset,
+        limit: range.size,
+      });
+      imported = result.imported;
+      failed = result.failed;
+      Object.assign(idMap, result.idMap);
+    } else if (input.entity === 'owners') {
+      const rows = asOwnerRows(rowSlice, input.mapping);
       const dry = await dryRunImport({
         batchId: input.batchId,
         csvText: input.csvText,
@@ -425,7 +525,7 @@ export async function commitImport(input: {
         });
       }
     } else if (input.entity === 'patients') {
-      const rows = asPatientRows(parsed.rows, input.mapping);
+      const rows = asPatientRows(rowSlice, input.mapping);
       const ownerMap = input.ownerIdByExternal ?? {};
       for (const row of rows) {
         const ownerId = ownerMap[row.externalOwnerId];
@@ -482,8 +582,8 @@ export async function commitImport(input: {
           internal_id: data.id,
         });
       }
-    } else {
-      const rows = asClinicalRows(parsed.rows, input.mapping);
+    } else if (input.entity === 'clinical_entries') {
+      const rows = asClinicalRows(rowSlice, input.mapping);
       const patientMap = input.patientIdByExternal ?? {};
       for (const row of rows) {
         const patientId = patientMap[row.externalPatientId];
@@ -541,34 +641,128 @@ export async function commitImport(input: {
           external_id: row.externalClinicalId,
         });
       }
+    } else {
+      const rows = asVaccinationRows(rowSlice, input.mapping);
+      const patientMap = input.patientIdByExternal ?? {};
+      for (const row of rows) {
+        const patientId = patientMap[row.externalPatientId];
+        const administered = parseImportDate(row.administeredAt, locale);
+        const nextDue = row.nextDueAt ? parseImportDate(row.nextDueAt, locale) : null;
+        if (!patientId || !administered.ok || (row.nextDueAt && (!nextDue || !nextDue.ok))) {
+          failed += 1;
+          continue;
+        }
+        if (!row.vaccineName || row.vaccineName.trim().length < 2) {
+          failed += 1;
+          continue;
+        }
+        const { data: patient } = await supabase
+          .from('patients')
+          .select('id, owner_id')
+          .eq('id', patientId)
+          .eq('organization_id', session.organizationId)
+          .maybeSingle();
+        if (!patient) {
+          failed += 1;
+          continue;
+        }
+        const noteParts = [
+          row.notes,
+          row.originalVeterinarian
+            ? `Profesional original: ${row.originalVeterinarian}`
+            : null,
+        ].filter(Boolean);
+        const { data, error } = await supabase
+          .from('vaccinations')
+          .insert({
+            organization_id: session.organizationId,
+            branch_id: input.branchId,
+            patient_id: patient.id,
+            owner_id: patient.owner_id,
+            vaccine_name: row.vaccineName.trim(),
+            manufacturer: row.manufacturer,
+            lot_number: row.lotNumber,
+            administered_at: administered.isoDate,
+            next_due_at: nextDue && nextDue.ok ? nextDue.isoDate : null,
+            notes: noteParts.length ? noteParts.join('\n') : null,
+            veterinarian_id: session.userId,
+            import_batch_id: input.batchId,
+            source_system: row.sourceSystem ?? sourceSystem,
+            source_record_id: row.externalVaccinationId,
+            original_created_at: `${administered.isoDate}T12:00:00.000Z`,
+            original_professional_name: row.originalVeterinarian,
+            imported_at: nowIso,
+            imported_by: session.userId,
+          })
+          .select('id')
+          .single();
+        if (error || !data) {
+          failed += 1;
+          continue;
+        }
+        imported += 1;
+        idMap[row.externalVaccinationId] = data.id;
+        await supabase.from('data_import_created_rows').insert({
+          batch_id: input.batchId,
+          organization_id: session.organizationId,
+          entity_type: 'vaccinations',
+          entity_id: data.id,
+          external_id: row.externalVaccinationId,
+        });
+        await supabase.from('data_import_id_map').insert({
+          batch_id: input.batchId,
+          organization_id: session.organizationId,
+          entity_type: 'vaccinations',
+          external_id: row.externalVaccinationId,
+          internal_id: data.id,
+        });
+      }
     }
 
-    const status =
-      failed > 0 && imported > 0
+    const totalImported = Number(batch.imported_records ?? 0) + imported;
+    const totalFailed = Number(batch.failed_records ?? 0) + failed;
+    const status = range.done
+      ? totalFailed > 0 && totalImported > 0
         ? 'completed_with_warnings'
-        : failed > 0 && imported === 0
+        : totalFailed > 0 && totalImported === 0
           ? 'failed'
-          : 'completed';
+          : 'completed'
+      : 'importing';
 
     await supabase
       .from('data_import_batches')
       .update({
         status,
-        completed_at: new Date().toISOString(),
-        imported_records: imported,
-        linked_records: linked,
-        failed_records: failed,
+        completed_at: range.done ? new Date().toISOString() : null,
+        imported_records: totalImported,
+        linked_records: Number(batch.linked_records ?? 0) + linked,
+        failed_records: totalFailed,
+        progress_processed: range.end,
+        progress_total: parsed.rows.length,
+        progress_message: `${input.entity}: ${range.end}/${parsed.rows.length}`,
         summary: {
-          imported,
-          linked,
-          failed,
+          imported: totalImported,
+          linked: Number(batch.linked_records ?? 0) + linked,
+          failed: totalFailed,
           entity: input.entity,
           idMap,
+          nextOffset: range.nextOffset,
+          done: range.done,
         },
       })
       .eq('id', input.batchId);
 
-    return { imported, linked, failed, idMap, status };
+    return {
+      imported,
+      linked,
+      failed,
+      idMap,
+      status,
+      done: range.done,
+      nextOffset: range.nextOffset,
+      processed: range.end,
+      total: parsed.rows.length,
+    };
   } catch (error) {
     await supabase
       .from('data_import_batches')
@@ -683,6 +877,52 @@ export async function rollbackImportBatch(batchId: string) {
       }
       await supabase
         .from('owners')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', row.entity_id)
+        .eq('organization_id', session.organizationId)
+        .eq('import_batch_id', batchId);
+    } else if (row.entity_type === 'vaccinations') {
+      const { data: vaccination } = await supabase
+        .from('vaccinations')
+        .select('id, updated_at, imported_at')
+        .eq('id', row.entity_id)
+        .eq('import_batch_id', batchId)
+        .maybeSingle();
+      if (!vaccination) continue;
+      if (
+        vaccination.imported_at &&
+        vaccination.updated_at &&
+        vaccination.updated_at > vaccination.imported_at
+      ) {
+        throw new Error(
+          'Rollback bloqueado: hay vacunaciones modificadas después del import'
+        );
+      }
+      await supabase
+        .from('vaccinations')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', row.entity_id)
+        .eq('organization_id', session.organizationId)
+        .eq('import_batch_id', batchId);
+    } else if (
+      row.entity_type === 'lab_orders' ||
+      row.entity_type === 'surgeries' ||
+      row.entity_type === 'prescriptions' ||
+      row.entity_type === 'clinical_images'
+    ) {
+      const table = row.entity_type;
+      const { data: existing } = await supabase
+        .from(table)
+        .select('id, updated_at, imported_at')
+        .eq('id', row.entity_id)
+        .eq('import_batch_id', batchId)
+        .maybeSingle();
+      if (!existing) continue;
+      if (existing.imported_at && existing.updated_at && existing.updated_at > existing.imported_at) {
+        throw new Error(`Rollback bloqueado: hay ${table} modificados después del import`);
+      }
+      await supabase
+        .from(table)
         .update({ deleted_at: new Date().toISOString() })
         .eq('id', row.entity_id)
         .eq('organization_id', session.organizationId)

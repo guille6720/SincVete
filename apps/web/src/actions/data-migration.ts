@@ -2,9 +2,14 @@
 
 import { revalidatePath } from 'next/cache';
 import {
+  DEFAULT_IMPORT_CHUNK_SIZE,
   buildClinicalTemplateCsv,
+  buildLabOrderTemplateCsv,
   buildOwnerTemplateCsv,
   buildPatientTemplateCsv,
+  buildPrescriptionTemplateCsv,
+  buildSurgeryTemplateCsv,
+  buildVaccinationTemplateCsv,
   IMPORT_TYPES,
   EXPORT_FORMATS,
   EXPORT_TYPES,
@@ -24,7 +29,27 @@ import {
   rollbackImportBatch,
 } from '@/lib/data-migration/import';
 import { createExportJob, listExportJobs, runExportJob } from '@/lib/data-migration/export';
+import { buildSampleMigrationZip, parseSyncveteMigrationZip, summarizeZipContents } from '@/lib/data-migration/zip';
+import { workbookFirstSheetToCsv } from '@/lib/data-migration/xlsx';
+import { importZipAttachmentsChunk } from '@/lib/data-migration/attachments';
 import { createServerClient } from '@/lib/supabase/server';
+
+const IMPORT_ENTITIES = [
+  'owners',
+  'patients',
+  'clinical_entries',
+  'vaccinations',
+  'lab_orders',
+  'surgeries',
+  'prescriptions',
+] as const;
+type ImportEntityArg = (typeof IMPORT_ENTITIES)[number];
+
+function asImportEntity(value: string): ImportEntityArg | null {
+  return (IMPORT_ENTITIES as readonly string[]).includes(value)
+    ? (value as ImportEntityArg)
+    : null;
+}
 
 function actionError<T = void>(error: unknown): ActionResult<T> {
   if (error instanceof PermissionError) {
@@ -76,6 +101,36 @@ export async function downloadImportTemplate(
         },
       };
     }
+    if (kind === 'vaccinations') {
+      return {
+        success: true,
+        data: {
+          filename: 'SyncVete-Vaccinations-Template.csv',
+          csv: buildVaccinationTemplateCsv(),
+        },
+      };
+    }
+    if (kind === 'lab_orders') {
+      return {
+        success: true,
+        data: { filename: 'SyncVete-Lab-Orders-Template.csv', csv: buildLabOrderTemplateCsv() },
+      };
+    }
+    if (kind === 'surgeries') {
+      return {
+        success: true,
+        data: { filename: 'SyncVete-Surgeries-Template.csv', csv: buildSurgeryTemplateCsv() },
+      };
+    }
+    if (kind === 'prescriptions') {
+      return {
+        success: true,
+        data: {
+          filename: 'SyncVete-Prescriptions-Template.csv',
+          csv: buildPrescriptionTemplateCsv(),
+        },
+      };
+    }
     return { success: false, error: 'Plantilla inválida' };
   } catch (error) {
     return actionError(error);
@@ -93,17 +148,12 @@ export async function startDataImport(formData: FormData): Promise<
   try {
     const session = await requirePermission('data:import');
     const importType = asImportType(String(formData.get('importType') ?? ''));
-    const entity = String(formData.get('entity') ?? '') as
-      | 'owners'
-      | 'patients'
-      | 'clinical_entries';
+    const entity = asImportEntity(String(formData.get('entity') ?? ''));
     const csvText = String(formData.get('csvText') ?? '');
     const sourceFilename = String(formData.get('sourceFilename') ?? 'upload.csv');
     const sourceSystem = String(formData.get('sourceSystem') ?? '').trim() || null;
     if (!importType || !csvText) return { success: false, error: 'Datos de importación incompletos' };
-    if (!['owners', 'patients', 'clinical_entries'].includes(entity)) {
-      return { success: false, error: 'Entidad inválida' };
-    }
+    if (!entity) return { success: false, error: 'Entidad inválida' };
 
     const batch = await createImportBatch({
       importType,
@@ -155,10 +205,7 @@ export async function validateDataImport(formData: FormData): Promise<
   try {
     await requirePermission('data:import');
     const batchId = String(formData.get('batchId') ?? '');
-    const entity = String(formData.get('entity') ?? '') as
-      | 'owners'
-      | 'patients'
-      | 'clinical_entries';
+    const entity = asImportEntity(String(formData.get('entity') ?? ''));
     const csvText = String(formData.get('csvText') ?? '');
     const mappingJson = String(formData.get('mapping') ?? '{}');
     const knownOwners = String(formData.get('knownOwnerExternalIds') ?? '')
@@ -170,6 +217,7 @@ export async function validateDataImport(formData: FormData): Promise<
       .map((v) => v.trim())
       .filter(Boolean);
     const mapping = JSON.parse(mappingJson) as Record<string, string | null>;
+    if (!entity) return { success: false, error: 'Entidad inválida' };
     const result = await dryRunImport({
       batchId,
       csvText,
@@ -185,20 +233,27 @@ export async function validateDataImport(formData: FormData): Promise<
 }
 
 export async function commitDataImport(formData: FormData): Promise<
-  ActionResult<{ imported: number; failed: number; status: string; idMap: Record<string, string> }>
+  ActionResult<{
+    imported: number;
+    failed: number;
+    status: string;
+    idMap: Record<string, string>;
+    done: boolean;
+    nextOffset: number;
+    processed: number;
+    total: number;
+  }>
 > {
   try {
     const session = await requirePermission('data:import');
     const batchId = String(formData.get('batchId') ?? '');
-    const entity = String(formData.get('entity') ?? '') as
-      | 'owners'
-      | 'patients'
-      | 'clinical_entries';
+    const entity = asImportEntity(String(formData.get('entity') ?? ''));
     const csvText = String(formData.get('csvText') ?? '');
     const mapping = JSON.parse(String(formData.get('mapping') ?? '{}')) as Record<
       string,
       string | null
     >;
+    if (!entity) return { success: false, error: 'Entidad inválida' };
     const ownerIdByExternal = JSON.parse(
       String(formData.get('ownerIdByExternal') ?? '{}')
     ) as Record<string, string>;
@@ -206,6 +261,9 @@ export async function commitDataImport(formData: FormData): Promise<
       String(formData.get('patientIdByExternal') ?? '{}')
     ) as Record<string, string>;
     const sourceSystem = String(formData.get('sourceSystem') ?? '').trim() || null;
+    const offset = Number(formData.get('offset') ?? 0) || 0;
+    const chunkSize =
+      Number(formData.get('chunkSize') ?? DEFAULT_IMPORT_CHUNK_SIZE) || DEFAULT_IMPORT_CHUNK_SIZE;
 
     const supabase = await createServerClient();
     const { data: branch } = await supabase
@@ -227,12 +285,151 @@ export async function commitDataImport(formData: FormData): Promise<
       ownerIdByExternal,
       patientIdByExternal,
       branchId: branch.id,
+      offset,
+      chunkSize,
     });
     revalidatePath('/configuracion');
     revalidatePath('/propietarios');
     revalidatePath('/pacientes');
     revalidatePath('/historia-clinica');
+    revalidatePath('/vacunacion');
+    revalidatePath('/laboratorio');
+    revalidatePath('/cirugias');
+    revalidatePath('/farmacia');
     return { success: true, data: result };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function importZipAttachmentsAction(formData: FormData): Promise<
+  ActionResult<{
+    imported: number;
+    failed: number;
+    total: number;
+    processed: number;
+    done: boolean;
+    nextOffset: number;
+    status: string;
+  }>
+> {
+  try {
+    const session = await requirePermission('data:import');
+    const batchId = String(formData.get('batchId') ?? '');
+    const zipBase64 = String(formData.get('zipBase64') ?? '');
+    const sourceSystem = String(formData.get('sourceSystem') ?? '').trim() || null;
+    const patientIdByExternal = JSON.parse(
+      String(formData.get('patientIdByExternal') ?? '{}')
+    ) as Record<string, string>;
+    const offset = Number(formData.get('offset') ?? 0) || 0;
+    const chunkSize = Number(formData.get('chunkSize') ?? 10) || 10;
+    if (!batchId || !zipBase64) return { success: false, error: 'Datos de adjuntos incompletos' };
+
+    const supabase = await createServerClient();
+    const { data: branch } = await supabase
+      .from('branches')
+      .select('id')
+      .eq('organization_id', session.organizationId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (!branch) return { success: false, error: 'La clínica no tiene sucursal activa' };
+
+    const buffer = Buffer.from(zipBase64, 'base64');
+    const result = await importZipAttachmentsChunk({
+      batchId,
+      zipBuffer: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
+      patientIdByExternal,
+      branchId: branch.id,
+      sourceSystem,
+      offset,
+      chunkSize,
+    });
+    revalidatePath('/configuracion');
+    revalidatePath('/imagenes');
+    return { success: true, data: result };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function downloadSampleMigrationZipAction(): Promise<
+  ActionResult<{ filename: string; contentType: string; base64: string }>
+> {
+  try {
+    await requirePermission('data:import');
+    const bytes = await buildSampleMigrationZip('VetLegacy');
+    return {
+      success: true,
+      data: {
+        filename: 'SyncVete-Migration-Package-Sample.zip',
+        contentType: 'application/zip',
+        base64: Buffer.from(bytes).toString('base64'),
+      },
+    };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function inspectMigrationZipAction(formData: FormData): Promise<
+  ActionResult<{
+    summary: Record<string, number | string | null>;
+    ownersCsv: string | null;
+    patientsCsv: string | null;
+    clinicalCsv: string | null;
+    vaccinationsCsv: string | null;
+    labOrdersCsv: string | null;
+    surgeriesCsv: string | null;
+    prescriptionsCsv: string | null;
+  }>
+> {
+  try {
+    await requirePermission('data:import');
+    const base64 = String(formData.get('zipBase64') ?? '');
+    if (!base64) return { success: false, error: 'ZIP vacío' };
+    const buffer = Buffer.from(base64, 'base64');
+    const parsed = await parseSyncveteMigrationZip(
+      buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
+    );
+    return {
+      success: true,
+      data: {
+        summary: summarizeZipContents(parsed),
+        ownersCsv: parsed.ownersCsv,
+        patientsCsv: parsed.patientsCsv,
+        clinicalCsv: parsed.clinicalCsv,
+        vaccinationsCsv: parsed.vaccinationsCsv,
+        labOrdersCsv: parsed.labOrdersCsv,
+        surgeriesCsv: parsed.surgeriesCsv,
+        prescriptionsCsv: parsed.prescriptionsCsv,
+      },
+    };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function convertSpreadsheetToCsvAction(formData: FormData): Promise<
+  ActionResult<{ csv: string; filename: string }>
+> {
+  try {
+    await requirePermission('data:import');
+    const base64 = String(formData.get('fileBase64') ?? '');
+    const filename = String(formData.get('filename') ?? 'upload.xlsx');
+    if (!base64) return { success: false, error: 'Archivo vacío' };
+    const buffer = Buffer.from(base64, 'base64');
+    const csv = workbookFirstSheetToCsv(
+      buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
+    );
+    return {
+      success: true,
+      data: {
+        csv,
+        filename: filename.replace(/\.(xlsx|xls)$/i, '.csv'),
+      },
+    };
   } catch (error) {
     return actionError(error);
   }
@@ -294,12 +491,6 @@ export async function runClinicExportAction(formData: FormData): Promise<
     const format = asExportFormat(String(formData.get('format') ?? ''));
     const patientId = String(formData.get('patientId') ?? '').trim() || null;
     if (!exportType || !format) return { success: false, error: 'Exportación inválida' };
-    if (format === 'xlsx') {
-      return {
-        success: false,
-        error: 'Usá CSV (compatible con Excel) o JSON/ZIP. XLSX nativo llega en una fase siguiente.',
-      };
-    }
 
     const job = await createExportJob({ exportType, format, patientId });
     const result = await runExportJob(job.id);

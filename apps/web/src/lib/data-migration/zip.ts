@@ -1,0 +1,136 @@
+import 'server-only';
+
+import {
+  DATA_MIGRATION_FORMAT,
+  DATA_MIGRATION_FORMAT_VERSION,
+  buildClinicalTemplateCsv,
+  buildLabOrderTemplateCsv,
+  buildOwnerTemplateCsv,
+  buildPatientTemplateCsv,
+  buildPrescriptionTemplateCsv,
+  buildSampleMigrationManifest,
+  buildSurgeryTemplateCsv,
+  buildVaccinationTemplateCsv,
+  parseCsv,
+  parseMigrationManifest,
+  type MigrationZipManifest,
+} from '@sincvete/shared';
+import JSZip from 'jszip';
+
+export type ParsedMigrationZip = {
+  manifest: MigrationZipManifest;
+  ownersCsv: string | null;
+  patientsCsv: string | null;
+  clinicalCsv: string | null;
+  vaccinationsCsv: string | null;
+  labOrdersCsv: string | null;
+  surgeriesCsv: string | null;
+  prescriptionsCsv: string | null;
+  attachmentPaths: string[];
+};
+
+function findEntry(zip: JSZip, candidates: string[]): JSZip.JSZipObject | null {
+  for (const name of candidates) {
+    const direct = zip.file(name);
+    if (direct) return direct;
+  }
+  const files = Object.keys(zip.files);
+  for (const candidate of candidates) {
+    const match = files.find((f) => f.replace(/\\/g, '/').endsWith(candidate));
+    if (match) return zip.file(match);
+  }
+  return null;
+}
+
+export async function parseSyncveteMigrationZip(buffer: ArrayBuffer): Promise<ParsedMigrationZip> {
+  const zip = await JSZip.loadAsync(buffer);
+  const manifestFile = findEntry(zip, ['manifest.json']);
+  if (!manifestFile) throw new Error('El ZIP no incluye manifest.json');
+  const manifestRaw = JSON.parse(await manifestFile.async('string')) as unknown;
+  const manifest = parseMigrationManifest(manifestRaw);
+  if (!manifest) {
+    throw new Error('manifest.json inválido (format debe ser syncvete-migration)');
+  }
+
+  const owners = findEntry(zip, ['owners.csv', 'data/owners.csv']);
+  const patients = findEntry(zip, ['patients.csv', 'data/patients.csv']);
+  const clinical = findEntry(zip, [
+    'clinical_records.csv',
+    'clinical-records.csv',
+    'data/clinical_records.csv',
+    'data/clinical-records.csv',
+  ]);
+  const vaccinations = findEntry(zip, ['vaccinations.csv', 'data/vaccinations.csv']);
+  const labOrders = findEntry(zip, ['lab_orders.csv', 'data/lab_orders.csv']);
+  const surgeries = findEntry(zip, ['surgeries.csv', 'data/surgeries.csv']);
+  const prescriptions = findEntry(zip, ['prescriptions.csv', 'data/prescriptions.csv']);
+
+  const attachmentPaths = Object.keys(zip.files).filter((path) => {
+    const normalized = path.replace(/\\/g, '/');
+    return (
+      !zip.files[path]?.dir &&
+      (normalized.startsWith('attachments/') || normalized.includes('/attachments/'))
+    );
+  });
+
+  return {
+    manifest,
+    ownersCsv: owners ? await owners.async('string') : null,
+    patientsCsv: patients ? await patients.async('string') : null,
+    clinicalCsv: clinical ? await clinical.async('string') : null,
+    vaccinationsCsv: vaccinations ? await vaccinations.async('string') : null,
+    labOrdersCsv: labOrders ? await labOrders.async('string') : null,
+    surgeriesCsv: surgeries ? await surgeries.async('string') : null,
+    prescriptionsCsv: prescriptions ? await prescriptions.async('string') : null,
+    attachmentPaths,
+  };
+}
+
+export async function buildSampleMigrationZip(sourceSystem = 'VetLegacy'): Promise<Uint8Array> {
+  const zip = new JSZip();
+  const manifest = buildSampleMigrationManifest(sourceSystem);
+  zip.file('manifest.json', JSON.stringify(manifest, null, 2));
+  zip.file('owners.csv', buildOwnerTemplateCsv());
+  zip.file('patients.csv', buildPatientTemplateCsv());
+  zip.file('clinical_records.csv', buildClinicalTemplateCsv());
+  zip.file('vaccinations.csv', buildVaccinationTemplateCsv());
+  zip.file('lab_orders.csv', buildLabOrderTemplateCsv());
+  zip.file('surgeries.csv', buildSurgeryTemplateCsv());
+  zip.file('prescriptions.csv', buildPrescriptionTemplateCsv());
+  zip.folder('attachments')?.folder('PAT-001')?.file(
+    'README.txt',
+    'Colocá aquí PDFs/JPG/PNG del paciente externo PAT-001.\n'
+  );
+  zip.file(
+    'INSTRUCTIONS.txt',
+    [
+      'SyncVete migration package',
+      `format=${DATA_MIGRATION_FORMAT}`,
+      `version=${DATA_MIGRATION_FORMAT_VERSION}`,
+      '',
+      'Orden recomendado:',
+      '1) owners.csv',
+      '2) patients.csv',
+      '3) clinical_records.csv / vaccinations.csv / lab_orders.csv / surgeries.csv / prescriptions.csv',
+      '4) attachments/<external_patient_id>/*.(jpg|png|pdf|webp|gif)',
+      '',
+    ].join('\n')
+  );
+  return zip.generateAsync({ type: 'uint8array' });
+}
+
+export function summarizeZipContents(parsed: ParsedMigrationZip) {
+  const countRows = (csv: string | null) => (csv ? parseCsv(csv).rows.length : 0);
+  return {
+    sourceSystem: parsed.manifest.sourceSystem ?? null,
+    version: parsed.manifest.version,
+    owners: countRows(parsed.ownersCsv),
+    patients: countRows(parsed.patientsCsv),
+    clinicalRecords: countRows(parsed.clinicalCsv),
+    vaccinations: countRows(parsed.vaccinationsCsv),
+    labOrders: countRows(parsed.labOrdersCsv),
+    surgeries: countRows(parsed.surgeriesCsv),
+    prescriptions: countRows(parsed.prescriptionsCsv),
+    attachments: parsed.attachmentPaths.length,
+  };
+}

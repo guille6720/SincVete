@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import {
+  DEFAULT_IMPORT_CHUNK_SIZE,
   EXPORT_TYPE_LABELS,
   IMPORT_TYPE_LABELS,
   type ExportFormat,
@@ -11,7 +12,11 @@ import {
 } from '@sincvete/shared';
 import {
   commitDataImport,
+  convertSpreadsheetToCsvAction,
   downloadImportTemplate,
+  downloadSampleMigrationZipAction,
+  importZipAttachmentsAction,
+  inspectMigrationZipAction,
   listDataExportJobsAction,
   listDataImportBatchesAction,
   rollbackDataImportAction,
@@ -79,6 +84,17 @@ export function DataMigrationPanel({
   const [ownerIdByExternal, setOwnerIdByExternal] = useState<Record<string, string>>({});
   const [patientIdByExternal, setPatientIdByExternal] = useState<Record<string, string>>({});
   const [importReport, setImportReport] = useState<string | null>(null);
+  const [zipPack, setZipPack] = useState<{
+    ownersCsv: string | null;
+    patientsCsv: string | null;
+    clinicalCsv: string | null;
+    vaccinationsCsv: string | null;
+    labOrdersCsv: string | null;
+    surgeriesCsv: string | null;
+    prescriptionsCsv: string | null;
+  } | null>(null);
+  const [zipBase64, setZipBase64] = useState<string | null>(null);
+  const [progressLabel, setProgressLabel] = useState<string | null>(null);
 
   const [exportType, setExportType] = useState<ExportType>('owners');
   const [exportFormat, setExportFormat] = useState<ExportFormat>('csv');
@@ -89,14 +105,28 @@ export function DataMigrationPanel({
 
   const entity = useMemo(() => {
     if (importType === 'patients') return 'patients' as const;
-    if (importType === 'clinical_entries' || importType === 'vaccinations') {
-      return 'clinical_entries' as const;
+    if (importType === 'clinical_entries') return 'clinical_entries' as const;
+    if (importType === 'vaccinations') return 'vaccinations' as const;
+    if (importType === 'lab_orders') return 'lab_orders' as const;
+    if (importType === 'surgeries') return 'surgeries' as const;
+    if (importType === 'prescriptions') return 'prescriptions' as const;
+    if (importType === 'attachments') return 'owners' as const;
+    if (importType === 'full_migration' || importType === 'migration_zip') {
+      return 'owners' as const;
     }
-    if (importType === 'full_migration') return 'owners' as const;
     return 'owners' as const;
   }, [importType]);
 
-  async function onDownloadTemplate(kind: 'owners' | 'patients' | 'clinical_entries') {
+  async function onDownloadTemplate(
+    kind:
+      | 'owners'
+      | 'patients'
+      | 'clinical_entries'
+      | 'vaccinations'
+      | 'lab_orders'
+      | 'surgeries'
+      | 'prescriptions'
+  ) {
     setMessage(null);
     const form = new FormData();
     form.set('kind', kind);
@@ -108,13 +138,93 @@ export function DataMigrationPanel({
     downloadText(result.data.filename, result.data.csv);
   }
 
+  async function onDownloadSampleZip() {
+    setMessage(null);
+    const result = await run(() => downloadSampleMigrationZipAction());
+    if (!result?.success || !result.data) {
+      setMessage(result?.error ?? 'No se pudo generar el ZIP de ejemplo');
+      return;
+    }
+    downloadBase64(result.data.filename, result.data.contentType, result.data.base64);
+  }
+
+  async function fileToBase64(file: File): Promise<string> {
+    const buffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!);
+    return btoa(binary);
+  }
+
   async function onFileSelected(file: File | null) {
     if (!file) return;
     setSourceFilename(file.name);
-    const text = await file.text();
-    setCsvText(text);
     setValidation(null);
     setImportReport(null);
+
+    const lower = file.name.toLowerCase();
+    if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
+      const form = new FormData();
+      form.set('fileBase64', await fileToBase64(file));
+      form.set('filename', file.name);
+      const result = await run(() => convertSpreadsheetToCsvAction(form));
+      if (!result?.success || !result.data) {
+        setMessage(result?.error ?? 'No se pudo leer el XLSX');
+        return;
+      }
+      setCsvText(result.data.csv);
+      setSourceFilename(result.data.filename);
+      setMessage('XLSX convertido a CSV (primera hoja)');
+      return;
+    }
+
+    if (lower.endsWith('.zip') || importType === 'migration_zip') {
+      const base64 = await fileToBase64(file);
+      setZipBase64(base64);
+      const form = new FormData();
+      form.set('zipBase64', base64);
+      const result = await run(() => inspectMigrationZipAction(form));
+      if (!result?.success || !result.data) {
+        setMessage(result?.error ?? 'ZIP inválido');
+        return;
+      }
+      setZipPack({
+        ownersCsv: result.data.ownersCsv,
+        patientsCsv: result.data.patientsCsv,
+        clinicalCsv: result.data.clinicalCsv,
+        vaccinationsCsv: result.data.vaccinationsCsv,
+        labOrdersCsv: result.data.labOrdersCsv,
+        surgeriesCsv: result.data.surgeriesCsv,
+        prescriptionsCsv: result.data.prescriptionsCsv,
+      });
+      const summary = result.data.summary;
+      setMessage(
+        `ZIP SyncVete · owners ${summary.owners} · patients ${summary.patients} · clinical ${summary.clinicalRecords} · vacunas ${summary.vaccinations} · lab ${summary.labOrders} · cirugías ${summary.surgeries} · recetas ${summary.prescriptions} · adjuntos ${summary.attachments}`
+      );
+      if (result.data.ownersCsv) {
+        setImportType('owners');
+        setCsvText(result.data.ownersCsv);
+        setSourceFilename('owners.csv');
+      } else if (result.data.patientsCsv) {
+        setImportType('patients');
+        setCsvText(result.data.patientsCsv);
+        setSourceFilename('patients.csv');
+      } else if (result.data.clinicalCsv) {
+        setImportType('clinical_entries');
+        setCsvText(result.data.clinicalCsv);
+        setSourceFilename('clinical_records.csv');
+      } else if (result.data.vaccinationsCsv) {
+        setImportType('vaccinations');
+        setCsvText(result.data.vaccinationsCsv);
+        setSourceFilename('vaccinations.csv');
+      }
+      return;
+    }
+
+    setZipPack(null);
+    setZipBase64(null);
+    const text = await file.text();
+    setCsvText(text);
   }
 
   async function onAnalyze() {
@@ -168,29 +278,109 @@ export function DataMigrationPanel({
       setMessage('Corregí errores bloqueantes antes de importar');
       return;
     }
-    const form = new FormData();
-    form.set('batchId', batchId);
-    form.set('entity', entity);
-    form.set('csvText', csvText);
-    form.set('mapping', JSON.stringify(mapping));
-    form.set('ownerIdByExternal', JSON.stringify(ownerIdByExternal));
-    form.set('patientIdByExternal', JSON.stringify(patientIdByExternal));
-    form.set('sourceSystem', sourceSystem);
-    const result = await run(() => commitDataImport(form));
-    if (!result?.success || !result.data) {
-      setMessage(result?.error ?? 'Importación fallida');
-      return;
+    let offset = 0;
+    let totalImported = 0;
+    let totalFailed = 0;
+    let mergedIdMap: Record<string, string> = {};
+    let done = false;
+    let lastStatus = 'importing';
+
+    while (!done) {
+      setProgressLabel(`Importando ${entity}: ${offset}…`);
+      const form = new FormData();
+      form.set('batchId', batchId);
+      form.set('entity', entity);
+      form.set('csvText', csvText);
+      form.set('mapping', JSON.stringify(mapping));
+      form.set('ownerIdByExternal', JSON.stringify(ownerIdByExternal));
+      form.set('patientIdByExternal', JSON.stringify(patientIdByExternal));
+      form.set('sourceSystem', sourceSystem);
+      form.set('offset', String(offset));
+      form.set('chunkSize', String(DEFAULT_IMPORT_CHUNK_SIZE));
+      const result = await run(() => commitDataImport(form));
+      if (!result?.success || !result.data) {
+        setMessage(result?.error ?? 'Importación fallida');
+        setProgressLabel(null);
+        return;
+      }
+      totalImported += result.data.imported;
+      totalFailed += result.data.failed;
+      mergedIdMap = { ...mergedIdMap, ...result.data.idMap };
+      done = result.data.done;
+      offset = result.data.nextOffset;
+      lastStatus = result.data.status;
+      setProgressLabel(
+        `Progreso real: ${result.data.processed}/${result.data.total} · ok ${totalImported} · fallidos ${totalFailed}`
+      );
     }
+
     if (entity === 'owners') {
-      setOwnerIdByExternal((prev) => ({ ...prev, ...result.data!.idMap }));
+      setOwnerIdByExternal((prev) => ({ ...prev, ...mergedIdMap }));
     }
     if (entity === 'patients') {
-      setPatientIdByExternal((prev) => ({ ...prev, ...result.data!.idMap }));
+      setPatientIdByExternal((prev) => ({ ...prev, ...mergedIdMap }));
     }
-    setImportReport(
-      `Import ${result.data.status}: ${result.data.imported} ok · ${result.data.failed} fallidos`
-    );
+    setImportReport(`Import ${lastStatus}: ${totalImported} ok · ${totalFailed} fallidos`);
     setMessage(null);
+    setProgressLabel(null);
+  }
+
+  async function onImportAttachments() {
+    if (!zipBase64) {
+      setMessage('Subí un ZIP SyncVete primero');
+      return;
+    }
+    if (Object.keys(patientIdByExternal).length === 0) {
+      setMessage('Importá pacientes primero para mapear IDs externos → SyncVete');
+      return;
+    }
+    // Reuse current batch or start a lightweight owners analyze to get a batch id for provenance
+    let activeBatchId = batchId;
+    if (!activeBatchId) {
+      const form = new FormData();
+      form.set('importType', 'attachments');
+      form.set('entity', 'owners');
+      form.set('csvText', 'external_owner_id,full_name\nTMP,Temp\n');
+      form.set('sourceFilename', 'attachments.zip');
+      form.set('sourceSystem', sourceSystem);
+      const started = await run(() => startDataImport(form));
+      if (!started?.success || !started.data) {
+        setMessage(started?.error ?? 'No se pudo crear lote de adjuntos');
+        return;
+      }
+      activeBatchId = started.data.batchId;
+      setBatchId(activeBatchId);
+    }
+
+    let offset = 0;
+    let done = false;
+    let totalImported = 0;
+    let totalFailed = 0;
+    while (!done) {
+      setProgressLabel(`Adjuntos: ${offset}…`);
+      const form = new FormData();
+      form.set('batchId', activeBatchId);
+      form.set('zipBase64', zipBase64);
+      form.set('patientIdByExternal', JSON.stringify(patientIdByExternal));
+      form.set('sourceSystem', sourceSystem);
+      form.set('offset', String(offset));
+      form.set('chunkSize', '10');
+      const result = await run(() => importZipAttachmentsAction(form));
+      if (!result?.success || !result.data) {
+        setMessage(result?.error ?? 'Importación de adjuntos fallida');
+        setProgressLabel(null);
+        return;
+      }
+      totalImported += result.data.imported;
+      totalFailed += result.data.failed;
+      done = result.data.done;
+      offset = result.data.nextOffset;
+      setProgressLabel(
+        `Adjuntos ${result.data.processed}/${result.data.total} · ok ${totalImported} · fallidos ${totalFailed}`
+      );
+    }
+    setImportReport(`Adjuntos: ${totalImported} ok · ${totalFailed} fallidos`);
+    setProgressLabel(null);
   }
 
   async function onExport() {
@@ -291,8 +481,8 @@ export function DataMigrationPanel({
           <CardHeader>
             <CardTitle>Importar datos</CardTitle>
             <CardDescription>
-              Wizard seguro con dry-run, detección de duplicados y sin sobrescritura silenciosa.
-              No modifica producción fuera de tu organización.
+              Fase 3: lab/cirugía/farmacia, adjuntos ZIP → storage, import por chunks con progreso
+              real. Sin sobrescritura silenciosa.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -301,7 +491,37 @@ export function DataMigrationPanel({
                 <Label>Qué importar</Label>
                 <Select
                   value={importType}
-                  onChange={(e) => setImportType(e.target.value as ImportType)}
+                  onChange={(e) => {
+                    const next = e.target.value as ImportType;
+                    setImportType(next);
+                    setBatchId(null);
+                    setValidation(null);
+                    setHeaders([]);
+                    setMapping({});
+                    if (!zipPack) return;
+                    if (next === 'owners' && zipPack.ownersCsv) {
+                      setCsvText(zipPack.ownersCsv);
+                      setSourceFilename('owners.csv');
+                    } else if (next === 'patients' && zipPack.patientsCsv) {
+                      setCsvText(zipPack.patientsCsv);
+                      setSourceFilename('patients.csv');
+                    } else if (next === 'clinical_entries' && zipPack.clinicalCsv) {
+                      setCsvText(zipPack.clinicalCsv);
+                      setSourceFilename('clinical_records.csv');
+                    } else if (next === 'vaccinations' && zipPack.vaccinationsCsv) {
+                      setCsvText(zipPack.vaccinationsCsv);
+                      setSourceFilename('vaccinations.csv');
+                    } else if (next === 'lab_orders' && zipPack.labOrdersCsv) {
+                      setCsvText(zipPack.labOrdersCsv);
+                      setSourceFilename('lab_orders.csv');
+                    } else if (next === 'surgeries' && zipPack.surgeriesCsv) {
+                      setCsvText(zipPack.surgeriesCsv);
+                      setSourceFilename('surgeries.csv');
+                    } else if (next === 'prescriptions' && zipPack.prescriptionsCsv) {
+                      setCsvText(zipPack.prescriptionsCsv);
+                      setSourceFilename('prescriptions.csv');
+                    }
+                  }}
                 >
                   {(Object.keys(IMPORT_TYPE_LABELS) as ImportType[]).map((key) => (
                     <option key={key} value={key}>
@@ -326,14 +546,29 @@ export function DataMigrationPanel({
               <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadTemplate('clinical_entries')}>
                 Plantilla historias
               </Button>
+              <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadTemplate('vaccinations')}>
+                Plantilla vacunas
+              </Button>
+              <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadTemplate('lab_orders')}>
+                Plantilla lab
+              </Button>
+              <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadTemplate('surgeries')}>
+                Plantilla cirugías
+              </Button>
+              <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadTemplate('prescriptions')}>
+                Plantilla recetas
+              </Button>
+              <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadSampleZip()}>
+                ZIP migración de ejemplo
+              </Button>
             </div>
 
             <div className="space-y-1">
-              <Label htmlFor="importFile">Subir CSV / JSON textual</Label>
+              <Label htmlFor="importFile">Subir CSV / XLSX / ZIP SyncVete</Label>
               <Input
                 id="importFile"
                 type="file"
-                accept=".csv,.json,text/csv,application/json"
+                accept=".csv,.json,.xlsx,.xls,.zip,text/csv,application/json,application/zip"
                 onChange={(e) => void onFileSelected(e.target.files?.[0] ?? null)}
               />
             </div>
@@ -357,7 +592,17 @@ export function DataMigrationPanel({
               >
                 Confirmar importación
               </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={pending || !zipBase64 || Object.keys(patientIdByExternal).length === 0}
+                onClick={() => void onImportAttachments()}
+              >
+                Importar adjuntos del ZIP
+              </Button>
             </div>
+
+            {progressLabel ? <p className="text-sm font-medium">{progressLabel}</p> : null}
 
             {headers.length > 0 ? (
               <div className="space-y-2 rounded-md border p-3">
@@ -405,10 +650,11 @@ export function DataMigrationPanel({
               </div>
             ) : null}
 
-            {importType === 'full_migration' ? (
+            {importType === 'full_migration' || importType === 'migration_zip' || importType === 'attachments' ? (
               <p className="text-xs text-muted-foreground">
-                Migración completa: importá primero propietarios, luego pacientes (usando los IDs
-                externos del lote), después historias clínicas. El orden respeta dependencias.
+                Orden: propietarios → pacientes → clínicas/vacunas/lab/cirugías/recetas → adjuntos.
+                Los adjuntos usan attachments/ID-paciente-externo/* (jpg/png/webp/gif/pdf) y
+                requieren el mapa de pacientes del lote. Progreso por chunks reales (no %).
               </p>
             ) : null}
           </CardContent>
@@ -420,8 +666,8 @@ export function DataMigrationPanel({
           <CardHeader>
             <CardTitle>Exportar datos</CardTitle>
             <CardDescription>
-              Exportá por entidad o clínica completa. PDF clínico se entrega como HTML imprimible
-              profesional (imprimir → PDF). ZIP incluye JSON estructurado + manifiesto.
+              CSV/JSON/XLSX/ZIP. El ZIP incluye CSVs + JSON + hasta ~40 adjuntos clínicos del
+              tenant (límite de tamaño para no saturar el request).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -445,9 +691,10 @@ export function DataMigrationPanel({
                   value={exportFormat}
                   onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
                 >
-                  <option value="csv">CSV (Excel)</option>
+                  <option value="csv">CSV</option>
+                  <option value="xlsx">XLSX (Excel)</option>
                   <option value="json">JSON</option>
-                  <option value="zip">ZIP completo</option>
+                  <option value="zip">ZIP completo (+ adjuntos)</option>
                   <option value="pdf">PDF / HTML clínico</option>
                 </Select>
               </div>
