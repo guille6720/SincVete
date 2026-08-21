@@ -1,4 +1,6 @@
 import { notFound, redirect } from 'next/navigation';
+import { getSuperadminOrgDataMigrationStats } from '@/actions/data-migration';
+import { SuperadminOrgDataMigrationCard } from '@/components/superadmin/org-data-migration-card';
 import {
   getSuperadminOrgCommercial,
   listSuperadminBillingEvents,
@@ -35,6 +37,7 @@ export default async function SuperadminOrganizationPage({ params }: PageProps) 
       recommendationHistory,
       commercialMeta,
       assignees,
+      migrationStatsResult,
     ] = await Promise.all([
       getSuperadminOrgCommercial(id),
       listSuperadminBillingEvents(id),
@@ -43,7 +46,11 @@ export default async function SuperadminOrganizationPage({ params }: PageProps) 
       listPlanRecommendationHistory(id).catch(() => []),
       getPlanRecommendationCommercialMeta(id).catch(() => null),
       listSuperadminRecommendationAssignees().catch(() => []),
+      getSuperadminOrgDataMigrationStats(id).catch(() => null),
     ]);
+
+    const migrationStats =
+      migrationStatsResult && migrationStatsResult.success ? migrationStatsResult.data : null;
 
     return (
       <div className="space-y-6">
@@ -83,6 +90,8 @@ export default async function SuperadminOrganizationPage({ params }: PageProps) 
             })}
           </CardContent>
         </Card>
+
+        <SuperadminOrgDataMigrationCard stats={migrationStats ?? null} />
 
         <div id="suscripcion">
           <SuperadminOrgDetail data={data} events={events} checkoutIntents={checkoutIntents} />

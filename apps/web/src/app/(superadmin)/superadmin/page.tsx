@@ -1,4 +1,6 @@
 import { redirect } from 'next/navigation';
+import { getSuperadminDataMigrationOpsQueue } from '@/actions/data-migration';
+import { SuperadminDataMigrationOpsQueue } from '@/components/superadmin/data-migration-ops-queue';
 import {
   getSuperadminCommercialSummary,
   listSuperadminAddonsEndingSoon,
@@ -174,6 +176,7 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
       assignees,
       recommendationSettings,
       savedViews,
+      migrationOpsResult,
     ] = await Promise.all([
       listSuperadminOrganizationsRecommended({
         page,
@@ -226,7 +229,11 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
       listSuperadminRecommendationAssignees().catch(() => []),
       getSuperadminRecommendationSettings().catch(() => null),
       listSuperadminRecommendationSavedViews().catch(() => []),
+      getSuperadminDataMigrationOpsQueue(40).catch(() => null),
     ]);
+
+    const migrationOps =
+      migrationOpsResult && migrationOpsResult.success ? migrationOpsResult.data : null;
 
     const savedViewCurrentParams = sanitizeCommercialSavedViewParams({
       assignee: assigneeFilter || undefined,
@@ -289,6 +296,7 @@ export default async function SuperadminOrganizationsPage({ searchParams }: Page
           </p>
         </div>
         <SuperadminCommercialOps summary={summary} />
+        <SuperadminDataMigrationOpsQueue queue={migrationOps ?? null} />
         <SuperadminRecommendationSavedViews
           views={savedViews}
           currentParams={savedViewCurrentParams}

@@ -12,6 +12,7 @@ import {
   autoMapColumns,
   chunkRange,
   DEFAULT_IMPORT_CHUNK_SIZE,
+  MAX_IMPORT_CSV_BYTES,
   mapRow,
   normalizeDocument,
   parseCsv,
@@ -24,9 +25,11 @@ import {
   type ClinicalImportRow,
   type ConflictPolicy,
   type DateLocale,
+  type IdempotencyMode,
   type ImportType,
   type OwnerImportRow,
   type PatientImportRow,
+  type RowConflictDecision,
   type VaccinationImportRow,
   type ValidationIssue,
 } from '@sincvete/shared';
@@ -46,8 +49,40 @@ type ImportEntity =
   | 'vaccinations'
   | SpecialtyEntity;
 
+async function findExistingBySource(input: {
+  table:
+    | 'owners'
+    | 'patients'
+    | 'clinical_entries'
+    | 'vaccinations'
+    | 'lab_orders'
+    | 'surgeries'
+    | 'prescriptions'
+    | 'hospitalizations';
+  organizationId: string;
+  sourceSystem: string;
+  sourceRecordId: string;
+}): Promise<string | null> {
+  if (!input.sourceRecordId || !input.sourceSystem) return null;
+  const supabase = await migrationDb();
+  const { data } = await supabase
+    .from(input.table)
+    .select('id')
+    .eq('organization_id', input.organizationId)
+    .eq('source_system', input.sourceSystem)
+    .eq('source_record_id', input.sourceRecordId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  return data?.id ? String(data.id) : null;
+}
+
 function isSpecialtyEntity(entity: ImportEntity): entity is SpecialtyEntity {
-  return entity === 'lab_orders' || entity === 'surgeries' || entity === 'prescriptions';
+  return (
+    entity === 'lab_orders' ||
+    entity === 'surgeries' ||
+    entity === 'prescriptions' ||
+    entity === 'hospitalizations'
+  );
 }
 
 type ExistingOwnerHit = {
@@ -192,6 +227,7 @@ export async function createImportBatch(input: {
   sourceSystem?: string | null;
   dateLocale?: DateLocale;
   conflictPolicy?: ConflictPolicy;
+  idempotencyMode?: IdempotencyMode;
 }) {
   const session = await requirePermission('data:import');
   const supabase = await migrationDb();
@@ -206,6 +242,7 @@ export async function createImportBatch(input: {
       source_system: input.sourceSystem ?? null,
       date_locale: input.dateLocale ?? 'es-AR',
       conflict_policy: input.conflictPolicy ?? 'review',
+      idempotency_mode: input.idempotencyMode ?? 'off',
       created_by: session.userId,
     })
     .select('*')
@@ -290,7 +327,20 @@ export async function dryRunImport(input: {
         .map((o) => o.email?.toLowerCase() ?? null)
         .filter(Boolean) as string[]
     );
-    issues = validateOwnerRows(rows, { existingDocuments, existingEmails });
+    const documentToId = new Map<string, string>();
+    const emailToId = new Map<string, string>();
+    for (const owner of (owners ?? []) as ExistingOwnerHit[]) {
+      if (owner.document_number) {
+        documentToId.set(normalizeDocument(owner.document_number), owner.id);
+      }
+      if (owner.email) emailToId.set(owner.email.toLowerCase(), owner.id);
+    }
+    issues = validateOwnerRows(rows, {
+      existingDocuments,
+      existingEmails,
+      documentToId,
+      emailToId,
+    });
     const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
     readyCount = rows.filter((r) => !errorRows.has(r.rowNumber)).length;
   } else if (input.entity === 'patients') {
@@ -306,9 +356,14 @@ export async function dryRunImport(input: {
         .map((p) => p.microchip)
         .filter(Boolean) as string[]
     );
+    const microchipToId = new Map<string, string>();
+    for (const patient of (patients ?? []) as ExistingPatientHit[]) {
+      if (patient.microchip) microchipToId.set(patient.microchip, patient.id);
+    }
     issues = validatePatientRows(rows, {
       knownOwnerExternalIds: new Set(input.knownOwnerExternalIds ?? []),
       existingMicrochips,
+      microchipToId,
       locale,
     });
     const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
@@ -396,6 +451,7 @@ export async function commitImport(input: {
   branchId: string;
   offset?: number;
   chunkSize?: number;
+  rowDecisions?: Record<number, RowConflictDecision>;
 }) {
   const session = await requirePermission('data:import');
   const supabase = await migrationDb();
@@ -433,8 +489,11 @@ export async function commitImport(input: {
 
   let imported = 0;
   let failed = 0;
-  const linked = 0;
+  let linked = 0;
+  let skipped = 0;
   const idMap: Record<string, string> = {};
+  const decisions = input.rowDecisions ?? {};
+  const idempotencyMode = String(batch.idempotency_mode ?? 'off') as IdempotencyMode;
 
   try {
     if (isSpecialtyEntity(input.entity)) {
@@ -450,28 +509,62 @@ export async function commitImport(input: {
         batchId: input.batchId,
         userId: session.userId,
         sourceSystem,
+        idempotencyMode,
         offset: range.offset,
         limit: range.size,
       });
       imported = result.imported;
       failed = result.failed;
+      skipped = result.skipped;
       Object.assign(idMap, result.idMap);
     } else if (input.entity === 'owners') {
       const rows = asOwnerRows(rowSlice, input.mapping);
-      const dry = await dryRunImport({
-        batchId: input.batchId,
-        csvText: input.csvText,
-        entity: 'owners',
-        mapping: input.mapping,
-        dateLocale: locale,
-      });
-      const blocked = new Set(
-        dry.issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber)
-      );
       for (const row of rows) {
-        if (blocked.has(row.rowNumber)) {
+        const decision = decisions[row.rowNumber]?.decision ?? 'create';
+        if (decision === 'skip' || decision === 'review') {
+          skipped += 1;
+          continue;
+        }
+        if (decision === 'link') {
+          const linkId = decisions[row.rowNumber]?.linkInternalId;
+          if (!linkId) {
+            failed += 1;
+            continue;
+          }
+          idMap[row.externalOwnerId] = linkId;
+          linked += 1;
+          await supabase.from('data_import_id_map').insert({
+            batch_id: input.batchId,
+            organization_id: session.organizationId,
+            entity_type: 'owners',
+            external_id: row.externalOwnerId,
+            internal_id: linkId,
+          });
+          continue;
+        }
+        if (!row.fullName) {
           failed += 1;
           continue;
+        }
+        if (idempotencyMode === 'skip_existing_source') {
+          const existingId = await findExistingBySource({
+            table: 'owners',
+            organizationId: session.organizationId,
+            sourceSystem,
+            sourceRecordId: row.externalOwnerId,
+          });
+          if (existingId) {
+            idMap[row.externalOwnerId] = existingId;
+            skipped += 1;
+            await supabase.from('data_import_id_map').insert({
+              batch_id: input.batchId,
+              organization_id: session.organizationId,
+              entity_type: 'owners',
+              external_id: row.externalOwnerId,
+              internal_id: existingId,
+            });
+            continue;
+          }
         }
         const { data, error } = await supabase
           .from('owners')
@@ -521,10 +614,52 @@ export async function commitImport(input: {
       const rows = asPatientRows(rowSlice, input.mapping);
       const ownerMap = input.ownerIdByExternal ?? {};
       for (const row of rows) {
+        const decision = decisions[row.rowNumber]?.decision ?? 'create';
+        if (decision === 'skip' || decision === 'review') {
+          skipped += 1;
+          continue;
+        }
+        if (decision === 'link') {
+          const linkId = decisions[row.rowNumber]?.linkInternalId;
+          if (!linkId) {
+            failed += 1;
+            continue;
+          }
+          idMap[row.externalPatientId] = linkId;
+          linked += 1;
+          await supabase.from('data_import_id_map').insert({
+            batch_id: input.batchId,
+            organization_id: session.organizationId,
+            entity_type: 'patients',
+            external_id: row.externalPatientId,
+            internal_id: linkId,
+          });
+          continue;
+        }
         const ownerId = ownerMap[row.externalOwnerId];
         if (!ownerId || !row.name) {
           failed += 1;
           continue;
+        }
+        if (idempotencyMode === 'skip_existing_source') {
+          const existingId = await findExistingBySource({
+            table: 'patients',
+            organizationId: session.organizationId,
+            sourceSystem,
+            sourceRecordId: row.externalPatientId,
+          });
+          if (existingId) {
+            idMap[row.externalPatientId] = existingId;
+            skipped += 1;
+            await supabase.from('data_import_id_map').insert({
+              batch_id: input.batchId,
+              organization_id: session.organizationId,
+              entity_type: 'patients',
+              external_id: row.externalPatientId,
+              internal_id: existingId,
+            });
+            continue;
+          }
         }
         const birth = row.birthDate ? parseImportDate(row.birthDate, locale) : null;
         if (row.birthDate && (!birth || !birth.ok)) {
@@ -595,6 +730,25 @@ export async function commitImport(input: {
           failed += 1;
           continue;
         }
+        if (idempotencyMode === 'skip_existing_source') {
+          const existingId = await findExistingBySource({
+            table: 'clinical_entries',
+            organizationId: session.organizationId,
+            sourceSystem: row.sourceSystem ?? sourceSystem ?? '',
+            sourceRecordId: row.externalClinicalId,
+          });
+          if (existingId) {
+            skipped += 1;
+            await supabase.from('data_import_id_map').insert({
+              batch_id: input.batchId,
+              organization_id: session.organizationId,
+              entity_type: 'clinical_entries',
+              external_id: row.externalClinicalId,
+              internal_id: existingId,
+            });
+            continue;
+          }
+        }
         const { data, error } = await supabase
           .from('clinical_entries')
           .insert({
@@ -659,6 +813,25 @@ export async function commitImport(input: {
           failed += 1;
           continue;
         }
+        if (idempotencyMode === 'skip_existing_source') {
+          const existingId = await findExistingBySource({
+            table: 'vaccinations',
+            organizationId: session.organizationId,
+            sourceSystem: row.sourceSystem ?? sourceSystem ?? '',
+            sourceRecordId: row.externalVaccinationId,
+          });
+          if (existingId) {
+            skipped += 1;
+            await supabase.from('data_import_id_map').insert({
+              batch_id: input.batchId,
+              organization_id: session.organizationId,
+              entity_type: 'vaccinations',
+              external_id: row.externalVaccinationId,
+              internal_id: existingId,
+            });
+            continue;
+          }
+        }
         const noteParts = [
           row.notes,
           row.originalVeterinarian
@@ -714,10 +887,12 @@ export async function commitImport(input: {
 
     const totalImported = Number(batch.imported_records ?? 0) + imported;
     const totalFailed = Number(batch.failed_records ?? 0) + failed;
+    const totalLinked = Number(batch.linked_records ?? 0) + linked;
+    const totalSkipped = Number(batch.skipped_records ?? 0) + skipped;
     const status = range.done
-      ? totalFailed > 0 && totalImported > 0
+      ? totalFailed > 0 && totalImported + totalLinked > 0
         ? 'completed_with_warnings'
-        : totalFailed > 0 && totalImported === 0
+        : totalFailed > 0 && totalImported + totalLinked === 0
           ? 'failed'
           : 'completed'
       : 'importing';
@@ -728,14 +903,16 @@ export async function commitImport(input: {
         status,
         completed_at: range.done ? new Date().toISOString() : null,
         imported_records: totalImported,
-        linked_records: Number(batch.linked_records ?? 0) + linked,
+        linked_records: totalLinked,
+        skipped_records: totalSkipped,
         failed_records: totalFailed,
         progress_processed: range.end,
         progress_total: parsed.rows.length,
         progress_message: `${input.entity}: ${range.end}/${parsed.rows.length}`,
         summary: {
           imported: totalImported,
-          linked: Number(batch.linked_records ?? 0) + linked,
+          linked: totalLinked,
+          skipped: totalSkipped,
           failed: totalFailed,
           entity: input.entity,
           idMap,
@@ -745,9 +922,42 @@ export async function commitImport(input: {
       })
       .eq('id', input.batchId);
 
+    if (range.done) {
+      const { logDataMigrationAudit } = await import('@/lib/data-migration/audit');
+      await logDataMigrationAudit({
+        organizationId: session.organizationId,
+        userId: session.userId,
+        action: 'data_import.completed',
+        entityType: 'data_import_batches',
+        entityId: input.batchId,
+        newData: {
+          status,
+          imported: totalImported,
+          linked: totalLinked,
+          skipped: totalSkipped,
+          failed: totalFailed,
+          entity: input.entity,
+        },
+      });
+      const { notifyDataMigrationEvent } = await import('@/lib/data-migration/notify');
+      await notifyDataMigrationEvent({
+        organizationId: session.organizationId,
+        title:
+          status === 'failed'
+            ? 'Importación fallida'
+            : status === 'completed_with_warnings'
+              ? 'Importación completada con avisos'
+              : 'Importación completada',
+        body: `${input.entity}: ${totalImported} importados · ${totalFailed} fallidos · ${totalSkipped} omitidos`,
+        relatedType: 'data_import_batch',
+        relatedId: input.batchId,
+      });
+    }
+
     return {
       imported,
       linked,
+      skipped,
       failed,
       idMap,
       status,
@@ -901,6 +1111,7 @@ export async function rollbackImportBatch(batchId: string) {
       row.entity_type === 'lab_orders' ||
       row.entity_type === 'surgeries' ||
       row.entity_type === 'prescriptions' ||
+      row.entity_type === 'hospitalizations' ||
       row.entity_type === 'clinical_images'
     ) {
       const table = row.entity_type;
@@ -932,5 +1143,163 @@ export async function rollbackImportBatch(batchId: string) {
     })
     .eq('id', batchId);
 
+  const { logDataMigrationAudit } = await import('@/lib/data-migration/audit');
+  await logDataMigrationAudit({
+    organizationId: session.organizationId,
+    userId: session.userId,
+    action: 'data_import.rolled_back',
+    entityType: 'data_import_batches',
+    entityId: batchId,
+    newData: { rolledBack: rows.length },
+  });
+
   return { rolledBack: rows.length };
+}
+
+export async function saveRowDecisions(input: {
+  batchId: string;
+  entityType: string;
+  decisions: RowConflictDecision[];
+}) {
+  const session = await requirePermission('data:import');
+  const supabase = await migrationDb();
+  const { data: batch } = await supabase
+    .from('data_import_batches')
+    .select('id')
+    .eq('id', input.batchId)
+    .eq('organization_id', session.organizationId)
+    .single();
+  if (!batch) throw new Error('Lote no encontrado');
+
+  for (const decision of input.decisions) {
+    await supabase.from('data_import_row_decisions').upsert(
+      {
+        batch_id: input.batchId,
+        organization_id: session.organizationId,
+        entity_type: input.entityType,
+        row_number: decision.rowNumber,
+        external_id: decision.externalId ?? null,
+        decision: decision.decision,
+        link_internal_id: decision.linkInternalId ?? null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'batch_id,entity_type,row_number' }
+    );
+  }
+  return { saved: input.decisions.length };
+}
+
+export async function loadRowDecisions(batchId: string, entityType: string) {
+  const session = await requirePermission('data:import');
+  const supabase = await migrationDb();
+  const { data, error } = await supabase
+    .from('data_import_row_decisions')
+    .select('*')
+    .eq('batch_id', batchId)
+    .eq('organization_id', session.organizationId)
+    .eq('entity_type', entityType)
+    .order('row_number', { ascending: true });
+  if (error) throw new Error(error.message);
+  const map: Record<number, RowConflictDecision> = {};
+  for (const row of data ?? []) {
+    map[Number(row.row_number)] = {
+      rowNumber: Number(row.row_number),
+      decision: row.decision as ConflictPolicy,
+      linkInternalId: row.link_internal_id ?? null,
+      externalId: row.external_id ?? null,
+    };
+  }
+  return map;
+}
+
+export async function queueImportBatch(input: {
+  batchId: string;
+  csvText: string;
+  entity: ImportEntity;
+  mapping: Record<string, string | null>;
+  sourceSystem?: string | null;
+  ownerIdByExternal?: Record<string, string>;
+  patientIdByExternal?: Record<string, string>;
+  branchId: string;
+  rowDecisions?: Record<number, RowConflictDecision>;
+}) {
+  const session = await requirePermission('data:import');
+  const supabase = await migrationDb();
+  const { createServerClient } = await import('@/lib/supabase/server');
+  const storage = await createServerClient();
+
+  const { data: batch } = await supabase
+    .from('data_import_batches')
+    .select('*')
+    .eq('id', input.batchId)
+    .eq('organization_id', session.organizationId)
+    .single();
+  if (!batch) throw new Error('Lote no encontrado');
+
+  const payloadBytes = new TextEncoder().encode(input.csvText).byteLength;
+  if (payloadBytes > MAX_IMPORT_CSV_BYTES) {
+    throw new Error(
+      `El CSV supera el máximo permitido (${Math.round(MAX_IMPORT_CSV_BYTES / (1024 * 1024))} MB)`
+    );
+  }
+
+  const { count: activeCount } = await supabase
+    .from('data_import_batches')
+    .select('id', { count: 'exact', head: true })
+    .eq('organization_id', session.organizationId)
+    .in('status', ['queued', 'importing'])
+    .neq('id', input.batchId);
+  if ((activeCount ?? 0) > 0) {
+    throw new Error('Ya hay una importación en cola o en curso para esta clínica');
+  }
+
+  const storagePath = `${session.organizationId}/${input.batchId}/payload.csv`;
+  const { error: uploadError } = await storage.storage
+    .from('data-migration')
+    .upload(storagePath, new Blob([input.csvText], { type: 'text/csv;charset=utf-8' }), {
+      contentType: 'text/csv;charset=utf-8',
+      upsert: true,
+    });
+  if (uploadError) throw new Error(uploadError.message);
+
+  if (input.rowDecisions) {
+    await saveRowDecisions({
+      batchId: input.batchId,
+      entityType: input.entity,
+      decisions: Object.values(input.rowDecisions),
+    });
+  }
+
+  await supabase
+    .from('data_import_batches')
+    .update({
+      status: 'queued',
+      queued_at: new Date().toISOString(),
+      storage_path: storagePath,
+      column_mapping: { [input.entity]: input.mapping },
+      source_system: input.sourceSystem ?? batch.source_system,
+      progress_processed: 0,
+      progress_total: parseCsv(input.csvText).rows.length,
+      progress_message: 'En cola para procesamiento por chunks',
+      metadata: {
+        ...(typeof batch.metadata === 'object' && batch.metadata ? batch.metadata : {}),
+        entity: input.entity,
+        branchId: input.branchId,
+        ownerIdByExternal: input.ownerIdByExternal ?? {},
+        patientIdByExternal: input.patientIdByExternal ?? {},
+      },
+    })
+    .eq('id', input.batchId);
+
+  const { logDataMigrationAudit } = await import('@/lib/data-migration/audit');
+  await logDataMigrationAudit({
+    organizationId: session.organizationId,
+    userId: session.userId,
+    action: 'data_import.queued',
+    entityType: 'data_import_batches',
+    entityId: input.batchId,
+    newData: { entity: input.entity, storagePath },
+  });
+
+  return { batchId: input.batchId, storagePath, status: 'queued' as const };
 }

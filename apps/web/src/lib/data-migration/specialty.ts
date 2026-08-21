@@ -1,26 +1,54 @@
 import 'server-only';
 
 import {
+  HOSPITALIZATION_IMPORT_FIELDS,
   LAB_ORDER_IMPORT_FIELDS,
   PRESCRIPTION_IMPORT_FIELDS,
   SURGERY_IMPORT_FIELDS,
   mapRow,
   parseImportDate,
+  validateHospitalizationRows,
   validateLabOrderRows,
   validatePrescriptionRows,
   validateSurgeryRows,
   type DateLocale,
+  type HospitalizationImportRow,
+  type IdempotencyMode,
   type LabOrderImportRow,
   type PrescriptionImportRow,
   type SurgeryImportRow,
   type ValidationIssue,
 } from '@sincvete/shared';
+import type { MigrationDb } from '@/lib/data-migration/db';
 
-export type SpecialtyEntity = 'lab_orders' | 'surgeries' | 'prescriptions';
+export type SpecialtyEntity =
+  | 'lab_orders'
+  | 'surgeries'
+  | 'prescriptions'
+  | 'hospitalizations';
 
+async function findSpecialtyBySource(input: {
+  supabase: MigrationDb;
+  table: SpecialtyEntity;
+  organizationId: string;
+  sourceSystem: string;
+  sourceRecordId: string;
+}): Promise<string | null> {
+  if (!input.sourceRecordId || !input.sourceSystem) return null;
+  const { data } = await input.supabase
+    .from(input.table)
+    .select('id')
+    .eq('organization_id', input.organizationId)
+    .eq('source_system', input.sourceSystem)
+    .eq('source_record_id', input.sourceRecordId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  return data?.id ? String(data.id) : null;
+}
 export function fieldsForSpecialty(entity: SpecialtyEntity) {
   if (entity === 'lab_orders') return LAB_ORDER_IMPORT_FIELDS;
   if (entity === 'surgeries') return SURGERY_IMPORT_FIELDS;
+  if (entity === 'hospitalizations') return HOSPITALIZATION_IMPORT_FIELDS;
   return PRESCRIPTION_IMPORT_FIELDS;
 }
 
@@ -94,6 +122,30 @@ export function asPrescriptionRows(
   });
 }
 
+export function asHospitalizationRows(
+  rawRows: Record<string, string>[],
+  mapping: Record<string, string | null>
+): HospitalizationImportRow[] {
+  return rawRows.map((raw, index) => {
+    const mapped = mapRow(raw, mapping);
+    return {
+      rowNumber: index + 2,
+      externalHospitalizationId: mapped.external_hospitalization_id ?? '',
+      externalPatientId: mapped.external_patient_id ?? '',
+      admittedAt: mapped.admitted_at ?? '',
+      dischargedAt: mapped.discharged_at || null,
+      reason: mapped.reason ?? '',
+      diagnosis: mapped.diagnosis || null,
+      treatmentPlan: mapped.treatment_plan || null,
+      cage: mapped.cage || null,
+      status: mapped.status || null,
+      originalVeterinarian: mapped.original_veterinarian || null,
+      notes: mapped.notes || null,
+      sourceSystem: mapped.source_system || null,
+    };
+  });
+}
+
 export function validateSpecialtyRows(
   entity: SpecialtyEntity,
   rawRows: Record<string, string>[],
@@ -115,6 +167,16 @@ export function validateSpecialtyRows(
   if (entity === 'surgeries') {
     const rows = asSurgeryRows(rawRows, mapping);
     const issues = validateSurgeryRows(rows, { knownPatientExternalIds: known, locale });
+    const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
+    return {
+      issues,
+      readyCount: rows.filter((r) => !errorRows.has(r.rowNumber)).length,
+      rows,
+    };
+  }
+  if (entity === 'hospitalizations') {
+    const rows = asHospitalizationRows(rawRows, mapping);
+    const issues = validateHospitalizationRows(rows, { knownPatientExternalIds: known, locale });
     const errorRows = new Set(issues.filter((i) => i.severity === 'error').map((i) => i.rowNumber));
     return {
       issues,
@@ -181,8 +243,6 @@ function normalizeRxRoute(
   return 'otro';
 }
 
-import type { MigrationDb } from '@/lib/data-migration/db';
-
 export async function commitSpecialtySlice(input: {
   supabase: MigrationDb;
   entity: SpecialtyEntity;
@@ -195,14 +255,17 @@ export async function commitSpecialtySlice(input: {
   batchId: string;
   userId: string;
   sourceSystem?: string | null;
+  idempotencyMode?: IdempotencyMode;
   offset: number;
   limit: number;
-}): Promise<{ imported: number; failed: number; idMap: Record<string, string> }> {
+}): Promise<{ imported: number; failed: number; skipped: number; idMap: Record<string, string> }> {
   const slice = input.rows.slice(input.offset, input.offset + input.limit);
   const nowIso = new Date().toISOString();
   let imported = 0;
   let failed = 0;
+  let skipped = 0;
   const idMap: Record<string, string> = {};
+  const skipExisting = input.idempotencyMode === 'skip_existing_source';
 
   if (input.entity === 'lab_orders') {
     const rows = asLabOrderRows(slice, input.mapping).map((row, idx) => ({
@@ -215,6 +278,28 @@ export async function commitSpecialtySlice(input: {
       if (!patientId || !date.ok || !row.title.trim()) {
         failed += 1;
         continue;
+      }
+      const sourceSystem = row.sourceSystem ?? input.sourceSystem ?? '';
+      if (skipExisting) {
+        const existingId = await findSpecialtyBySource({
+          supabase: input.supabase,
+          table: 'lab_orders',
+          organizationId: input.organizationId,
+          sourceSystem,
+          sourceRecordId: row.externalLabOrderId,
+        });
+        if (existingId) {
+          idMap[row.externalLabOrderId] = existingId;
+          skipped += 1;
+          await input.supabase.from('data_import_id_map').insert({
+            batch_id: input.batchId,
+            organization_id: input.organizationId,
+            entity_type: 'lab_orders',
+            external_id: row.externalLabOrderId,
+            internal_id: existingId,
+          });
+          continue;
+        }
       }
       const { data: patient } = await input.supabase
         .from('patients')
@@ -284,7 +369,7 @@ export async function commitSpecialtySlice(input: {
         external_id: row.externalLabOrderId,
       });
     }
-    return { imported, failed, idMap };
+    return { imported, failed, skipped, idMap };
   }
 
   if (input.entity === 'surgeries') {
@@ -298,6 +383,28 @@ export async function commitSpecialtySlice(input: {
       if (!patientId || !date.ok || !row.procedureName.trim()) {
         failed += 1;
         continue;
+      }
+      const sourceSystem = row.sourceSystem ?? input.sourceSystem ?? '';
+      if (skipExisting) {
+        const existingId = await findSpecialtyBySource({
+          supabase: input.supabase,
+          table: 'surgeries',
+          organizationId: input.organizationId,
+          sourceSystem,
+          sourceRecordId: row.externalSurgeryId,
+        });
+        if (existingId) {
+          idMap[row.externalSurgeryId] = existingId;
+          skipped += 1;
+          await input.supabase.from('data_import_id_map').insert({
+            batch_id: input.batchId,
+            organization_id: input.organizationId,
+            entity_type: 'surgeries',
+            external_id: row.externalSurgeryId,
+            internal_id: existingId,
+          });
+          continue;
+        }
       }
       const { data: patient } = await input.supabase
         .from('patients')
@@ -351,7 +458,108 @@ export async function commitSpecialtySlice(input: {
         external_id: row.externalSurgeryId,
       });
     }
-    return { imported, failed, idMap };
+    return { imported, failed, skipped, idMap };
+  }
+
+  if (input.entity === 'hospitalizations') {
+    const rows = asHospitalizationRows(slice, input.mapping).map((row, idx) => ({
+      ...row,
+      rowNumber: input.offset + idx + 2,
+    }));
+    for (const row of rows) {
+      const patientId = input.patientIdByExternal[row.externalPatientId];
+      const admitted = parseImportDate(row.admittedAt, input.locale);
+      const discharged = row.dischargedAt ? parseImportDate(row.dischargedAt, input.locale) : null;
+      if (!patientId || !admitted.ok || !row.reason.trim() || (row.dischargedAt && (!discharged || !discharged.ok))) {
+        failed += 1;
+        continue;
+      }
+      const sourceSystem = row.sourceSystem ?? input.sourceSystem ?? '';
+      if (skipExisting) {
+        const existingId = await findSpecialtyBySource({
+          supabase: input.supabase,
+          table: 'hospitalizations',
+          organizationId: input.organizationId,
+          sourceSystem,
+          sourceRecordId: row.externalHospitalizationId,
+        });
+        if (existingId) {
+          idMap[row.externalHospitalizationId] = existingId;
+          skipped += 1;
+          await input.supabase.from('data_import_id_map').insert({
+            batch_id: input.batchId,
+            organization_id: input.organizationId,
+            entity_type: 'hospitalizations',
+            external_id: row.externalHospitalizationId,
+            internal_id: existingId,
+          });
+          continue;
+        }
+      }
+      const { data: patient } = await input.supabase
+        .from('patients')
+        .select('id, owner_id')
+        .eq('id', patientId)
+        .eq('organization_id', input.organizationId)
+        .maybeSingle();
+      if (!patient) {
+        failed += 1;
+        continue;
+      }
+      // Historical imports default to discharged ('alta') to avoid unique active-stay conflicts.
+      const statusRaw = (row.status ?? '').trim().toLowerCase();
+      const status =
+        discharged && discharged.ok
+          ? 'alta'
+          : statusRaw === 'fallecido'
+            ? 'fallecido'
+            : statusRaw === 'observacion' || statusRaw === 'observación'
+              ? 'observacion'
+              : 'alta';
+      const { data, error } = await input.supabase
+        .from('hospitalizations')
+        .insert({
+          organization_id: input.organizationId,
+          branch_id: input.branchId,
+          patient_id: patient.id,
+          owner_id: patient.owner_id,
+          veterinarian_id: input.userId,
+          status,
+          admitted_at: `${admitted.isoDate}T12:00:00.000Z`,
+          discharged_at:
+            discharged && discharged.ok ? `${discharged.isoDate}T12:00:00.000Z` : `${admitted.isoDate}T18:00:00.000Z`,
+          cage: row.cage,
+          reason: row.reason.trim().slice(0, 500),
+          diagnosis: row.diagnosis,
+          treatment_plan: row.treatmentPlan,
+          notes: [row.notes, row.originalVeterinarian ? `Profesional original: ${row.originalVeterinarian}` : null]
+            .filter(Boolean)
+            .join('\n') || null,
+          import_batch_id: input.batchId,
+          source_system: row.sourceSystem ?? input.sourceSystem,
+          source_record_id: row.externalHospitalizationId,
+          original_created_at: `${admitted.isoDate}T12:00:00.000Z`,
+          original_professional_name: row.originalVeterinarian,
+          imported_at: nowIso,
+          imported_by: input.userId,
+        })
+        .select('id')
+        .single();
+      if (error || !data) {
+        failed += 1;
+        continue;
+      }
+      imported += 1;
+      idMap[row.externalHospitalizationId] = data.id;
+      await input.supabase.from('data_import_created_rows').insert({
+        batch_id: input.batchId,
+        organization_id: input.organizationId,
+        entity_type: 'hospitalizations',
+        entity_id: data.id,
+        external_id: row.externalHospitalizationId,
+      });
+    }
+    return { imported, failed, skipped, idMap };
   }
 
   const rows = asPrescriptionRows(slice, input.mapping).map((row, idx) => ({
@@ -364,6 +572,28 @@ export async function commitSpecialtySlice(input: {
     if (!patientId || !date.ok || !row.medicationName || !row.dose || !row.frequency) {
       failed += 1;
       continue;
+    }
+    const sourceSystem = row.sourceSystem ?? input.sourceSystem ?? '';
+    if (skipExisting) {
+      const existingId = await findSpecialtyBySource({
+        supabase: input.supabase,
+        table: 'prescriptions',
+        organizationId: input.organizationId,
+        sourceSystem,
+        sourceRecordId: row.externalPrescriptionId,
+      });
+      if (existingId) {
+        idMap[row.externalPrescriptionId] = existingId;
+        skipped += 1;
+        await input.supabase.from('data_import_id_map').insert({
+          batch_id: input.batchId,
+          organization_id: input.organizationId,
+          entity_type: 'prescriptions',
+          external_id: row.externalPrescriptionId,
+          internal_id: existingId,
+        });
+        continue;
+      }
     }
     const { data: patient } = await input.supabase
       .from('patients')
@@ -425,5 +655,5 @@ export async function commitSpecialtySlice(input: {
       external_id: row.externalPrescriptionId,
     });
   }
-  return { imported, failed, idMap };
+  return { imported, failed, skipped, idMap };
 }

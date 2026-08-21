@@ -55,6 +55,7 @@ export function UserManual({ toolbar }: { toolbar?: ReactNode }) {
         <a href="#cobros">9. Facturación y caja</a>
         <a href="#ops">10. Reportes, avisos e IA</a>
         <a href="#config">11. Configuración y plan</a>
+        <a href="#import-export">11b. Importar / Exportar</a>
         <a href="#roles">12. Roles y portal del tutor</a>
       </nav>
 
@@ -298,12 +299,56 @@ export function UserManual({ toolbar }: { toolbar?: ReactNode }) {
               <li>
                 <strong>Roles:</strong> qué puede hacer cada perfil.
               </li>
+              <li>
+                <strong>Importar / Exportar:</strong> migración de datos (owner/admin, según plan).
+              </li>
             </ul>
             <div className="sv-callout">
               Si ves un aviso amarillo (trial por vencer, pago pendiente, cupo de asientos o de IA), abrí Plan. La
               clínica sigue operativa; el aviso indica qué hay que renovar o ampliar.
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="sv-section" id="import-export">
+        <h2>11b. Importar / Exportar datos</h2>
+        <p>
+          En <strong>Configuración → Importar / Exportar</strong> podés migrar propietarios, pacientes, historias,
+          vacunas, laboratorio, cirugías, recetas, internaciones y adjuntos (ZIP SyncVete).
+        </p>
+        <ul className="sv-steps">
+          <li>
+            <strong>Orden recomendado:</strong> propietarios → pacientes → historias → vacunas → especialidades →
+            adjuntos.
+          </li>
+          <li>
+            <strong>Dry-run:</strong> validá antes de confirmar. Descargá el reporte CSV si hay avisos o errores.
+          </li>
+          <li>
+            <strong>Conflictos:</strong> no se pisan datos en silencio: elegí crear, vincular, omitir o revisar.
+          </li>
+          <li>
+            <strong>Idempotencia:</strong> podés omitir filas que ya existan por <em>source_record_id</em>.
+          </li>
+          <li>
+            <strong>Cola:</strong> lotes grandes se encolan; cancelá o reintentá desde el historial. Una sola
+            importación activa por clínica.
+          </li>
+          <li>
+            <strong>Avisos:</strong> al terminar (o fallar) import/export recibís una notificación in-app
+            con enlace a esta pantalla.
+          </li>
+          <li>
+            <strong>Límites:</strong> CSV hasta 25 MB; ZIP de adjuntos hasta 80 MB.
+          </li>
+          <li>
+            <strong>Rollback:</strong> solo revierte filas creadas por ese lote (no toca datos previos).
+          </li>
+        </ul>
+        <div className="sv-callout">
+          Exportá CSV/JSON/XLSX/ZIP/PDF con rango de fechas. Las recetas y el laboratorio incluyen ítems. Los
+          artefactos vencen y se limpian automáticamente.
         </div>
       </section>
 

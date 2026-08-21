@@ -11,6 +11,7 @@ export const IMPORT_TYPES = [
   'lab_orders',
   'surgeries',
   'prescriptions',
+  'hospitalizations',
   'attachments',
   'full_migration',
   'migration_zip',
@@ -25,6 +26,7 @@ export const IMPORT_TYPE_LABELS: Record<ImportType, string> = {
   lab_orders: 'Laboratorio',
   surgeries: 'Cirugías',
   prescriptions: 'Recetas / farmacia',
+  hospitalizations: 'Internaciones',
   attachments: 'Adjuntos (ZIP)',
   full_migration: 'Migración completa (guiada)',
   migration_zip: 'Paquete ZIP SyncVete',
@@ -38,15 +40,84 @@ export const IMPORT_ENTITY_TYPES = [
   'lab_orders',
   'surgeries',
   'prescriptions',
+  'hospitalizations',
 ] as const;
 export type ImportEntityType = (typeof IMPORT_ENTITY_TYPES)[number];
 
 export const DEFAULT_IMPORT_CHUNK_SIZE = 50;
 
+/** Hard caps for clinic uploads (fase 11). */
+export const MAX_IMPORT_CSV_BYTES = 25 * 1024 * 1024;
+export const MAX_IMPORT_ZIP_BYTES = 80 * 1024 * 1024;
+export const MAX_EXPORT_ARTIFACT_BYTES = 200 * 1024 * 1024;
+
+/** Ordered steps for guided full clinic migration (fase 6). */
+export const FULL_MIGRATION_STEPS = [
+  'owners',
+  'patients',
+  'clinical_entries',
+  'vaccinations',
+  'lab_orders',
+  'surgeries',
+  'prescriptions',
+  'hospitalizations',
+  'attachments',
+] as const;
+export type FullMigrationStep = (typeof FULL_MIGRATION_STEPS)[number];
+
+export const FULL_MIGRATION_STEP_LABELS: Record<FullMigrationStep, string> = {
+  owners: '1. Propietarios',
+  patients: '2. Pacientes',
+  clinical_entries: '3. Historias clínicas',
+  vaccinations: '4. Vacunaciones',
+  lab_orders: '5. Laboratorio',
+  surgeries: '6. Cirugías',
+  prescriptions: '7. Recetas',
+  hospitalizations: '8. Internaciones',
+  attachments: '9. Adjuntos ZIP',
+};
+
+export function nextFullMigrationStep(current: FullMigrationStep): FullMigrationStep | null {
+  const idx = FULL_MIGRATION_STEPS.indexOf(current);
+  if (idx < 0 || idx >= FULL_MIGRATION_STEPS.length - 1) return null;
+  return FULL_MIGRATION_STEPS[idx + 1] ?? null;
+}
+
+export function previousFullMigrationStep(current: FullMigrationStep): FullMigrationStep | null {
+  const idx = FULL_MIGRATION_STEPS.indexOf(current);
+  if (idx <= 0) return null;
+  return FULL_MIGRATION_STEPS[idx - 1] ?? null;
+}
+
+export const DATA_MIGRATION_AUDIT_ACTIONS = {
+  importCompleted: 'data_import.completed',
+  importRolledBack: 'data_import.rolled_back',
+  importQueued: 'data_import.queued',
+  importCancelled: 'data_import.cancelled',
+  importRetried: 'data_import.retried',
+  exportCompleted: 'data_export.completed',
+  exportQueued: 'data_export.queued',
+  exportCancelled: 'data_export.cancelled',
+  exportDownloaded: 'data_export.downloaded',
+} as const;
+
+export const IDEMPOTENCY_MODES = ['off', 'skip_existing_source'] as const;
+export type IdempotencyMode = (typeof IDEMPOTENCY_MODES)[number];
+
+export const IDEMPOTENCY_MODE_LABELS: Record<IdempotencyMode, string> = {
+  off: 'Sin idempotencia (crear según decisiones)',
+  skip_existing_source: 'Omitir si ya existe source_record_id en el tenant',
+};
+
 export const EXPORT_TYPES = [
   'owners',
   'patients',
   'clinical_entries',
+  'vaccinations',
+  'lab_orders',
+  'surgeries',
+  'prescriptions',
+  'hospitalizations',
   'patient_clinical',
   'full_clinic',
 ] as const;
@@ -56,9 +127,40 @@ export const EXPORT_TYPE_LABELS: Record<ExportType, string> = {
   owners: 'Propietarios',
   patients: 'Pacientes',
   clinical_entries: 'Historias clínicas',
+  vaccinations: 'Vacunaciones',
+  lab_orders: 'Laboratorio (con ítems)',
+  surgeries: 'Cirugías',
+  prescriptions: 'Recetas (con ítems)',
+  hospitalizations: 'Internaciones',
   patient_clinical: 'Historia de un paciente',
   full_clinic: 'Exportación completa de la clínica',
 };
+
+export const SPECIALTY_EXPORT_TYPES = [
+  'lab_orders',
+  'surgeries',
+  'prescriptions',
+  'hospitalizations',
+] as const;
+export type SpecialtyExportType = (typeof SPECIALTY_EXPORT_TYPES)[number];
+
+export function isSpecialtyExportType(value: string): value is SpecialtyExportType {
+  return (SPECIALTY_EXPORT_TYPES as readonly string[]).includes(value);
+}
+
+/** Inclusive YYYY-MM-DD range; returns null bounds when empty/invalid. */
+export function normalizeExportDateRange(input?: {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+}): { dateFrom: string | null; dateTo: string | null } {
+  const iso = /^\d{4}-\d{2}-\d{2}$/;
+  const dateFrom = input?.dateFrom && iso.test(input.dateFrom) ? input.dateFrom : null;
+  const dateTo = input?.dateTo && iso.test(input.dateTo) ? input.dateTo : null;
+  if (dateFrom && dateTo && dateFrom > dateTo) {
+    return { dateFrom: dateTo, dateTo: dateFrom };
+  }
+  return { dateFrom, dateTo };
+}
 
 export const EXPORT_FORMATS = ['csv', 'json', 'xlsx', 'pdf', 'zip'] as const;
 export type ExportFormat = (typeof EXPORT_FORMATS)[number];
@@ -68,6 +170,13 @@ export type DateLocale = (typeof DATE_LOCALES)[number];
 
 export const CONFLICT_POLICIES = ['create', 'link', 'skip', 'review'] as const;
 export type ConflictPolicy = (typeof CONFLICT_POLICIES)[number];
+
+export const CONFLICT_DECISION_LABELS: Record<ConflictPolicy, string> = {
+  create: 'Crear nuevo',
+  link: 'Vincular existente',
+  skip: 'Omitir fila',
+  review: 'Revisar',
+};
 
 export type ImportFieldDef = {
   key: string;
@@ -519,6 +628,73 @@ export const PRESCRIPTION_IMPORT_FIELDS: ImportFieldDef[] = [
   },
 ];
 
+export const HOSPITALIZATION_IMPORT_FIELDS: ImportFieldDef[] = [
+  {
+    key: 'external_hospitalization_id',
+    label: 'ID externo internación',
+    required: true,
+    aliases: ['external_hospitalization_id', 'hospitalization_id', 'id_internacion', 'id_internación'],
+  },
+  {
+    key: 'external_patient_id',
+    label: 'ID externo paciente',
+    required: true,
+    aliases: ['external_patient_id', 'patient_id', 'id_paciente'],
+  },
+  {
+    key: 'admitted_at',
+    label: 'Fecha ingreso',
+    required: true,
+    aliases: ['admitted_at', 'fecha_ingreso', 'ingreso', 'admission_date'],
+  },
+  {
+    key: 'discharged_at',
+    label: 'Fecha alta',
+    aliases: ['discharged_at', 'fecha_alta', 'alta', 'discharge_date'],
+  },
+  {
+    key: 'reason',
+    label: 'Motivo',
+    required: true,
+    aliases: ['reason', 'motivo', 'reason_for_admission'],
+  },
+  {
+    key: 'diagnosis',
+    label: 'Diagnóstico',
+    aliases: ['diagnosis', 'diagnostico', 'diagnóstico'],
+  },
+  {
+    key: 'treatment_plan',
+    label: 'Plan de tratamiento',
+    aliases: ['treatment_plan', 'tratamiento', 'plan'],
+  },
+  {
+    key: 'cage',
+    label: 'Jaula / box',
+    aliases: ['cage', 'jaula', 'box'],
+  },
+  {
+    key: 'status',
+    label: 'Estado',
+    aliases: ['status', 'estado'],
+  },
+  {
+    key: 'original_veterinarian',
+    label: 'Profesional original',
+    aliases: ['original_veterinarian', 'veterinario', 'profesional'],
+  },
+  {
+    key: 'notes',
+    label: 'Notas',
+    aliases: ['notes', 'notas', 'observaciones'],
+  },
+  {
+    key: 'source_system',
+    label: 'Sistema origen',
+    aliases: ['source_system', 'sistema', 'origen'],
+  },
+];
+
 export function normalizeHeader(value: string): string {
   return value
     .normalize('NFD')
@@ -672,6 +848,15 @@ export type ValidationIssue = {
   severity: 'error' | 'warning';
   recommendedAction?: string;
   sourceReference?: string;
+  /** Existing SyncVete row to link when decision=link */
+  matchInternalId?: string;
+};
+
+export type RowConflictDecision = {
+  rowNumber: number;
+  decision: ConflictPolicy;
+  linkInternalId?: string | null;
+  externalId?: string | null;
 };
 
 export type OwnerImportRow = {
@@ -734,7 +919,12 @@ export function mapRow(
 
 export function validateOwnerRows(
   rows: OwnerImportRow[],
-  options?: { existingDocuments?: Set<string>; existingEmails?: Set<string> }
+  options?: {
+    existingDocuments?: Set<string>;
+    existingEmails?: Set<string>;
+    documentToId?: Map<string, string>;
+    emailToId?: Map<string, string>;
+  }
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const seenExternal = new Set<string>();
@@ -794,6 +984,7 @@ export function validateOwnerRows(
         severity: 'warning',
         recommendedAction: 'Elegir vincular o crear nuevo',
         sourceReference: row.documentNumber,
+        matchInternalId: options.documentToId?.get(normalizeDocument(row.documentNumber)),
       });
     }
     if (row.email && options?.existingEmails?.has(row.email.toLowerCase())) {
@@ -805,6 +996,7 @@ export function validateOwnerRows(
         message: 'Posible duplicado por email',
         severity: 'warning',
         recommendedAction: 'Elegir vincular o crear nuevo',
+        matchInternalId: options.emailToId?.get(row.email.toLowerCase()),
       });
     }
   }
@@ -816,6 +1008,7 @@ export function validatePatientRows(
   options?: {
     knownOwnerExternalIds?: Set<string>;
     existingMicrochips?: Set<string>;
+    microchipToId?: Map<string, string>;
     locale?: DateLocale;
   }
 ): ValidationIssue[] {
@@ -911,6 +1104,7 @@ export function validatePatientRows(
         message: 'Posible duplicado por microchip',
         severity: 'warning',
         recommendedAction: 'Vincular a paciente existente o revisar',
+        matchInternalId: options.microchipToId?.get(row.microchip),
       });
     }
   }
@@ -1208,6 +1402,7 @@ export function buildSampleMigrationManifest(sourceSystem = 'VetLegacy'): Migrat
       labOrders: 1,
       surgeries: 1,
       prescriptions: 1,
+      hospitalizations: 1,
     },
   };
 }
@@ -1590,8 +1785,198 @@ export function guessMimeFromFilename(filename: string): string | null {
   return null;
 }
 
+export type HospitalizationImportRow = {
+  rowNumber: number;
+  externalHospitalizationId: string;
+  externalPatientId: string;
+  admittedAt: string;
+  dischargedAt: string | null;
+  reason: string;
+  diagnosis: string | null;
+  treatmentPlan: string | null;
+  cage: string | null;
+  status: string | null;
+  originalVeterinarian: string | null;
+  notes: string | null;
+  sourceSystem: string | null;
+};
+
+export function validateHospitalizationRows(
+  rows: HospitalizationImportRow[],
+  options?: { knownPatientExternalIds?: Set<string>; locale?: DateLocale }
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const locale = options?.locale ?? 'es-AR';
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (!row.externalHospitalizationId) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'hospitalizations',
+        field: 'external_hospitalization_id',
+        code: 'required',
+        message: 'Falta ID externo de internación',
+        severity: 'error',
+      });
+    } else if (seen.has(row.externalHospitalizationId)) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'hospitalizations',
+        field: 'external_hospitalization_id',
+        code: 'duplicate_in_file',
+        message: 'ID externo duplicado en el archivo',
+        severity: 'error',
+      });
+    } else {
+      seen.add(row.externalHospitalizationId);
+    }
+    pushMissingPatient(
+      issues,
+      row.rowNumber,
+      'hospitalizations',
+      row.externalPatientId,
+      options?.knownPatientExternalIds
+    );
+    if (!row.reason || row.reason.trim().length < 2) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'hospitalizations',
+        field: 'reason',
+        code: 'required',
+        message: 'Falta motivo de internación',
+        severity: 'error',
+      });
+    }
+    if (!parseImportDate(row.admittedAt, locale).ok) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'hospitalizations',
+        field: 'admitted_at',
+        code: 'invalid_date',
+        message: 'Fecha de ingreso inválida',
+        severity: 'error',
+      });
+    }
+    if (row.dischargedAt && !parseImportDate(row.dischargedAt, locale).ok) {
+      issues.push({
+        rowNumber: row.rowNumber,
+        entityType: 'hospitalizations',
+        field: 'discharged_at',
+        code: 'invalid_date',
+        message: 'Fecha de alta inválida',
+        severity: 'error',
+      });
+    }
+  }
+  return issues;
+}
+
+export function buildHospitalizationTemplateCsv(): string {
+  return toCsv(HOSPITALIZATION_IMPORT_FIELDS.map((f) => f.key), [
+    {
+      external_hospitalization_id: 'HOSP-001',
+      external_patient_id: 'PAT-001',
+      admitted_at: '2024-09-01',
+      discharged_at: '2024-09-05',
+      reason: 'Gastroenteritis',
+      diagnosis: 'GEA',
+      treatment_plan: 'Fluidoterapia',
+      cage: 'B2',
+      status: 'alta',
+      original_veterinarian: 'Dra. Garcia',
+      notes: '',
+      source_system: 'VetLegacy',
+    },
+  ]);
+}
+
+/** Default unresolved duplicate warnings to review (never silent create/link). */
+export function defaultDecisionForIssue(issue: ValidationIssue): ConflictPolicy {
+  if (issue.code !== 'possible_duplicate') return 'create';
+  return 'review';
+}
+
+export function unresolvedConflictRows(
+  issues: ValidationIssue[],
+  decisions: Record<number, RowConflictDecision>
+): number[] {
+  const rows = new Set<number>();
+  for (const issue of issues) {
+    if (issue.code !== 'possible_duplicate') continue;
+    const decision = decisions[issue.rowNumber]?.decision ?? 'review';
+    if (decision === 'review') rows.add(issue.rowNumber);
+    if (decision === 'link' && !decisions[issue.rowNumber]?.linkInternalId && !issue.matchInternalId) {
+      rows.add(issue.rowNumber);
+    }
+  }
+  return [...rows].sort((a, b) => a - b);
+}
+
 export function summarizeIssues(issues: ValidationIssue[]) {
   const errors = issues.filter((i) => i.severity === 'error').length;
   const warnings = issues.filter((i) => i.severity === 'warning').length;
   return { errors, warnings };
+}
+
+export function buildValidationReportCsv(issues: ValidationIssue[]): string {
+  return toCsv(
+    [
+      'row_number',
+      'entity_type',
+      'field',
+      'code',
+      'severity',
+      'message',
+      'recommended_action',
+      'source_reference',
+      'match_internal_id',
+    ],
+    issues.map((issue) => ({
+      row_number: issue.rowNumber,
+      entity_type: issue.entityType,
+      field: issue.field ?? '',
+      code: issue.code,
+      severity: issue.severity,
+      message: issue.message,
+      recommended_action: issue.recommendedAction ?? '',
+      source_reference: issue.sourceReference ?? '',
+      match_internal_id: issue.matchInternalId ?? '',
+    }))
+  );
+}
+
+export function buildBatchErrorsReportCsv(
+  rows: Array<{
+    rowNumber?: number | null;
+    entityType?: string | null;
+    errorCode?: string | null;
+    errorMessage: string;
+    fieldName?: string | null;
+    sourceReference?: string | null;
+    severity?: string | null;
+    recommendedAction?: string | null;
+  }>
+): string {
+  return toCsv(
+    [
+      'row_number',
+      'entity_type',
+      'error_code',
+      'severity',
+      'error_message',
+      'field_name',
+      'source_reference',
+      'recommended_action',
+    ],
+    rows.map((row) => ({
+      row_number: row.rowNumber ?? '',
+      entity_type: row.entityType ?? '',
+      error_code: row.errorCode ?? '',
+      severity: row.severity ?? '',
+      error_message: row.errorMessage,
+      field_name: row.fieldName ?? '',
+      source_reference: row.sourceReference ?? '',
+      recommended_action: row.recommendedAction ?? '',
+    }))
+  );
 }

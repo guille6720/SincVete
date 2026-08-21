@@ -4,6 +4,7 @@ import {
   CLINICAL_IMAGE_MAX_BYTES,
   DEFAULT_IMPORT_CHUNK_SIZE,
   FEATURES,
+  MAX_IMPORT_ZIP_BYTES,
   buildClinicalImageStoragePath,
   bytesToStorageMb,
   chunkRange,
@@ -15,7 +16,7 @@ import {
 import JSZip from 'jszip';
 import { createServerClient } from '@/lib/supabase/server';
 import { requirePermission } from '@/lib/permissions';
-import { canUseFeature, consumeMeteredFeature } from '@/lib/entitlements';
+import { canUseFeature, consumeMeteredFeature, getMeteredUsageMeters } from '@/lib/entitlements';
 import { migrationDb } from '@/lib/data-migration/db';
 
 function kindFromMime(mime: string): ClinicalImageKind {
@@ -33,6 +34,11 @@ export async function importZipAttachmentsChunk(input: {
   chunkSize?: number;
 }) {
   const session = await requirePermission('data:import');
+  if (input.zipBuffer.byteLength > MAX_IMPORT_ZIP_BYTES) {
+    throw new Error(
+      `El ZIP supera el máximo permitido (${Math.round(MAX_IMPORT_ZIP_BYTES / (1024 * 1024))} MB)`
+    );
+  }
   const imagesOk = await canUseFeature({
     organizationId: session.organizationId,
     featureKey: FEATURES.CLINICAL_IMAGES,
@@ -62,6 +68,33 @@ export async function importZipAttachmentsChunk(input: {
     input.chunkSize ?? DEFAULT_IMPORT_CHUNK_SIZE
   );
   const slice = refs.slice(range.offset, range.end);
+
+  if (range.offset === 0 && refs.length > 0) {
+    let estimatedBytes = 0;
+    for (const ref of refs) {
+      const entry = zip.file(ref.zipPath);
+      if (!entry) continue;
+      const raw = entry as unknown as { _data?: { uncompressedSize?: number } };
+      const declared = Number(raw._data?.uncompressedSize ?? 0);
+      if (declared > 0) {
+        estimatedBytes += declared;
+        continue;
+      }
+      const bytes = await entry.async('uint8array');
+      estimatedBytes += bytes.byteLength;
+    }
+    const meters = await getMeteredUsageMeters(session.organizationId);
+    const storage = meters.find((m) => m.featureKey === FEATURES.STORAGE_MAX_MB);
+    if (storage && storage.limit !== null) {
+      const neededMb = bytesToStorageMb(estimatedBytes);
+      const remaining = Math.max(0, storage.limit - storage.used);
+      if (neededMb > remaining) {
+        throw new Error(
+          `Storage insuficiente: el ZIP necesita ~${neededMb} MB y quedan ${remaining} MB del plan`
+        );
+      }
+    }
+  }
 
   await supabase
     .from('data_import_batches')

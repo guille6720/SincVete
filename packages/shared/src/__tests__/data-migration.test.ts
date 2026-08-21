@@ -11,6 +11,17 @@ import {
   parseImportDate,
   parseMigrationAttachmentPath,
   parseMigrationManifest,
+  normalizeExportDateRange,
+  isSpecialtyExportType,
+  nextFullMigrationStep,
+  previousFullMigrationStep,
+  FULL_MIGRATION_STEPS,
+  buildValidationReportCsv,
+  buildBatchErrorsReportCsv,
+  unresolvedConflictRows,
+  EXPORT_TYPE_LABELS,
+  MAX_IMPORT_CSV_BYTES,
+  MAX_IMPORT_ZIP_BYTES,
   validateClinicalRows,
   validateLabOrderRows,
   validateOwnerRows,
@@ -306,5 +317,81 @@ describe('data-migration specialty + chunks', () => {
       nextOffset: 100,
       total: 120,
     });
+  });
+
+  it('blocks unresolved conflict decisions', () => {
+    const issues = [
+      {
+        rowNumber: 2,
+        entityType: 'owners',
+        code: 'possible_duplicate',
+        message: 'dup',
+        severity: 'warning' as const,
+        matchInternalId: 'uuid-1',
+      },
+    ];
+    expect(unresolvedConflictRows(issues, {})).toEqual([2]);
+    expect(
+      unresolvedConflictRows(issues, {
+        2: { rowNumber: 2, decision: 'link', linkInternalId: 'uuid-1' },
+      })
+    ).toEqual([]);
+  });
+
+  it('normalizes export date ranges', () => {
+    expect(normalizeExportDateRange({ dateFrom: '2024-05-01', dateTo: '2024-01-01' })).toEqual({
+      dateFrom: '2024-01-01',
+      dateTo: '2024-05-01',
+    });
+    expect(isSpecialtyExportType('lab_orders')).toBe(true);
+    expect(isSpecialtyExportType('owners')).toBe(false);
+  });
+
+  it('orders full migration guide steps', () => {
+    expect(nextFullMigrationStep('owners')).toBe('patients');
+    expect(nextFullMigrationStep('attachments')).toBeNull();
+    expect(previousFullMigrationStep('patients')).toBe('owners');
+    expect(FULL_MIGRATION_STEPS).toHaveLength(9);
+  });
+
+  it('builds validation report csv', () => {
+    const csv = buildValidationReportCsv([
+      {
+        rowNumber: 2,
+        entityType: 'owners',
+        code: 'possible_duplicate',
+        message: 'dup',
+        severity: 'warning',
+        field: 'email',
+        matchInternalId: 'abc',
+      },
+    ]);
+    expect(csv).toContain('row_number');
+    expect(csv).toContain('possible_duplicate');
+    expect(csv).toContain('abc');
+  });
+
+  it('builds batch errors report csv', () => {
+    const csv = buildBatchErrorsReportCsv([
+      {
+        rowNumber: 3,
+        entityType: 'patients',
+        errorCode: 'invalid_date',
+        errorMessage: 'fecha inválida',
+        severity: 'error',
+      },
+    ]);
+    expect(csv).toContain('error_code');
+    expect(csv).toContain('invalid_date');
+  });
+
+  it('labels specialty exports with items', () => {
+    expect(EXPORT_TYPE_LABELS.prescriptions).toMatch(/ítems/i);
+    expect(EXPORT_TYPE_LABELS.lab_orders).toMatch(/ítems/i);
+  });
+
+  it('defines upload size caps', () => {
+    expect(MAX_IMPORT_CSV_BYTES).toBe(25 * 1024 * 1024);
+    expect(MAX_IMPORT_ZIP_BYTES).toBe(80 * 1024 * 1024);
   });
 });

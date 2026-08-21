@@ -1,29 +1,49 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
+  CONFLICT_DECISION_LABELS,
   DEFAULT_IMPORT_CHUNK_SIZE,
   EXPORT_TYPE_LABELS,
+  FULL_MIGRATION_STEP_LABELS,
+  FULL_MIGRATION_STEPS,
+  IDEMPOTENCY_MODE_LABELS,
   IMPORT_TYPE_LABELS,
+  nextFullMigrationStep,
+  type ConflictPolicy,
   type ExportFormat,
   type ExportType,
+  type FullMigrationStep,
+  type IdempotencyMode,
   type ImportType,
+  type RowConflictDecision,
   type ValidationIssue,
 } from '@sincvete/shared';
 import {
   commitDataImport,
   convertSpreadsheetToCsvAction,
+  cancelDataExportJobAction,
+  cancelDataImportBatchAction,
+  downloadExportArtifactAction,
+  downloadImportBatchErrorsAction,
   downloadImportTemplate,
   downloadSampleMigrationZipAction,
+  downloadValidationReportAction,
+  getDataMigrationIntegrityAction,
   importZipAttachmentsAction,
   inspectMigrationZipAction,
   listDataExportJobsAction,
   listDataImportBatchesAction,
+  pollImportBatchProgressAction,
+  queueClinicExportAction,
+  queueDataImportAction,
+  retryDataImportBatchAction,
   rollbackDataImportAction,
   runClinicExportAction,
   startDataImport,
   validateDataImport,
 } from '@/actions/data-migration';
+import type { DataMigrationIntegrity } from '@/actions/data-migration';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -69,6 +89,7 @@ export function DataMigrationPanel({
 
   const [importType, setImportType] = useState<ImportType>('owners');
   const [sourceSystem, setSourceSystem] = useState('VetLegacy');
+  const [idempotencyMode, setIdempotencyMode] = useState<IdempotencyMode>('off');
   const [csvText, setCsvText] = useState('');
   const [sourceFilename, setSourceFilename] = useState('upload.csv');
   const [batchId, setBatchId] = useState<string | null>(null);
@@ -92,30 +113,39 @@ export function DataMigrationPanel({
     labOrdersCsv: string | null;
     surgeriesCsv: string | null;
     prescriptionsCsv: string | null;
+    hospitalizationsCsv: string | null;
   } | null>(null);
   const [zipBase64, setZipBase64] = useState<string | null>(null);
   const [progressLabel, setProgressLabel] = useState<string | null>(null);
+  const [rowDecisions, setRowDecisions] = useState<Record<number, RowConflictDecision>>({});
 
   const [exportType, setExportType] = useState<ExportType>('owners');
   const [exportFormat, setExportFormat] = useState<ExportFormat>('csv');
   const [patientId, setPatientId] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [queuedBatchId, setQueuedBatchId] = useState<string | null>(null);
+  const [guideStep, setGuideStep] = useState<FullMigrationStep>('owners');
 
   const [importHistory, setImportHistory] = useState<Array<Record<string, unknown>>>([]);
   const [exportHistory, setExportHistory] = useState<Array<Record<string, unknown>>>([]);
+  const [integrity, setIntegrity] = useState<DataMigrationIntegrity | null>(null);
 
   const entity = useMemo(() => {
+    if (importType === 'full_migration' || importType === 'migration_zip') {
+      if (guideStep === 'attachments') return 'owners' as const;
+      return guideStep;
+    }
     if (importType === 'patients') return 'patients' as const;
     if (importType === 'clinical_entries') return 'clinical_entries' as const;
     if (importType === 'vaccinations') return 'vaccinations' as const;
     if (importType === 'lab_orders') return 'lab_orders' as const;
     if (importType === 'surgeries') return 'surgeries' as const;
     if (importType === 'prescriptions') return 'prescriptions' as const;
+    if (importType === 'hospitalizations') return 'hospitalizations' as const;
     if (importType === 'attachments') return 'owners' as const;
-    if (importType === 'full_migration' || importType === 'migration_zip') {
-      return 'owners' as const;
-    }
     return 'owners' as const;
-  }, [importType]);
+  }, [importType, guideStep]);
 
   async function onDownloadTemplate(
     kind:
@@ -126,6 +156,7 @@ export function DataMigrationPanel({
       | 'lab_orders'
       | 'surgeries'
       | 'prescriptions'
+      | 'hospitalizations'
   ) {
     setMessage(null);
     const form = new FormData();
@@ -196,10 +227,11 @@ export function DataMigrationPanel({
         labOrdersCsv: result.data.labOrdersCsv,
         surgeriesCsv: result.data.surgeriesCsv,
         prescriptionsCsv: result.data.prescriptionsCsv,
+        hospitalizationsCsv: result.data.hospitalizationsCsv,
       });
       const summary = result.data.summary;
       setMessage(
-        `ZIP SyncVete · owners ${summary.owners} · patients ${summary.patients} · clinical ${summary.clinicalRecords} · vacunas ${summary.vaccinations} · lab ${summary.labOrders} · cirugías ${summary.surgeries} · recetas ${summary.prescriptions} · adjuntos ${summary.attachments}`
+        `ZIP SyncVete · owners ${summary.owners} · patients ${summary.patients} · clinical ${summary.clinicalRecords} · vacunas ${summary.vaccinations} · lab ${summary.labOrders} · cirugías ${summary.surgeries} · recetas ${summary.prescriptions} · internaciones ${summary.hospitalizations} · adjuntos ${summary.attachments}`
       );
       if (result.data.ownersCsv) {
         setImportType('owners');
@@ -235,6 +267,7 @@ export function DataMigrationPanel({
     form.set('csvText', csvText);
     form.set('sourceFilename', sourceFilename);
     form.set('sourceSystem', sourceSystem);
+    form.set('idempotencyMode', idempotencyMode);
     const result = await run(() => startDataImport(form));
     if (!result?.success || !result.data) {
       setMessage(result?.error ?? 'No se pudo analizar el archivo');
@@ -268,9 +301,32 @@ export function DataMigrationPanel({
       errors: result.data.errors,
       issues: result.data.issues as ValidationIssue[],
     });
+    const nextDecisions: Record<number, RowConflictDecision> = { ...rowDecisions };
+    for (const issue of result.data.issues as ValidationIssue[]) {
+      if (issue.code !== 'possible_duplicate') continue;
+      if (nextDecisions[issue.rowNumber]) continue;
+      nextDecisions[issue.rowNumber] = {
+        rowNumber: issue.rowNumber,
+        decision: 'review',
+        linkInternalId: issue.matchInternalId ?? null,
+      };
+    }
+    setRowDecisions(nextDecisions);
     setMessage(
       `${result.data.detected} detectados · ${result.data.ready} listos · ${result.data.warnings} avisos · ${result.data.errors} errores`
     );
+  }
+
+  async function onDownloadValidationReport() {
+    if (!validation?.issues.length) return;
+    const form = new FormData();
+    form.set('validationIssues', JSON.stringify(validation.issues));
+    const result = await run(() => downloadValidationReportAction(form));
+    if (!result?.success || !result.data) {
+      setMessage(result?.error ?? 'No se pudo generar el reporte');
+      return;
+    }
+    downloadText(result.data.filename, result.data.csv);
   }
 
   async function onCommit() {
@@ -297,6 +353,8 @@ export function DataMigrationPanel({
       form.set('sourceSystem', sourceSystem);
       form.set('offset', String(offset));
       form.set('chunkSize', String(DEFAULT_IMPORT_CHUNK_SIZE));
+      form.set('rowDecisions', JSON.stringify(rowDecisions));
+      form.set('validationIssues', JSON.stringify(validation.issues));
       const result = await run(() => commitDataImport(form));
       if (!result?.success || !result.data) {
         setMessage(result?.error ?? 'Importación fallida');
@@ -324,6 +382,62 @@ export function DataMigrationPanel({
     setMessage(null);
     setProgressLabel(null);
   }
+
+  async function onQueueImport() {
+    if (!batchId || !validation || validation.errors > 0) {
+      setMessage('Corregí errores bloqueantes antes de encolar');
+      return;
+    }
+    const form = new FormData();
+    form.set('batchId', batchId);
+    form.set('entity', entity);
+    form.set('csvText', csvText);
+    form.set('mapping', JSON.stringify(mapping));
+    form.set('ownerIdByExternal', JSON.stringify(ownerIdByExternal));
+    form.set('patientIdByExternal', JSON.stringify(patientIdByExternal));
+    form.set('sourceSystem', sourceSystem);
+    form.set('rowDecisions', JSON.stringify(rowDecisions));
+    form.set('validationIssues', JSON.stringify(validation.issues));
+    const result = await run(() => queueDataImportAction(form));
+    if (!result?.success || !result.data) {
+      setMessage(result?.error ?? 'No se pudo encolar');
+      return;
+    }
+    setQueuedBatchId(batchId);
+    setImportReport(`Lote encolado (${result.data.status}). El cron /api/cron/data-import avanza por chunks.`);
+    setMessage(null);
+    void refreshImportHistory();
+  }
+
+  useEffect(() => {
+    if (!queuedBatchId) return;
+    let cancelled = false;
+    const tick = async () => {
+      const form = new FormData();
+      form.set('batchId', queuedBatchId);
+      const result = await pollImportBatchProgressAction(form);
+      if (cancelled || !result.success || !result.data) return;
+      setProgressLabel(
+        result.data.progress_message ??
+          `${result.data.status}: ${result.data.progress_processed ?? 0}/${result.data.progress_total ?? 0}`
+      );
+      if (['completed', 'completed_with_warnings', 'failed', 'rolled_back', 'cancelled'].includes(result.data.status)) {
+        setQueuedBatchId(null);
+        setImportReport(
+          `Import ${result.data.status}: ok ${result.data.imported_records ?? 0} · fallidos ${result.data.failed_records ?? 0}`
+        );
+        void refreshImportHistory();
+      }
+    };
+    void tick();
+    const id = window.setInterval(() => void tick(), 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+    // Intentional: poll only while a queued batch is tracked.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refreshImportHistory is stable enough for this poller
+  }, [queuedBatchId]);
 
   async function onImportAttachments() {
     if (!zipBase64) {
@@ -389,6 +503,8 @@ export function DataMigrationPanel({
     form.set('exportType', exportType);
     form.set('format', exportFormat);
     if (patientId) form.set('patientId', patientId);
+    form.set('dateFrom', dateFrom);
+    form.set('dateTo', dateTo);
     const result = await run(() => runClinicExportAction(form));
     if (!result?.success || !result.data) {
       setMessage(result?.error ?? 'Exportación fallida');
@@ -396,8 +512,39 @@ export function DataMigrationPanel({
     }
     downloadBase64(result.data.filename, result.data.contentType, result.data.base64);
     setMessage(
-      `Export listo · propietarios ${result.data.recordCounts.owners ?? 0} · pacientes ${result.data.recordCounts.patients ?? 0}`
+      `Export listo · ${Object.entries(result.data.recordCounts)
+        .map(([k, v]) => `${k}:${v}`)
+        .join(' · ')}`
     );
+    await refreshExportHistory();
+  }
+
+  async function onQueueExport() {
+    setMessage(null);
+    const form = new FormData();
+    form.set('exportType', exportType);
+    form.set('format', exportFormat);
+    if (patientId) form.set('patientId', patientId);
+    form.set('dateFrom', dateFrom);
+    form.set('dateTo', dateTo);
+    const result = await run(() => queueClinicExportAction(form));
+    if (!result?.success || !result.data) {
+      setMessage(result?.error ?? 'No se pudo encolar export');
+      return;
+    }
+    setMessage(`Export encolado (${result.data.jobId.slice(0, 8)}…). Cron /api/cron/data-export.`);
+    await refreshExportHistory();
+  }
+
+  async function onDownloadExport(jobId: string) {
+    const form = new FormData();
+    form.set('jobId', jobId);
+    const result = await run(() => downloadExportArtifactAction(form));
+    if (!result?.success || !result.data) {
+      setMessage(result?.error ?? 'Descarga no disponible');
+      return;
+    }
+    window.open(result.data.url, '_blank', 'noopener,noreferrer');
   }
 
   async function refreshImportHistory() {
@@ -410,6 +557,23 @@ export function DataMigrationPanel({
     if (result?.success && result.data) setExportHistory(result.data as Array<Record<string, unknown>>);
   }
 
+  async function refreshIntegrity() {
+    const result = await run(() => getDataMigrationIntegrityAction());
+    if (result?.success && result.data) setIntegrity(result.data);
+    else setMessage(result?.error ?? 'No se pudo cargar integridad');
+  }
+
+  async function onDownloadBatchErrors(id: string) {
+    const form = new FormData();
+    form.set('batchId', id);
+    const result = await run(() => downloadImportBatchErrorsAction(form));
+    if (!result?.success || !result.data) {
+      setMessage(result?.error ?? 'Sin errores para descargar');
+      return;
+    }
+    downloadText(result.data.filename, result.data.csv);
+  }
+
   async function onRollback(id: string) {
     const form = new FormData();
     form.set('batchId', id);
@@ -420,6 +584,35 @@ export function DataMigrationPanel({
     }
     setMessage(`Rollback: ${result.data?.rolledBack ?? 0} filas afectadas`);
     await refreshImportHistory();
+  }
+
+  async function onCancelImport(id: string) {
+    const form = new FormData();
+    form.set('batchId', id);
+    const result = await run(() => cancelDataImportBatchAction(form));
+    setMessage(result?.success ? 'Importación cancelada' : (result?.error ?? 'No se pudo cancelar'));
+    await refreshImportHistory();
+  }
+
+  async function onRetryImport(id: string) {
+    const form = new FormData();
+    form.set('batchId', id);
+    const result = await run(() => retryDataImportBatchAction(form));
+    if (result?.success) {
+      setQueuedBatchId(id);
+      setMessage('Lote reencolado');
+    } else {
+      setMessage(result?.error ?? 'No se pudo reencolar');
+    }
+    await refreshImportHistory();
+  }
+
+  async function onCancelExport(id: string) {
+    const form = new FormData();
+    form.set('jobId', id);
+    const result = await run(() => cancelDataExportJobAction(form));
+    setMessage(result?.success ? 'Exportación cancelada' : (result?.error ?? 'No se pudo cancelar'));
+    await refreshExportHistory();
   }
 
   return (
@@ -453,6 +646,7 @@ export function DataMigrationPanel({
             onClick={() => {
               setSection('history-import');
               void refreshImportHistory();
+              void refreshIntegrity();
             }}
           >
             Historial de importación
@@ -466,6 +660,7 @@ export function DataMigrationPanel({
             onClick={() => {
               setSection('history-export');
               void refreshExportHistory();
+              void refreshIntegrity();
             }}
           >
             Historial de exportación
@@ -481,11 +676,90 @@ export function DataMigrationPanel({
           <CardHeader>
             <CardTitle>Importar datos</CardTitle>
             <CardDescription>
-              Fase 3: lab/cirugía/farmacia, adjuntos ZIP → storage, import por chunks con progreso
-              real. Sin sobrescritura silenciosa.
+              Fase 11: notificación in-app al completar import/export, límites de tamaño de
+              archivo (CSV 25 MB / ZIP 80 MB), force-cancel Superadmin e integridad del tenant.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {importType === 'full_migration' || importType === 'migration_zip' ? (
+              <div className="space-y-2 rounded-md border p-3">
+                <p className="text-sm font-medium">Guía de migración completa</p>
+                <ol className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-3">
+                  {FULL_MIGRATION_STEPS.map((step) => (
+                    <li key={step}>
+                      <button
+                        type="button"
+                        className={
+                          guideStep === step
+                            ? 'font-medium text-foreground underline underline-offset-2'
+                            : 'hover:text-foreground'
+                        }
+                        onClick={() => {
+                          setGuideStep(step);
+                          if (step !== 'attachments') {
+                            // keep importType as full_migration; entity derives from guideStep
+                          }
+                          if (zipPack) {
+                            if (step === 'owners' && zipPack.ownersCsv) {
+                              setCsvText(zipPack.ownersCsv);
+                              setSourceFilename('owners.csv');
+                            } else if (step === 'patients' && zipPack.patientsCsv) {
+                              setCsvText(zipPack.patientsCsv);
+                              setSourceFilename('patients.csv');
+                            } else if (step === 'clinical_entries' && zipPack.clinicalCsv) {
+                              setCsvText(zipPack.clinicalCsv);
+                              setSourceFilename('clinical_records.csv');
+                            } else if (step === 'vaccinations' && zipPack.vaccinationsCsv) {
+                              setCsvText(zipPack.vaccinationsCsv);
+                              setSourceFilename('vaccinations.csv');
+                            } else if (step === 'lab_orders' && zipPack.labOrdersCsv) {
+                              setCsvText(zipPack.labOrdersCsv);
+                              setSourceFilename('lab_orders.csv');
+                            } else if (step === 'surgeries' && zipPack.surgeriesCsv) {
+                              setCsvText(zipPack.surgeriesCsv);
+                              setSourceFilename('surgeries.csv');
+                            } else if (step === 'prescriptions' && zipPack.prescriptionsCsv) {
+                              setCsvText(zipPack.prescriptionsCsv);
+                              setSourceFilename('prescriptions.csv');
+                            } else if (step === 'hospitalizations' && zipPack.hospitalizationsCsv) {
+                              setCsvText(zipPack.hospitalizationsCsv);
+                              setSourceFilename('hospitalizations.csv');
+                            }
+                          }
+                        }}
+                      >
+                        {FULL_MIGRATION_STEP_LABELS[step]}
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!nextFullMigrationStep(guideStep)}
+                    onClick={() => {
+                      const next = nextFullMigrationStep(guideStep);
+                      if (next) setGuideStep(next);
+                    }}
+                  >
+                    Siguiente paso
+                  </Button>
+                  {guideStep === 'attachments' ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={pending || !zipBase64 || Object.keys(patientIdByExternal).length === 0}
+                      onClick={() => void onImportAttachments()}
+                    >
+                      Importar adjuntos ahora
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label>Qué importar</Label>
@@ -520,6 +794,9 @@ export function DataMigrationPanel({
                     } else if (next === 'prescriptions' && zipPack.prescriptionsCsv) {
                       setCsvText(zipPack.prescriptionsCsv);
                       setSourceFilename('prescriptions.csv');
+                    } else if (next === 'hospitalizations' && zipPack.hospitalizationsCsv) {
+                      setCsvText(zipPack.hospitalizationsCsv);
+                      setSourceFilename('hospitalizations.csv');
                     }
                   }}
                 >
@@ -533,6 +810,19 @@ export function DataMigrationPanel({
               <div className="space-y-1">
                 <Label>Sistema origen</Label>
                 <Input value={sourceSystem} onChange={(e) => setSourceSystem(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label>Idempotencia</Label>
+                <Select
+                  value={idempotencyMode}
+                  onChange={(e) => setIdempotencyMode(e.target.value as IdempotencyMode)}
+                >
+                  {(Object.keys(IDEMPOTENCY_MODE_LABELS) as IdempotencyMode[]).map((key) => (
+                    <option key={key} value={key}>
+                      {IDEMPOTENCY_MODE_LABELS[key]}
+                    </option>
+                  ))}
+                </Select>
               </div>
             </div>
 
@@ -557,6 +847,9 @@ export function DataMigrationPanel({
               </Button>
               <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadTemplate('prescriptions')}>
                 Plantilla recetas
+              </Button>
+              <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadTemplate('hospitalizations')}>
+                Plantilla internaciones
               </Button>
               <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadSampleZip()}>
                 ZIP migración de ejemplo
@@ -587,10 +880,26 @@ export function DataMigrationPanel({
               </Button>
               <Button
                 type="button"
+                variant="outline"
+                disabled={pending || !validation || validation.issues.length === 0}
+                onClick={() => void onDownloadValidationReport()}
+              >
+                Descargar reporte validación
+              </Button>
+              <Button
+                type="button"
                 disabled={pending || !validation || validation.errors > 0}
                 onClick={() => void onCommit()}
               >
                 Confirmar importación
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={pending || !validation || validation.errors > 0}
+                onClick={() => void onQueueImport()}
+              >
+                Encolar (background)
               </Button>
               <Button
                 type="button"
@@ -603,6 +912,51 @@ export function DataMigrationPanel({
             </div>
 
             {progressLabel ? <p className="text-sm font-medium">{progressLabel}</p> : null}
+
+            {validation?.issues.some((i) => i.code === 'possible_duplicate') ? (
+              <div className="space-y-2 rounded-md border p-3 text-sm">
+                <p className="font-medium">Decisiones por fila (duplicados)</p>
+                <p className="text-xs text-muted-foreground">
+                  Sin decisión explícita no se crea ni se vincula. Elegí crear, vincular u omitir.
+                </p>
+                {validation.issues
+                  .filter((i) => i.code === 'possible_duplicate')
+                  .map((issue) => (
+                    <div
+                      key={`${issue.rowNumber}-${issue.field}`}
+                      className="grid gap-2 sm:grid-cols-[1fr_180px]"
+                    >
+                      <p className="text-xs text-muted-foreground">
+                        Fila {issue.rowNumber}: {issue.message}
+                        {issue.matchInternalId ? ` · match ${issue.matchInternalId.slice(0, 8)}…` : ''}
+                      </p>
+                      <Select
+                        value={rowDecisions[issue.rowNumber]?.decision ?? 'review'}
+                        onChange={(e) => {
+                          const decision = e.target.value as ConflictPolicy;
+                          setRowDecisions((prev) => ({
+                            ...prev,
+                            [issue.rowNumber]: {
+                              rowNumber: issue.rowNumber,
+                              decision,
+                              linkInternalId:
+                                decision === 'link'
+                                  ? issue.matchInternalId ?? prev[issue.rowNumber]?.linkInternalId ?? null
+                                  : null,
+                            },
+                          }));
+                        }}
+                      >
+                        {(Object.keys(CONFLICT_DECISION_LABELS) as ConflictPolicy[]).map((key) => (
+                          <option key={key} value={key}>
+                            {CONFLICT_DECISION_LABELS[key]}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                  ))}
+              </div>
+            ) : null}
 
             {headers.length > 0 ? (
               <div className="space-y-2 rounded-md border p-3">
@@ -666,8 +1020,8 @@ export function DataMigrationPanel({
           <CardHeader>
             <CardTitle>Exportar datos</CardTitle>
             <CardDescription>
-              CSV/JSON/XLSX/ZIP. El ZIP incluye CSVs + JSON + hasta ~40 adjuntos clínicos del
-              tenant (límite de tamaño para no saturar el request).
+              CSV/JSON/XLSX/ZIP + módulos specialty. Opcional: rango de fechas y encolar para
+              background. ZIP completo incluye lab/cirugía/recetas/internación.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -699,15 +1053,30 @@ export function DataMigrationPanel({
                 </Select>
               </div>
             </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label>Desde (YYYY-MM-DD)</Label>
+                <Input value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} placeholder="2024-01-01" />
+              </div>
+              <div className="space-y-1">
+                <Label>Hasta (YYYY-MM-DD)</Label>
+                <Input value={dateTo} onChange={(e) => setDateTo(e.target.value)} placeholder="2024-12-31" />
+              </div>
+            </div>
             {(exportType === 'patient_clinical' || exportFormat === 'pdf') && (
               <div className="space-y-1">
                 <Label>ID paciente (UUID SyncVete)</Label>
                 <Input value={patientId} onChange={(e) => setPatientId(e.target.value)} />
               </div>
             )}
-            <Button type="button" disabled={pending} onClick={() => void onExport()}>
-              Generar exportación
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" disabled={pending} onClick={() => void onExport()}>
+                Generar exportación
+              </Button>
+              <Button type="button" variant="outline" disabled={pending} onClick={() => void onQueueExport()}>
+                Encolar exportación
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ) : null}
@@ -716,6 +1085,12 @@ export function DataMigrationPanel({
         <Card>
           <CardHeader>
             <CardTitle>Historial de importación</CardTitle>
+            {integrity ? (
+              <CardDescription>
+                Integridad: {String(integrity.imports.total ?? 0)} lotes · creados trackeados{' '}
+                {integrity.createdRowsTracked} · id-map {integrity.idMapEntries}
+              </CardDescription>
+            ) : null}
           </CardHeader>
           <CardContent className="space-y-2">
             {importHistory.length === 0 ? (
@@ -732,19 +1107,69 @@ export function DataMigrationPanel({
                         <p className="text-xs text-muted-foreground">
                           {String(batch.created_at)} · archivo {String(batch.source_filename ?? '—')} ·
                           importados {String(batch.imported_records ?? 0)}
+                          {batch.progress_message ? ` · ${String(batch.progress_message)}` : ''}
                         </p>
                       </div>
-                      {['completed', 'completed_with_warnings'].includes(String(batch.status)) ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={pending}
-                          onClick={() => void onRollback(String(batch.id))}
-                        >
-                          Rollback
-                        </Button>
-                      ) : null}
+                      <div className="flex gap-2">
+                        {['queued', 'importing'].includes(String(batch.status)) ? (
+                          <>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={pending}
+                              onClick={() => setQueuedBatchId(String(batch.id))}
+                            >
+                              Seguir progreso
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={pending}
+                              onClick={() => void onCancelImport(String(batch.id))}
+                            >
+                              Cancelar
+                            </Button>
+                          </>
+                        ) : null}
+                        {['failed', 'cancelled', 'completed_with_warnings'].includes(
+                          String(batch.status)
+                        ) || Number(batch.failed_records ?? 0) > 0 ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={pending}
+                            onClick={() => void onDownloadBatchErrors(String(batch.id))}
+                          >
+                            Errores CSV
+                          </Button>
+                        ) : null}
+                        {['failed', 'cancelled'].includes(String(batch.status)) &&
+                        batch.storage_path ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={pending}
+                            onClick={() => void onRetryImport(String(batch.id))}
+                          >
+                            Reintentar
+                          </Button>
+                        ) : null}
+                        {['completed', 'completed_with_warnings'].includes(String(batch.status)) ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={pending}
+                            onClick={() => void onRollback(String(batch.id))}
+                          >
+                            Rollback
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
                   </li>
                 ))}
@@ -766,8 +1191,39 @@ export function DataMigrationPanel({
               <ul className="space-y-2 text-sm">
                 {exportHistory.map((job) => (
                   <li key={String(job.id)} className="rounded-md border px-3 py-2">
-                    {String(job.export_type)} · {String(job.format)} · {String(job.status)} ·{' '}
-                    {String(job.created_at)}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="font-medium">
+                          {String(job.export_type)} · {String(job.format)} · {String(job.status)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {String(job.created_at)}
+                          {job.progress_message ? ` · ${String(job.progress_message)}` : ''}
+                        </p>
+                      </div>
+                      {['queued', 'running'].includes(String(job.status)) ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={pending}
+                          onClick={() => void onCancelExport(String(job.id))}
+                        >
+                          Cancelar
+                        </Button>
+                      ) : null}
+                      {String(job.status) === 'completed' && job.storage_path ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={pending}
+                          onClick={() => void onDownloadExport(String(job.id))}
+                        >
+                          Descargar
+                        </Button>
+                      ) : null}
+                    </div>
                   </li>
                 ))}
               </ul>

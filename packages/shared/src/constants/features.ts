@@ -38,6 +38,8 @@ export const FEATURES = {
 
   AUDIT: 'audit.enabled',
 
+  DATA_IMPORT_EXPORT: 'data.import_export',
+
   AI: 'ai.enabled',
   AI_PATIENT_SUMMARY: 'ai.patient_summary',
   AI_SOAP_ASSISTANT: 'ai.soap_assistant',

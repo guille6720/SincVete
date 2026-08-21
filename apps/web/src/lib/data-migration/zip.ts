@@ -11,6 +11,7 @@ import {
   buildSampleMigrationManifest,
   buildSurgeryTemplateCsv,
   buildVaccinationTemplateCsv,
+  buildHospitalizationTemplateCsv,
   parseCsv,
   parseMigrationManifest,
   type MigrationZipManifest,
@@ -26,6 +27,7 @@ export type ParsedMigrationZip = {
   labOrdersCsv: string | null;
   surgeriesCsv: string | null;
   prescriptionsCsv: string | null;
+  hospitalizationsCsv: string | null;
   attachmentPaths: string[];
 };
 
@@ -64,6 +66,10 @@ export async function parseSyncveteMigrationZip(buffer: ArrayBuffer): Promise<Pa
   const labOrders = findEntry(zip, ['lab_orders.csv', 'data/lab_orders.csv']);
   const surgeries = findEntry(zip, ['surgeries.csv', 'data/surgeries.csv']);
   const prescriptions = findEntry(zip, ['prescriptions.csv', 'data/prescriptions.csv']);
+  const hospitalizations = findEntry(zip, [
+    'hospitalizations.csv',
+    'data/hospitalizations.csv',
+  ]);
 
   const attachmentPaths = Object.keys(zip.files).filter((path) => {
     const normalized = path.replace(/\\/g, '/');
@@ -82,6 +88,7 @@ export async function parseSyncveteMigrationZip(buffer: ArrayBuffer): Promise<Pa
     labOrdersCsv: labOrders ? await labOrders.async('string') : null,
     surgeriesCsv: surgeries ? await surgeries.async('string') : null,
     prescriptionsCsv: prescriptions ? await prescriptions.async('string') : null,
+    hospitalizationsCsv: hospitalizations ? await hospitalizations.async('string') : null,
     attachmentPaths,
   };
 }
@@ -97,6 +104,7 @@ export async function buildSampleMigrationZip(sourceSystem = 'VetLegacy'): Promi
   zip.file('lab_orders.csv', buildLabOrderTemplateCsv());
   zip.file('surgeries.csv', buildSurgeryTemplateCsv());
   zip.file('prescriptions.csv', buildPrescriptionTemplateCsv());
+  zip.file('hospitalizations.csv', buildHospitalizationTemplateCsv());
   zip.folder('attachments')?.folder('PAT-001')?.file(
     'README.txt',
     'Colocá aquí PDFs/JPG/PNG del paciente externo PAT-001.\n'
@@ -131,6 +139,7 @@ export function summarizeZipContents(parsed: ParsedMigrationZip) {
     labOrders: countRows(parsed.labOrdersCsv),
     surgeries: countRows(parsed.surgeriesCsv),
     prescriptions: countRows(parsed.prescriptionsCsv),
+    hospitalizations: countRows(parsed.hospitalizationsCsv),
     attachments: parsed.attachmentPaths.length,
   };
 }
