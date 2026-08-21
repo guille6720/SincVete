@@ -53,6 +53,7 @@ export default async function PacienteDetailPage({ params }: PatientPageProps) {
       vaccineStatus={vaccineStatus}
       canWriteBilling={session.permissions.includes('billing:write')}
       canSendWhatsApp={session.permissions.includes('whatsapp:send')}
+      canExportData={session.permissions.includes('data:export')}
       entitledHrefs={commercial.entitledHrefs}
     />
   );

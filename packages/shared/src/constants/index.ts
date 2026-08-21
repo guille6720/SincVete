@@ -39,6 +39,8 @@ export const PERMISSIONS = [
   'reports:read',
   'audit:read',
   'whatsapp:send',
+  'data:import',
+  'data:export',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -62,6 +64,8 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'reports:read',
     'audit:read',
     'whatsapp:send',
+    'data:import',
+    'data:export',
   ],
   veterinarian: [
     'patients:read',
@@ -73,6 +77,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'inventory:read',
     'reports:read',
     'whatsapp:send',
+    'data:export',
   ],
   nurse: [
     'patients:read',

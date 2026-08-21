@@ -27,6 +27,9 @@ export default async function ConfiguracionPage({ searchParams }: PageProps) {
   if (hasPermission(session.permissions, 'org:manage')) availableTabs.unshift('clinica', 'plan');
   if (hasPermission(session.permissions, 'branch:manage')) availableTabs.push('sucursales');
   if (hasPermission(session.permissions, 'users:manage')) availableTabs.push('equipo');
+  const canImportData = hasPermission(session.permissions, 'data:import');
+  const canExportData = hasPermission(session.permissions, 'data:export');
+  if (canImportData || canExportData) availableTabs.push('import-export');
 
   const requested = params.tab;
   const defaultTab: SettingsTab =
@@ -93,6 +96,8 @@ export default async function ConfiguracionPage({ searchParams }: PageProps) {
     <SettingsPageClient
       availableTabs={availableTabs}
       defaultTab={defaultTab}
+      canImportData={canImportData}
+      canExportData={canExportData}
       clinic={clinicData}
       branches={branchesData}
       team={teamData}

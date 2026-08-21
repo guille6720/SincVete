@@ -3,6 +3,7 @@ import { ROLE_PERMISSIONS, type Permission, type Role } from './constants';
 export * from './constants';
 export * from './constants/features';
 export * from './constants/settings';
+export * from './constants/data-migration';
 export * from './constants/owners';
 export * from './constants/patients';
 export * from './constants/appointments';

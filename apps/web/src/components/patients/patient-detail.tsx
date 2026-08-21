@@ -19,6 +19,7 @@ import {
   Images,
 } from 'lucide-react';
 import { deletePatient } from '@/actions/patients';
+import { runClinicExportAction } from '@/actions/data-migration';
 import { PatientVaccineStatus } from '@/components/vaccinations/patient-vaccine-status';
 import { PatientClinicalRecent } from '@/components/patients/patient-clinical-recent';
 import { Button } from '@/components/ui/button';
@@ -47,6 +48,7 @@ interface PatientDetailProps {
   canWriteClinical?: boolean;
   canWriteBilling?: boolean;
   canSendWhatsApp?: boolean;
+  canExportData?: boolean;
   clinicalEntryCount?: number;
   recentClinicalEntries?: ClinicalEntryListRow[];
   activeHospitalization?: { id: string; status: HospitalizationStatus } | null;
@@ -83,6 +85,7 @@ export function PatientDetail({
   canWriteClinical = false,
   canWriteBilling = false,
   canSendWhatsApp = false,
+  canExportData = false,
   clinicalEntryCount = 0,
   recentClinicalEntries = [],
   activeHospitalization = null,
@@ -107,6 +110,30 @@ export function PatientDetail({
     });
   };
 
+  const handleExportClinical = (format: 'zip' | 'pdf' | 'json') => {
+    void runPending(async () => {
+      const form = new FormData();
+      form.set('exportType', 'patient_clinical');
+      form.set('format', format);
+      form.set('patientId', patient.id);
+      const result = await runClinicExportAction(form);
+      if (!result.success || !result.data) {
+        window.alert(result.error ?? 'No se pudo exportar');
+        return;
+      }
+      const binary = atob(result.data.base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], { type: result.data.contentType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = result.data.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -116,8 +143,28 @@ export function PatientDetail({
             Volver
           </Link>
         </Button>
-        {(canWrite || canReadClinical || canWriteClinical || canSendWhatsApp) && (
+        {(canWrite || canReadClinical || canWriteClinical || canSendWhatsApp || canExportData) && (
           <div className="flex flex-wrap gap-2">
+            {canExportData ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pending}
+                  onClick={() => handleExportClinical('pdf')}
+                >
+                  Exportar HC (PDF)
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pending}
+                  onClick={() => handleExportClinical('zip')}
+                >
+                  Exportar HC (ZIP)
+                </Button>
+              </>
+            ) : null}
             {canReadClinical && entitled('/historia-clinica') && (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/pacientes/${patient.id}/historia`}>
