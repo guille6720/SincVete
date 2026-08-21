@@ -348,6 +348,16 @@ export function UserManual({ toolbar }: { toolbar?: ReactNode }) {
             <strong>Límites:</strong> CSV hasta 25 MB; ZIP de adjuntos hasta 80 MB.
           </li>
           <li>
+            <strong>Adjuntos (fase 42):</strong> podés incluir un <code>attachments_meta.csv</code> opcional en la raíz
+            del ZIP o bajo <code>data/</code> para asignar sucursal y staff por archivo (`external_patient_id` +
+            <code>filename</code>); sin fila de metadata se usan los valores por defecto del importador.
+          </li>
+          <li>
+            <strong>ZIP de ejemplo:</strong> incluye plantillas de mapa staff/sucursal y notas round-trip para
+            probar migración completa. En la migración guiada, cada paso muestra si admite mapa de sucursal o
+            staff y si ya tenés uno cargado.
+          </li>
+          <li>
             <strong>Integridad:</strong> el historial muestra huérfanos de id-map / filas creadas y locks
             trabados; podés descargar el reporte CSV y el id-map de cada lote. También liberar locks
             stale y podar mapas huérfanos (simulá primero).
@@ -396,7 +406,44 @@ export function UserManual({ toolbar }: { toolbar?: ReactNode }) {
           </li>
           <li>
             <strong>Inventario:</strong> exportá e importá productos (CSV con SKU/categoría/stock). En
-            la migración guiada van antes de adjuntos.
+            la migración guiada van antes de adjuntos. También podés exportar{' '}
+            <code>inventory_movements</code> (movimientos de stock, auditoría). No se importa — el stock se
+            deriva de operaciones reales, no de migración.
+          </li>
+          <li>
+            <strong>Internaciones (fase 44–45):</strong> el ZIP completo (`full_clinic`) y el export JSON
+            incluyen las notas de evolución (<code>hospitalization_notes</code>: tipo, contenido, peso,
+            temperatura, quién la registró). El CSV/XLSX individual de internaciones aplana las notas en
+            filas (como lab/recetas con ítems); el ZIP specialty también trae las notas. Solo lectura — no se
+            importan; se registran en la app durante la estadía, no por migración.
+          </li>
+          <li>
+            <strong>ZIP specialty (fase 47):</strong> al exportar solo laboratorio o recetas en formato ZIP
+            también se incluyen los ítems hijos (<code>lab_order_items</code> /
+            <code>prescription_items</code>). Cirugías specialty incluye el CSV padre además del JSON.
+          </li>
+          <li>
+            <strong>ZIP enfocado (fase 48):</strong> si exportás una sola entidad en ZIP (p. ej. caja,
+            facturas, staff, movimientos de stock), el archivo solo trae esa entidad y sus companions
+            (movimientos de caja, ítems/pagos de factura, membresías). El volcado completo queda para
+            <code>full_clinic</code> / historia de un paciente.
+          </li>
+          <li>
+            <strong>JSON enfocado (fase 49, formato 1.6):</strong> igual que el ZIP: un export JSON de
+            una sola entidad o specialty incluye solo <code>manifest</code>, la entidad y sus hijos
+            (ítems lab/recetas, notas de internación, movimientos de caja, etc.).
+          </li>
+          <li>
+            <strong>Adjuntos round-trip (fase 50):</strong> al exportar <code>full_clinic</code> /
+            historia de un paciente en ZIP, se genera <code>attachments_meta.csv</code> con
+            paciente/archivo/sucursal/uploader de cada binario empaquetado — listo para re-import
+            (fase 42). El ZIP de ejemplo y el cutover pack v4 incluyen la plantilla.
+          </li>
+          <li>
+            <strong>Adjuntos clínicos — metadata (fase 46):</strong> exportá el catálogo de
+            <code>clinical_images</code> (paciente, tipo, nombre, mime, tamaño, ruta, sucursal/uploader).
+            Solo lectura: no recrea filas. Los binarios se exportan/importan aparte vía ZIP de adjuntos
+            (con <code>attachments_meta.csv</code> opcional).
           </li>
           <li>
             <strong>Facturas:</strong> exportá e importá facturas con ítems. Podés asignar quién creó la

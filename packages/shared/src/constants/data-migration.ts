@@ -1,6 +1,6 @@
 /** SyncVete data import/export — pure helpers (no DB I/O). */
 
-export const DATA_MIGRATION_FORMAT_VERSION = '1.5';
+export const DATA_MIGRATION_FORMAT_VERSION = '1.6';
 export const DATA_MIGRATION_FORMAT = 'syncvete-migration';
 
 export const IMPORT_TYPES = [
@@ -107,6 +107,28 @@ export const FULL_MIGRATION_STEP_LABELS: Record<FullMigrationStep, string> = {
   attachments: '15. Adjuntos ZIP',
 };
 
+/** Phase 41: which guided steps consume branch_map / staff_map (for readiness hints). */
+export const FULL_MIGRATION_STEP_MAP_USAGE: Record<
+  FullMigrationStep,
+  { branch: boolean; staff: boolean }
+> = {
+  branches: { branch: false, staff: false },
+  owners: { branch: true, staff: false },
+  patients: { branch: true, staff: false },
+  clinical_entries: { branch: true, staff: true },
+  vaccinations: { branch: true, staff: true },
+  lab_orders: { branch: true, staff: true },
+  surgeries: { branch: true, staff: true },
+  prescriptions: { branch: true, staff: true },
+  hospitalizations: { branch: true, staff: true },
+  appointments: { branch: true, staff: true },
+  consultations: { branch: true, staff: true },
+  inventory_products: { branch: true, staff: false },
+  invoices: { branch: true, staff: true },
+  payments: { branch: false, staff: true },
+  attachments: { branch: false, staff: false },
+};
+
 export function nextFullMigrationStep(current: FullMigrationStep): FullMigrationStep | null {
   const idx = FULL_MIGRATION_STEPS.indexOf(current);
   if (idx < 0 || idx >= FULL_MIGRATION_STEPS.length - 1) return null;
@@ -158,6 +180,8 @@ export const EXPORT_TYPES = [
   'invoices',
   'payments',
   'cash_sessions',
+  'inventory_movements',
+  'clinical_images',
   'reminder_logs',
   'whatsapp_messages',
   'audit_logs',
@@ -177,13 +201,15 @@ export const EXPORT_TYPE_LABELS: Record<ExportType, string> = {
   lab_orders: 'Laboratorio (con ítems)',
   surgeries: 'Cirugías',
   prescriptions: 'Recetas (con ítems)',
-  hospitalizations: 'Internaciones',
+  hospitalizations: 'Internaciones (con notas)',
   appointments: 'Agenda / citas',
   consultations: 'Consultas',
   inventory_products: 'Inventario / farmacia',
   invoices: 'Facturas (con ítems y pagos)',
   payments: 'Pagos',
   cash_sessions: 'Caja (sesiones + movimientos)',
+  inventory_movements: 'Inventario (movimientos de stock)',
+  clinical_images: 'Adjuntos clínicos (metadata)',
   reminder_logs: 'Recordatorios (historial)',
   whatsapp_messages: 'WhatsApp (historial)',
   audit_logs: 'Auditoría (historial)',
@@ -203,6 +229,86 @@ export type SpecialtyExportType = (typeof SPECIALTY_EXPORT_TYPES)[number];
 
 export function isSpecialtyExportType(value: string): value is SpecialtyExportType {
   return (SPECIALTY_EXPORT_TYPES as readonly string[]).includes(value);
+}
+
+/** Phase 47: child entity files included in specialty ZIP (besides parent CSV/JSON). */
+export const SPECIALTY_EXPORT_CHILD_FILES: Record<SpecialtyExportType, readonly string[]> = {
+  lab_orders: ['lab_order_items'],
+  prescriptions: ['prescription_items'],
+  hospitalizations: ['hospitalization_notes'],
+  surgeries: [],
+};
+
+/**
+ * Phase 48/49: companion basenames for focused single-entity ZIP/JSON (not full_clinic /
+ * patient_clinical / specialty). Specialty children use SPECIALTY_EXPORT_CHILD_FILES.
+ */
+export const FOCUSED_EXPORT_ZIP_COMPANIONS: Partial<Record<ExportType, readonly string[]>> = {
+  cash_sessions: ['cash_movements'],
+  invoices: ['invoice_items', 'invoice_payments'],
+  staff_profiles: ['staff_memberships'],
+};
+
+/** Phase 49: camelCase JSON keys for focused primary entities. */
+export const FOCUSED_EXPORT_JSON_KEYS: Partial<Record<ExportType, string>> = {
+  branches: 'branches',
+  owners: 'owners',
+  patients: 'patients',
+  clinical_entries: 'clinicalEntries',
+  vaccinations: 'vaccinations',
+  lab_orders: 'labOrders',
+  surgeries: 'surgeries',
+  prescriptions: 'prescriptions',
+  hospitalizations: 'hospitalizations',
+  appointments: 'appointments',
+  consultations: 'consultations',
+  inventory_products: 'inventoryProducts',
+  invoices: 'invoices',
+  payments: 'invoicePayments',
+  cash_sessions: 'cashSessions',
+  inventory_movements: 'inventoryMovements',
+  clinical_images: 'clinicalImages',
+  reminder_logs: 'reminderLogs',
+  whatsapp_messages: 'whatsappMessages',
+  audit_logs: 'auditLogs',
+  notifications: 'notifications',
+  staff_profiles: 'staffProfiles',
+};
+
+/** Phase 49: camelCase JSON keys for companion / specialty child basenames. */
+export const FOCUSED_EXPORT_COMPANION_JSON_KEYS: Record<string, string> = {
+  cash_movements: 'cashMovements',
+  invoice_items: 'invoiceItems',
+  invoice_payments: 'invoicePayments',
+  staff_memberships: 'staffMemberships',
+  lab_order_items: 'labOrderItems',
+  prescription_items: 'prescriptionItems',
+  hospitalization_notes: 'hospitalizationNotes',
+};
+
+/** Phase 49: build focused JSON payload (manifest + primary + companions). */
+export function buildFocusedExportJsonPayload(input: {
+  exportType: ExportType;
+  manifest: unknown;
+  primaryRows: unknown;
+  companionRowsByBasename: Record<string, unknown>;
+}): Record<string, unknown> {
+  const primaryKey = FOCUSED_EXPORT_JSON_KEYS[input.exportType] ?? input.exportType;
+  const payload: Record<string, unknown> = {
+    manifest: input.manifest,
+    [primaryKey]: input.primaryRows,
+  };
+  const companions = isSpecialtyExportType(input.exportType)
+    ? SPECIALTY_EXPORT_CHILD_FILES[input.exportType]
+    : (FOCUSED_EXPORT_ZIP_COMPANIONS[input.exportType] ?? []);
+  for (const basename of companions) {
+    const jsonKey = FOCUSED_EXPORT_COMPANION_JSON_KEYS[basename];
+    if (!jsonKey) continue;
+    if (Object.prototype.hasOwnProperty.call(input.companionRowsByBasename, basename)) {
+      payload[jsonKey] = input.companionRowsByBasename[basename];
+    }
+  }
+  return payload;
 }
 
 /** Inclusive YYYY-MM-DD range; returns null bounds when empty/invalid. */
@@ -416,12 +522,12 @@ export function parseBranchMapCsv(csvText: string): {
   return { map, issues };
 }
 
-export const CUTOVER_PACK_VERSION = 3;
+export const CUTOVER_PACK_VERSION = 4;
 
 export function buildCutoverRoundtripNotes(formatVersion?: string): string {
   const version = formatVersion ?? DATA_MIGRATION_FORMAT_VERSION;
   return [
-    'SyncVete — Notas de round-trip (cutover pack v3)',
+    'SyncVete — Notas de round-trip (cutover pack v4)',
     `Formato migración: ${DATA_MIGRATION_FORMAT} ${version}`,
     '',
     '1. Exportá staff_profiles y armá staff_map.csv (external_staff_id → internal_user_id).',
@@ -432,6 +538,10 @@ export function buildCutoverRoundtripNotes(formatVersion?: string): string {
     '4. Vacío en staff clínico/pagos/facturas → usuario importador; sin mapa → error.',
     '5. Agenda vacío → null. Nunca se crean usuarios auth ni se toca caja/planes.',
     '6. Vacío en sucursal → sede de sesión; sin mapa ni UUID conocido → error.',
+    '7. Formato 1.6+: export JSON/ZIP de una sola entidad es enfocado (sin volcar',
+    '   toda la clínica vacía); companions/specialty children van incluidos.',
+    '8. Fase 50: el ZIP full_clinic / patient_clinical emite attachments_meta.csv para los',
+    '   binarios empaquetados (re-import con mapa branch/staff por archivo — fase 42).',
     '',
   ].join('\n');
 }
@@ -2855,6 +2965,117 @@ export function parseMigrationAttachmentPath(zipPath: string): MigrationAttachme
   return { zipPath: normalized, externalPatientId, filename };
 }
 
+/** Phase 42: composite key joining attachments_meta.csv rows to zip attachment refs. */
+export function buildAttachmentMetaKey(externalPatientId: string, filename: string): string {
+  return `${externalPatientId.trim()}::${filename.trim()}`;
+}
+
+export type AttachmentMetaRow = {
+  externalPatientId: string;
+  filename: string;
+  externalBranchId: string | null;
+  externalAssignedUserId: string | null;
+};
+
+export const ATTACHMENT_META_IMPORT_FIELDS: ImportFieldDef[] = [
+  {
+    key: 'external_patient_id',
+    label: 'ID externo paciente',
+    required: true,
+    aliases: ['external_patient_id', 'patient_id', 'id_paciente'],
+  },
+  {
+    key: 'filename',
+    label: 'Nombre de archivo',
+    required: true,
+    aliases: ['filename', 'file_name', 'archivo', 'nombre_archivo'],
+  },
+  EXTERNAL_BRANCH_IMPORT_FIELD,
+  EXTERNAL_ASSIGNED_USER_IMPORT_FIELD,
+];
+
+export function buildAttachmentMetaTemplateCsv(): string {
+  return toCsv(ATTACHMENT_META_IMPORT_FIELDS.map((f) => f.key), [
+    {
+      external_patient_id: 'PAT-001',
+      filename: 'radiografia-torax.jpg',
+      external_branch_id: 'BR-001',
+      external_assigned_user_id: 'VET-LEGACY-01',
+    },
+  ]);
+}
+
+/** Phase 50: build attachments_meta.csv from exported attachment rows (round-trip with phase 42). */
+export function buildAttachmentMetaExportCsv(
+  rows: Array<{
+    externalPatientId: string;
+    filename: string;
+    externalBranchId?: string | null;
+    externalAssignedUserId?: string | null;
+  }>
+): string {
+  return toCsv(
+    ATTACHMENT_META_IMPORT_FIELDS.map((f) => f.key),
+    rows.map((row) => ({
+      external_patient_id: row.externalPatientId,
+      filename: row.filename,
+      external_branch_id: row.externalBranchId ?? '',
+      external_assigned_user_id: row.externalAssignedUserId ?? '',
+    }))
+  );
+}
+
+/** Simple fixed-header parser, same pattern as staff_map / branch_map (no reordering, comma-split). */
+export function parseAttachmentMetaCsv(csvText: string): {
+  rows: AttachmentMetaRow[];
+  issues: Array<{ rowNumber: number; message: string }>;
+} {
+  const lines = csvText
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const rows: AttachmentMetaRow[] = [];
+  const issues: Array<{ rowNumber: number; message: string }> = [];
+  if (lines.length === 0) return { rows, issues };
+  const header = lines[0]!.split(',').map((h) => h.trim().toLowerCase().replace(/^"|"$/g, ''));
+  const patientIdx = header.findIndex((h) =>
+    ['external_patient_id', 'patient_id', 'id_paciente'].includes(h)
+  );
+  const filenameIdx = header.findIndex((h) =>
+    ['filename', 'file_name', 'archivo', 'nombre_archivo'].includes(h)
+  );
+  const branchIdx = header.findIndex((h) =>
+    ['external_branch_id', 'branch_id', 'id_sucursal', 'sucursal_id'].includes(h)
+  );
+  const staffIdx = header.findIndex((h) =>
+    ['external_assigned_user_id', 'assigned_user_id', 'veterinarian_id', 'id_profesional', 'profesional', 'vet_id'].includes(h)
+  );
+  if (patientIdx < 0 || filenameIdx < 0) {
+    issues.push({
+      rowNumber: 1,
+      message: 'Cabeceras requeridas: external_patient_id, filename',
+    });
+    return { rows, issues };
+  }
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i]!.split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+    const externalPatientId = cols[patientIdx] ?? '';
+    const filename = cols[filenameIdx] ?? '';
+    if (!externalPatientId || !filename) {
+      issues.push({ rowNumber: i + 1, message: 'Fila incompleta' });
+      continue;
+    }
+    rows.push({
+      externalPatientId,
+      filename,
+      externalBranchId: branchIdx >= 0 ? cols[branchIdx]?.trim() || null : null,
+      externalAssignedUserId: staffIdx >= 0 ? cols[staffIdx]?.trim() || null : null,
+    });
+  }
+  return { rows, issues };
+}
+
 export function guessMimeFromFilename(filename: string): string | null {
   const lower = filename.toLowerCase();
   if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
@@ -4062,6 +4283,7 @@ export function buildCutoverPackReadme(input: CutoverPackSummaryInput): string {
     '- id_map.csv',
     '- staff_map_template.csv',
     '- branch_map_template.csv',
+    '- attachments_meta_template.csv',
     '- roundtrip_notes.txt',
     '',
     `Pack version: ${CUTOVER_PACK_VERSION}`,
@@ -4070,6 +4292,7 @@ export function buildCutoverPackReadme(input: CutoverPackSummaryInput): string {
       (r) => `  [${r.priority}] ${r.exportType} — ${r.reason}`
     ),
     '',
+    'Hito fase 50: export ZIP emite attachments_meta.csv para round-trip de adjuntos.',
     'Solo lectura: no modifica datos, planes ni caja.',
     'Revisá fail/warn del checklist antes del cutover.',
   ];
@@ -4106,6 +4329,8 @@ export function buildExportCatalogCsv(): string {
       let notes = '';
       if (
         key === 'cash_sessions' ||
+        key === 'inventory_movements' ||
+        key === 'clinical_images' ||
         key === 'reminder_logs' ||
         key === 'whatsapp_messages' ||
         key === 'audit_logs' ||
@@ -4143,6 +4368,11 @@ export const CUTOVER_FREEZE_EXPORT_RECOMMENDATIONS: ReadonlyArray<{
   { exportType: 'branches', priority: 'required', reason: 'Base para armar branch_map / multi-sede' },
   { exportType: 'audit_logs', priority: 'recommended', reason: 'Pista forense inmutable' },
   { exportType: 'cash_sessions', priority: 'recommended', reason: 'Historial de caja (solo lectura)' },
+  {
+    exportType: 'clinical_images',
+    priority: 'recommended',
+    reason: 'Catálogo de adjuntos (metadata; binarios van en ZIP de exportación/import)',
+  },
   { exportType: 'payments', priority: 'recommended', reason: 'Cobros sin reabrir caja' },
   { exportType: 'whatsapp_messages', priority: 'optional', reason: 'Historial CRM WhatsApp' },
   { exportType: 'reminder_logs', priority: 'optional', reason: 'Historial de recordatorios' },

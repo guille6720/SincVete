@@ -18,9 +18,15 @@ import {
   parseMigrationManifest,
   normalizeExportDateRange,
   isSpecialtyExportType,
+  SPECIALTY_EXPORT_CHILD_FILES,
+  SPECIALTY_EXPORT_TYPES,
+  FOCUSED_EXPORT_ZIP_COMPANIONS,
+  FOCUSED_EXPORT_JSON_KEYS,
+  buildFocusedExportJsonPayload,
   nextFullMigrationStep,
   previousFullMigrationStep,
   FULL_MIGRATION_STEPS,
+  FULL_MIGRATION_STEP_MAP_USAGE,
   buildValidationReportCsv,
   buildBatchErrorsReportCsv,
   unresolvedConflictRows,
@@ -53,6 +59,11 @@ import {
   buildBillingReconcileCsv,
   buildCutoverPackReadme,
   buildBranchMapTemplateCsv,
+  buildAttachmentMetaKey,
+  buildAttachmentMetaTemplateCsv,
+  parseAttachmentMetaCsv,
+  buildAttachmentMetaExportCsv,
+  ATTACHMENT_META_IMPORT_FIELDS,
   buildCutoverRoundtripNotes,
   CUTOVER_PACK_VERSION,
   INVOICE_IMPORT_FIELDS,
@@ -137,9 +148,9 @@ describe('data-migration branch-aware imports (phase 23)', () => {
     expect(mapped.filter((i) => i.severity === 'error')).toHaveLength(0);
   });
 
-  it('uses migration format version 1.5', () => {
-    expect(DATA_MIGRATION_FORMAT_VERSION).toBe('1.5');
-    expect(buildSampleMigrationManifest().version).toBe('1.5');
+  it('uses migration format version 1.6', () => {
+    expect(DATA_MIGRATION_FORMAT_VERSION).toBe('1.6');
+    expect(buildSampleMigrationManifest().version).toBe('1.6');
   });
 });
 
@@ -1083,6 +1094,87 @@ describe('data-migration specialty + chunks', () => {
     expect(FULL_MIGRATION_STEPS).not.toContain('staff_profiles');
   });
 
+  it('inventory_movements is export-only (phase 43)', () => {
+    expect(EXPORT_TYPES).toContain('inventory_movements');
+    expect(EXPORT_TYPE_LABELS.inventory_movements).toBeDefined();
+    expect(EXPORT_TYPE_LABELS.inventory_movements).toMatch(/inventario|stock/i);
+    expect(IMPORT_TYPES).not.toContain('inventory_movements');
+    expect(FULL_MIGRATION_STEPS).not.toContain('inventory_movements');
+  });
+
+  it('hospitalizations export label mentions notes (phase 45)', () => {
+    expect(EXPORT_TYPES).toContain('hospitalizations');
+    expect(EXPORT_TYPE_LABELS.hospitalizations).toMatch(/nota/i);
+    expect(IMPORT_TYPES).toContain('hospitalizations');
+    expect(IMPORT_TYPES).not.toContain('hospitalization_notes');
+  });
+
+  it('clinical_images is export-only metadata catalog (phase 46)', () => {
+    expect(EXPORT_TYPES).toContain('clinical_images');
+    expect(EXPORT_TYPE_LABELS.clinical_images).toMatch(/adjunto|metadata|clínic/i);
+    expect(IMPORT_TYPES).not.toContain('clinical_images');
+    expect(FULL_MIGRATION_STEPS).not.toContain('clinical_images');
+    const catalog = buildExportCatalogCsv();
+    expect(catalog).toMatch(/clinical_images,[^,\n]*,no,/);
+  });
+
+  it('specialty ZIP child files catalog (phase 47)', () => {
+    expect(SPECIALTY_EXPORT_TYPES).toEqual([
+      'lab_orders',
+      'surgeries',
+      'prescriptions',
+      'hospitalizations',
+    ]);
+    expect(SPECIALTY_EXPORT_CHILD_FILES.lab_orders).toContain('lab_order_items');
+    expect(SPECIALTY_EXPORT_CHILD_FILES.prescriptions).toContain('prescription_items');
+    expect(SPECIALTY_EXPORT_CHILD_FILES.hospitalizations).toContain('hospitalization_notes');
+    expect(SPECIALTY_EXPORT_CHILD_FILES.surgeries).toEqual([]);
+    for (const key of SPECIALTY_EXPORT_TYPES) {
+      expect(isSpecialtyExportType(key)).toBe(true);
+      expect(SPECIALTY_EXPORT_CHILD_FILES[key]).toBeDefined();
+    }
+  });
+
+  it('focused single-entity ZIP companions (phase 48)', () => {
+    expect(FOCUSED_EXPORT_ZIP_COMPANIONS.cash_sessions).toEqual(['cash_movements']);
+    expect(FOCUSED_EXPORT_ZIP_COMPANIONS.invoices).toEqual([
+      'invoice_items',
+      'invoice_payments',
+    ]);
+    expect(FOCUSED_EXPORT_ZIP_COMPANIONS.staff_profiles).toEqual(['staff_memberships']);
+    expect(FOCUSED_EXPORT_ZIP_COMPANIONS.full_clinic).toBeUndefined();
+    expect(FOCUSED_EXPORT_ZIP_COMPANIONS.patient_clinical).toBeUndefined();
+    expect(FOCUSED_EXPORT_ZIP_COMPANIONS.lab_orders).toBeUndefined();
+  });
+
+  it('focused single-entity JSON payload (phase 49)', () => {
+    expect(FOCUSED_EXPORT_JSON_KEYS.cash_sessions).toBe('cashSessions');
+    expect(FOCUSED_EXPORT_JSON_KEYS.clinical_images).toBe('clinicalImages');
+    const cash = buildFocusedExportJsonPayload({
+      exportType: 'cash_sessions',
+      manifest: { version: '1.6' },
+      primaryRows: [{ id: 's1' }],
+      companionRowsByBasename: {
+        cash_movements: [{ id: 'm1' }],
+        invoice_items: [{ id: 'should-not-appear' }],
+      },
+    });
+    expect(Object.keys(cash).sort()).toEqual(['cashMovements', 'cashSessions', 'manifest']);
+    expect(cash.cashMovements).toEqual([{ id: 'm1' }]);
+
+    const lab = buildFocusedExportJsonPayload({
+      exportType: 'lab_orders',
+      manifest: {},
+      primaryRows: [{ id: 'l1' }],
+      companionRowsByBasename: {
+        lab_order_items: [{ id: 'i1' }],
+        cash_movements: [{ id: 'ignore' }],
+      },
+    });
+    expect(Object.keys(lab).sort()).toEqual(['labOrderItems', 'labOrders', 'manifest']);
+    expect(lab.labOrderItems).toEqual([{ id: 'i1' }]);
+  });
+
   it('validates consultation rows', () => {
     const issues = validateConsultationRows(
       [
@@ -1220,10 +1312,12 @@ describe('data-migration specialty + chunks', () => {
     const csv = buildExportCatalogCsv();
     expect(csv).toContain('audit_logs');
     expect(csv).toContain('cash_sessions');
+    expect(csv).toContain('inventory_movements');
     expect(csv).toContain('notifications');
     expect(csv).toContain('staff_profiles');
     expect(csv).toMatch(/audit_logs,[^,\n]*,no,/);
     expect(csv).toMatch(/cash_sessions,[^,\n]*,no,/);
+    expect(csv).toMatch(/inventory_movements,[^,\n]*,no,/);
     expect(csv).toMatch(/notifications,[^,\n]*,no,/);
     expect(csv).toMatch(/staff_profiles,[^,\n]*,no,/);
   });
@@ -1342,8 +1436,8 @@ describe('data-migration invoice staff + cutover pack v3 (phase 39)', () => {
     expect(issues.some((i) => i.code === 'unmapped_staff')).toBe(true);
   });
 
-  it('CUTOVER_PACK_VERSION is 3', () => {
-    expect(CUTOVER_PACK_VERSION).toBe(3);
+  it('CUTOVER_PACK_VERSION is 4', () => {
+    expect(CUTOVER_PACK_VERSION).toBe(4);
   });
 
   it('buildCutoverPackReadme includes staff_map_template.csv', () => {
@@ -1362,12 +1456,33 @@ describe('data-migration invoice staff + cutover pack v3 (phase 39)', () => {
     });
     expect(readme).toContain('staff_map_template.csv');
     expect(readme).toContain('branch_map_template.csv');
+    expect(readme).toContain('attachments_meta_template.csv');
     expect(readme).toContain('roundtrip_notes.txt');
+    expect(readme).toContain('fase 50');
   });
 
   it('buildCutoverRoundtripNotes mentions round-trip', () => {
     const notes = buildCutoverRoundtripNotes();
     expect(notes.toLowerCase()).toContain('round-trip');
+    expect(notes).toContain('attachments_meta.csv');
+    expect(notes).toContain('cutover pack v4');
+  });
+});
+
+describe('data-migration guided step map usage (phase 41)', () => {
+  it('FULL_MIGRATION_STEP_MAP_USAGE covers all FULL_MIGRATION_STEPS keys', () => {
+    for (const step of FULL_MIGRATION_STEPS) {
+      expect(FULL_MIGRATION_STEP_MAP_USAGE[step]).toBeDefined();
+      expect(typeof FULL_MIGRATION_STEP_MAP_USAGE[step].branch).toBe('boolean');
+      expect(typeof FULL_MIGRATION_STEP_MAP_USAGE[step].staff).toBe('boolean');
+    }
+  });
+
+  it('spot-checks branch/staff usage per step', () => {
+    expect(FULL_MIGRATION_STEP_MAP_USAGE.owners).toEqual({ branch: true, staff: false });
+    expect(FULL_MIGRATION_STEP_MAP_USAGE.clinical_entries).toEqual({ branch: true, staff: true });
+    expect(FULL_MIGRATION_STEP_MAP_USAGE.payments).toEqual({ branch: false, staff: true });
+    expect(FULL_MIGRATION_STEP_MAP_USAGE.attachments).toEqual({ branch: false, staff: false });
   });
 });
 
@@ -1431,5 +1546,101 @@ describe('data-migration branch map + internal UUID (phase 40)', () => {
     expect(csv).toContain('external_branch_id');
     expect(csv).toContain('internal_branch_id');
     expect(csv).toContain('BR-001');
+  });
+});
+
+describe('data-migration attachment meta (phase 42)', () => {
+  it('buildAttachmentMetaKey joins patient id and filename', () => {
+    expect(buildAttachmentMetaKey('PAT-1', 'a.jpg')).toBe('PAT-1::a.jpg');
+  });
+
+  it('parseAttachmentMetaCsv happy path with optional branch/staff columns', () => {
+    const csv = [
+      'external_patient_id,filename,external_branch_id,external_assigned_user_id',
+      'PAT-1,photo.jpg,BR-001,VET-01',
+      'PAT-2,scan.pdf,,',
+    ].join('\n');
+    const parsed = parseAttachmentMetaCsv(csv);
+    expect(parsed.issues).toHaveLength(0);
+    expect(parsed.rows).toHaveLength(2);
+    expect(parsed.rows[0]).toEqual({
+      externalPatientId: 'PAT-1',
+      filename: 'photo.jpg',
+      externalBranchId: 'BR-001',
+      externalAssignedUserId: 'VET-01',
+    });
+    expect(parsed.rows[1]).toEqual({
+      externalPatientId: 'PAT-2',
+      filename: 'scan.pdf',
+      externalBranchId: null,
+      externalAssignedUserId: null,
+    });
+  });
+
+  it('parseAttachmentMetaCsv with minimum headers returns null branch/staff when omitted', () => {
+    const csv = ['external_patient_id,filename', 'PAT-1,a.jpg'].join('\n');
+    const parsed = parseAttachmentMetaCsv(csv);
+    expect(parsed.issues).toHaveLength(0);
+    expect(parsed.rows[0]).toEqual({
+      externalPatientId: 'PAT-1',
+      filename: 'a.jpg',
+      externalBranchId: null,
+      externalAssignedUserId: null,
+    });
+  });
+
+  it('parseAttachmentMetaCsv flags missing required headers', () => {
+    const parsed = parseAttachmentMetaCsv('foo,bar\n1,2');
+    expect(parsed.issues.some((i) => i.message.includes('Cabeceras requeridas'))).toBe(true);
+    expect(parsed.rows).toHaveLength(0);
+  });
+
+  it('ATTACHMENT_META_IMPORT_FIELDS includes expected keys', () => {
+    const keys = ATTACHMENT_META_IMPORT_FIELDS.map((f) => f.key);
+    expect(keys).toContain('external_patient_id');
+    expect(keys).toContain('filename');
+    expect(keys).toContain('external_branch_id');
+    expect(keys).toContain('external_assigned_user_id');
+  });
+
+  it('buildAttachmentMetaTemplateCsv contains all header keys', () => {
+    const csv = buildAttachmentMetaTemplateCsv();
+    expect(csv).toContain('external_patient_id');
+    expect(csv).toContain('filename');
+    expect(csv).toContain('external_branch_id');
+    expect(csv).toContain('external_assigned_user_id');
+  });
+
+  it('buildAttachmentMetaExportCsv round-trips via parse (phase 50)', () => {
+    const csv = buildAttachmentMetaExportCsv([
+      {
+        externalPatientId: 'pat-uuid-1',
+        filename: 'rx.jpg',
+        externalBranchId: 'branch-uuid',
+        externalAssignedUserId: 'user-uuid',
+      },
+      {
+        externalPatientId: 'pat-uuid-2',
+        filename: 'lab.pdf',
+        externalBranchId: null,
+        externalAssignedUserId: null,
+      },
+    ]);
+    const parsed = parseAttachmentMetaCsv(csv);
+    expect(parsed.issues).toHaveLength(0);
+    expect(parsed.rows).toEqual([
+      {
+        externalPatientId: 'pat-uuid-1',
+        filename: 'rx.jpg',
+        externalBranchId: 'branch-uuid',
+        externalAssignedUserId: 'user-uuid',
+      },
+      {
+        externalPatientId: 'pat-uuid-2',
+        filename: 'lab.pdf',
+        externalBranchId: null,
+        externalAssignedUserId: null,
+      },
+    ]);
   });
 });

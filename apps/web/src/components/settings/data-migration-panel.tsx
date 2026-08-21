@@ -6,6 +6,7 @@ import {
   DEFAULT_IMPORT_CHUNK_SIZE,
   EXPORT_TYPE_LABELS,
   FULL_MIGRATION_STEP_LABELS,
+  FULL_MIGRATION_STEP_MAP_USAGE,
   FULL_MIGRATION_STEPS,
   IDEMPOTENCY_MODE_LABELS,
   IMPORT_TYPE_LABELS,
@@ -176,6 +177,40 @@ export function DataMigrationPanel({
     return 'owners' as const;
   }, [importType, guideStep]);
 
+  const guideStepMapHints = useMemo(() => {
+    const usage = FULL_MIGRATION_STEP_MAP_USAGE[guideStep];
+    const branchCount = Object.keys(branchIdByExternal).length;
+    const staffCount = Object.keys(userIdByExternal).length;
+    const hints: Array<{ kind: 'warn' | 'ok'; text: string }> = [];
+    if (usage.branch) {
+      if (branchCount === 0) {
+        hints.push({
+          kind: 'warn',
+          text: 'Este paso admite external_branch_id — sin mapa cargado, vacío usará la sede de sesión; IDs desconocidos fallarán.',
+        });
+      } else {
+        hints.push({
+          kind: 'ok',
+          text: `Mapa sucursal cargado (${branchCount} entradas).`,
+        });
+      }
+    }
+    if (usage.staff) {
+      if (staffCount === 0) {
+        hints.push({
+          kind: 'warn',
+          text: 'Este paso admite external_assigned_user_id — sin mapa cargado, vacío usará el usuario importador; IDs desconocidos fallarán.',
+        });
+      } else {
+        hints.push({
+          kind: 'ok',
+          text: `Mapa staff cargado (${staffCount} entradas).`,
+        });
+      }
+    }
+    return hints;
+  }, [guideStep, branchIdByExternal, userIdByExternal]);
+
   async function onDownloadTemplate(
     kind:
       | 'branches'
@@ -194,6 +229,7 @@ export function DataMigrationPanel({
       | 'payments'
       | 'staff_map'
       | 'branch_map'
+      | 'attachment_meta'
   ) {
     setMessage(null);
     const form = new FormData();
@@ -600,6 +636,8 @@ export function DataMigrationPanel({
       form.set('batchId', activeBatchId);
       form.set('zipBase64', zipBase64);
       form.set('patientIdByExternal', JSON.stringify(patientIdByExternal));
+      form.set('branchIdByExternal', JSON.stringify(branchIdByExternal));
+      form.set('userIdByExternal', JSON.stringify(userIdByExternal));
       form.set('sourceSystem', sourceSystem);
       form.set('offset', String(offset));
       form.set('chunkSize', '10');
@@ -915,6 +953,8 @@ export function DataMigrationPanel({
               Fase 38: Export round-trip de `external_branch_id` / `external_assigned_user_id` (UUID internos) + mapa staff en pagos; formato 1.5.
               Fase 39: Mapa staff en facturas (`created_by`; vacío = importador). Paquete cutover v3 con plantillas staff/branch y notas round-trip.
               Fase 40: Mapa sucursales (upload CSV) + UUID internos de branch aceptados en re-import; formato 1.5.
+              Fase 41: ZIP de ejemplo incluye staff_map.csv, branch_map.csv y roundtrip_notes.txt; asistente guiado indica si el paso admite mapa de sucursal/staff.
+              Fase 42: `attachments_meta.csv` opcional en el ZIP mapea sucursal/staff por archivo adjunto (vacío = valores actuales; sin mapear = falla ese adjunto, no todo el lote).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -988,6 +1028,22 @@ export function DataMigrationPanel({
                     </li>
                   ))}
                 </ol>
+                {guideStepMapHints.length > 0 ? (
+                  <div className="space-y-0.5">
+                    {guideStepMapHints.map((hint) => (
+                      <p
+                        key={hint.text}
+                        className={
+                          hint.kind === 'ok'
+                            ? 'text-xs text-emerald-600'
+                            : 'text-xs text-muted-foreground'
+                        }
+                      >
+                        {hint.text}
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
                 <div className="flex flex-wrap gap-2 pt-1">
                   <Button
                     type="button"
@@ -1193,6 +1249,9 @@ export function DataMigrationPanel({
               <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadTemplate('branch_map')}>
                 Plantilla mapa sucursales
               </Button>
+              <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadTemplate('attachment_meta')}>
+                Plantilla metadata adjuntos
+              </Button>
               <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void onDownloadSampleZip()}>
                 ZIP migración de ejemplo
               </Button>
@@ -1397,12 +1456,28 @@ export function DataMigrationPanel({
               WhatsApp).               Fase 28: export de WhatsApp (historial). Solo lectura — no hay import (no
               reenvía mensajes). Fase 29: export de auditoría (historial). Solo lectura — no hay import
               (pista inmutable). Fase 33: export de notificaciones (historial). Solo lectura — no hay import
-              (no recrea inbox). Fase 34: export de staff (perfiles + membresías). Solo lectura — no importa
-              usuarios ni roles. CSV/JSON/XLSX/ZIP + módulos specialty. Opcional: rango de fechas y encolar
+              (no recrea inbox).               Fase 34: export de staff (perfiles + membresías). Solo lectura — no importa
+              usuarios ni roles. Fase 43: export de movimientos de inventario (auditoría de stock). Solo
+              lectura — no se importa (el stock se deriva de operaciones reales, no de migración). CSV/JSON/XLSX/ZIP + módulos specialty. Opcional: rango de fechas y encolar
               para background. ZIP completo incluye lab/cirugía/recetas/internación. Fase 38: CSV/ZIP emiten
-              `external_branch_id` y `external_assigned_user_id` (UUID internos) para re-import con mapas conocidos; formato 1.5.
+              `external_branch_id` y `external_assigned_user_id` (UUID internos) para re-import con mapas conocidos; formato 1.6.
               Fase 39: facturas exportan `created_by` como `external_assigned_user_id`.
               Fase 40: re-import acepta UUID internos de branch además del mapa sucursales.
+              Fase 44: ZIP completo/JSON incluye notas de internación (evolución/temperatura/peso). Solo
+              lectura — no se importan (se registran en la app durante la estadía, no por migración).
+              Fase 45: export individual CSV/XLSX de internaciones aplana las notas; JSON incluye
+              `hospitalizationNotes` (y ítems lab/rx); ZIP specialty de internaciones trae notas CSV+JSON.
+              Fase 46: export de adjuntos clínicos (metadata). Solo lectura — catálogo CSV/JSON/XLSX +
+              ZIP completo; no recrea filas (los binarios siguen por ZIP de adjuntos). También amplía el
+              check DB de `export_type` con `inventory_movements` + `clinical_images`.
+              Fase 47: ZIP specialty de lab/recetas incluye ítems hijos (CSV+JSON); cirugías specialty
+              incluye CSV padre (misma paridad que internaciones fase 45).
+              Fase 48: ZIP de una sola entidad es enfocado (solo esa entidad + companions: caja→
+              movimientos, facturas→ítems/pagos, staff→membresías); ya no vuelca toda la clínica vacía.
+              Fase 49: JSON de una sola entidad / specialty también enfocado (formato 1.6); bundles
+              `full_clinic` / `patient_clinical` siguen completos.
+              Fase 50 (hito): export ZIP emite `attachments_meta.csv` para binarios empaquetados
+              (round-trip con import fase 42); cutover pack v4 + plantilla attachments_meta.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1482,6 +1557,7 @@ export function DataMigrationPanel({
               Paquete cutover v3: incluye catálogo de exports, recomendaciones de freeze, id-map org,
               plantillas staff/branch y notas round-trip (integridad + checklist + conciliación, solo lectura).
               Fase 32: export org-wide del id-map (también en paquete cutover).
+              Fase 41: ZIP de ejemplo incluye staff_map.csv, branch_map.csv y roundtrip_notes.txt; asistente guiado indica si el paso admite mapa de sucursal/staff.
             </p>
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => void refreshIntegrity()}>

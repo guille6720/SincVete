@@ -25,6 +25,7 @@ import {
   buildFreezeRecommendationsCsv,
   buildCutoverPackReadme,
   buildBranchMapTemplateCsv,
+  buildAttachmentMetaTemplateCsv,
   buildCutoverRoundtripNotes,
   CUTOVER_PACK_VERSION,
   DATA_MIGRATION_AUDIT_ACTIONS,
@@ -262,6 +263,15 @@ export async function downloadImportTemplate(
         data: {
           filename: 'SyncVete-Branch-Map-Template.csv',
           csv: buildBranchMapTemplateCsv(),
+        },
+      };
+    }
+    if (kind === 'attachment_meta') {
+      return {
+        success: true,
+        data: {
+          filename: 'SyncVete-Attachment-Meta-Template.csv',
+          csv: buildAttachmentMetaTemplateCsv(),
         },
       };
     }
@@ -660,6 +670,12 @@ export async function importZipAttachmentsAction(formData: FormData): Promise<
     const patientIdByExternal = JSON.parse(
       String(formData.get('patientIdByExternal') ?? '{}')
     ) as Record<string, string>;
+    const branchIdByExternal = JSON.parse(
+      String(formData.get('branchIdByExternal') ?? '{}')
+    ) as Record<string, string>;
+    const userIdByExternal = JSON.parse(
+      String(formData.get('userIdByExternal') ?? '{}')
+    ) as Record<string, string>;
     const offset = Number(formData.get('offset') ?? 0) || 0;
     const chunkSize = Number(formData.get('chunkSize') ?? 10) || 10;
     if (!batchId || !zipBase64) return { success: false, error: 'Datos de adjuntos incompletos' };
@@ -681,6 +697,8 @@ export async function importZipAttachmentsAction(formData: FormData): Promise<
       zipBuffer: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
       patientIdByExternal,
       branchId: branch.id,
+      branchIdByExternal,
+      userIdByExternal,
       sourceSystem,
       offset,
       chunkSize,
@@ -1857,6 +1875,7 @@ export async function downloadCutoverPackAction(): Promise<
     zip.file('id_map.csv', idMapExport.csv);
     zip.file('staff_map_template.csv', buildStaffMapTemplateCsv());
     zip.file('branch_map_template.csv', buildBranchMapTemplateCsv());
+    zip.file('attachments_meta_template.csv', buildAttachmentMetaTemplateCsv());
     zip.file('roundtrip_notes.txt', buildCutoverRoundtripNotes());
     const zipBytes = await zip.generateAsync({ type: 'nodebuffer' });
     const filename = `cutover-pack-${generatedAt.slice(0, 10)}.zip`;

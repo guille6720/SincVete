@@ -3,6 +3,9 @@ import 'server-only';
 import {
   DATA_MIGRATION_FORMAT,
   DATA_MIGRATION_FORMAT_VERSION,
+  FOCUSED_EXPORT_ZIP_COMPANIONS,
+  buildAttachmentMetaExportCsv,
+  buildFocusedExportJsonPayload,
   isSpecialtyExportType,
   normalizeExportDateRange,
   toCsv,
@@ -28,6 +31,17 @@ function withExternalStaff(row: Record<string, unknown>, staffKey: string) {
 
 function withExternalBranchAndStaff(row: Record<string, unknown>, staffKey: string) {
   return withExternalStaff(withExternalBranch(row), staffKey);
+}
+
+/** Loose CSV for focused ZIP primary entity (union of keys across rows). */
+function rowsToLooseCsv(rows: Array<Record<string, unknown>>): string {
+  const keys = Array.from(
+    rows.reduce((set, row) => {
+      for (const key of Object.keys(row)) set.add(key);
+      return set;
+    }, new Set<string>())
+  );
+  return toCsv(keys, rows);
 }
 
 function applyDateFilter(
@@ -215,6 +229,27 @@ async function fetchCashSessions(
     .order('opened_at', { ascending: true })
     .limit(5000);
   if (bounds) query = applyDateFilter(query, 'opened_at', bounds);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+async function fetchInventoryMovements(
+  organizationId: string,
+  bounds?: DateBounds,
+  db?: Awaited<ReturnType<typeof migrationDb>>
+) {
+  const supabase = db ?? (await migrationDb());
+  let query = supabase
+    .from('inventory_movements')
+    .select(
+      'id, branch_id, product_id, movement_type, quantity, quantity_before, quantity_after, lot_number, expires_at, reason, performed_by, created_at'
+    )
+    .eq('organization_id', organizationId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: true })
+    .limit(20000);
+  if (bounds) query = applyDateFilter(query, 'created_at', bounds);
   const { data, error } = await query;
   if (error) throw new Error(error.message);
   return data ?? [];
@@ -655,6 +690,50 @@ async function fetchHospitalizations(
   return data ?? [];
 }
 
+async function fetchHospitalizationNotes(
+  organizationId: string,
+  hospitalizationIds: string[],
+  db?: Awaited<ReturnType<typeof migrationDb>>
+) {
+  if (hospitalizationIds.length === 0) return [];
+  const supabase = db ?? (await migrationDb());
+  const { data, error } = await supabase
+    .from('hospitalization_notes')
+    .select(
+      'id, hospitalization_id, recorded_by, recorded_at, note_type, content, weight_kg, temperature_c, created_at'
+    )
+    .eq('organization_id', organizationId)
+    .is('deleted_at', null)
+    .in('hospitalization_id', hospitalizationIds.slice(0, 2000))
+    .order('recorded_at', { ascending: true })
+    .limit(20000);
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+async function fetchClinicalImagesCatalog(
+  organizationId: string,
+  patientId?: string | null,
+  bounds?: DateBounds,
+  db?: Awaited<ReturnType<typeof migrationDb>>
+) {
+  const supabase = db ?? (await migrationDb());
+  let query = supabase
+    .from('clinical_images')
+    .select(
+      'id, branch_id, patient_id, owner_id, consultation_id, clinical_entry_id, uploaded_by, kind, title, notes, storage_path, mime_type, file_size, original_name, taken_at, created_at'
+    )
+    .eq('organization_id', organizationId)
+    .is('deleted_at', null)
+    .order('taken_at', { ascending: true })
+    .limit(10000);
+  if (patientId) query = query.eq('patient_id', patientId);
+  if (bounds) query = applyDateFilter(query, 'taken_at', bounds);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
 async function fetchClinicalImages(
   organizationId: string,
   patientIds: string[],
@@ -665,7 +744,7 @@ async function fetchClinicalImages(
   const { data, error } = await supabase
     .from('clinical_images')
     .select(
-      'id, patient_id, kind, title, notes, storage_path, mime_type, file_size, original_name, taken_at, created_at'
+      'id, branch_id, patient_id, uploaded_by, kind, title, notes, storage_path, mime_type, file_size, original_name, taken_at, created_at'
     )
     .eq('organization_id', organizationId)
     .is('deleted_at', null)
@@ -875,6 +954,8 @@ export async function runExportJob(
     });
     const exportType = String(job.export_type) as ExportType;
     const specialtyOnly = isSpecialtyExportType(exportType);
+    const writeFullBundle =
+      exportType === 'full_clinic' || exportType === 'patient_clinical';
 
     await supabase
       .from('data_export_jobs')
@@ -883,6 +964,12 @@ export async function runExportJob(
 
     const needBranches = exportType === 'branches' || exportType === 'full_clinic';
     const needCash = exportType === 'cash_sessions' || exportType === 'full_clinic';
+    const needInventoryMovements =
+      exportType === 'inventory_movements' || exportType === 'full_clinic';
+    const needClinicalImagesMeta =
+      exportType === 'clinical_images' ||
+      exportType === 'full_clinic' ||
+      exportType === 'patient_clinical';
     const needStaff = exportType === 'staff_profiles' || exportType === 'full_clinic';
     const needReminders = exportType === 'reminder_logs' || exportType === 'full_clinic';
     const needWhatsApp = exportType === 'whatsapp_messages' || exportType === 'full_clinic';
@@ -893,6 +980,8 @@ export async function runExportJob(
       exportType !== 'owners' &&
       exportType !== 'branches' &&
       exportType !== 'cash_sessions' &&
+      exportType !== 'inventory_movements' &&
+      exportType !== 'clinical_images' &&
       exportType !== 'staff_profiles' &&
       exportType !== 'reminder_logs' &&
       exportType !== 'whatsapp_messages' &&
@@ -986,6 +1075,13 @@ export async function runExportJob(
     const hospitalizations = needHosp
       ? await fetchHospitalizations(organizationId, job.patient_id, bounds, supabase)
       : [];
+    const hospitalizationNotes = needHosp
+      ? await fetchHospitalizationNotes(
+          organizationId,
+          hospitalizations.map((row: { id: string }) => row.id),
+          supabase
+        )
+      : [];
     const appointments = needAppointments
       ? await fetchAppointments(organizationId, job.patient_id, bounds, supabase)
       : [];
@@ -1022,6 +1118,12 @@ export async function runExportJob(
           supabase
         )
       : [];
+    const inventoryMovements = needInventoryMovements
+      ? await fetchInventoryMovements(organizationId, bounds, supabase)
+      : [];
+    const clinicalImagesMeta = needClinicalImagesMeta
+      ? await fetchClinicalImagesCatalog(organizationId, job.patient_id, bounds, supabase)
+      : [];
     const reminderLogs = needReminders
       ? await fetchReminderLogs(organizationId, bounds, supabase)
       : [];
@@ -1057,6 +1159,7 @@ export async function runExportJob(
       prescriptions: prescriptions.length,
       prescriptionItems: prescriptionItems.length,
       hospitalizations: hospitalizations.length,
+      hospitalizationNotes: hospitalizationNotes.length,
       appointments: appointments.length,
       consultations: consultations.length,
       inventoryProducts: inventoryProducts.length,
@@ -1065,6 +1168,8 @@ export async function runExportJob(
       invoicePayments: invoicePayments.length,
       cashSessions: cashSessions.length,
       cashMovements: cashMovements.length,
+      inventoryMovements: inventoryMovements.length,
+      clinicalImages: clinicalImagesMeta.length,
       reminderLogs: reminderLogs.length,
       whatsappMessages: whatsappMessages.length,
       auditLogs: auditLogs.length,
@@ -1091,7 +1196,15 @@ export async function runExportJob(
     let contentType: string;
 
     const specialtyRows =
-      exportType === 'lab_orders'
+      exportType === 'branches'
+        ? branches
+        : exportType === 'owners'
+          ? filteredOwners
+          : exportType === 'patients'
+            ? filteredPatients
+            : exportType === 'clinical_entries'
+              ? clinical
+              : exportType === 'lab_orders'
         ? labOrders
         : exportType === 'surgeries'
           ? surgeries
@@ -1113,6 +1226,10 @@ export async function runExportJob(
                         ? invoicePayments
                         : exportType === 'cash_sessions'
                           ? cashSessions
+                          : exportType === 'inventory_movements'
+                            ? inventoryMovements
+                          : exportType === 'clinical_images'
+                            ? clinicalImagesMeta
                           : exportType === 'staff_profiles'
                             ? staffProfiles
                             : exportType === 'reminder_logs'
@@ -1126,36 +1243,55 @@ export async function runExportJob(
                                   : null;
 
     if (job.format === 'json') {
-      body = JSON.stringify(
-        {
-          manifest,
-          branches,
-          owners: filteredOwners,
-          patients: filteredPatients,
-          clinicalEntries: clinical,
-          vaccinations,
-          labOrders,
-          surgeries,
-          prescriptions,
-          hospitalizations,
-          appointments,
-          consultations,
-          inventoryProducts,
-          invoices,
-          invoiceItems,
-          invoicePayments,
-          cashSessions,
-          cashMovements,
-          staffProfiles,
-          staffMemberships,
-          reminderLogs,
-          whatsappMessages,
-          auditLogs,
-          notifications,
-        },
-        null,
-        2
-      );
+      const companionRowsByBasename: Record<string, unknown> = {
+        cash_movements: cashMovements,
+        invoice_items: invoiceItems,
+        invoice_payments: invoicePayments,
+        staff_memberships: staffMemberships,
+        lab_order_items: labOrderItems,
+        prescription_items: prescriptionItems,
+        hospitalization_notes: hospitalizationNotes,
+      };
+      const payload =
+        writeFullBundle || !specialtyRows
+          ? {
+              manifest,
+              branches,
+              owners: filteredOwners,
+              patients: filteredPatients,
+              clinicalEntries: clinical,
+              vaccinations,
+              labOrders,
+              labOrderItems,
+              surgeries,
+              prescriptions,
+              prescriptionItems,
+              hospitalizations,
+              hospitalizationNotes,
+              appointments,
+              consultations,
+              inventoryProducts,
+              invoices,
+              invoiceItems,
+              invoicePayments,
+              cashSessions,
+              cashMovements,
+              inventoryMovements,
+              clinicalImages: clinicalImagesMeta,
+              staffProfiles,
+              staffMemberships,
+              reminderLogs,
+              whatsappMessages,
+              auditLogs,
+              notifications,
+            }
+          : buildFocusedExportJsonPayload({
+              exportType,
+              manifest,
+              primaryRows: specialtyRows,
+              companionRowsByBasename,
+            });
+      body = JSON.stringify(payload, null, 2);
       filename = `syncvete-export-${job.export_type}-${Date.now()}.json`;
       contentType = 'application/json;charset=utf-8';
     } else if (job.format === 'csv' || job.format === 'xlsx') {
@@ -1361,9 +1497,12 @@ export async function runExportJob(
               }))
         );
       } else if (exportType === 'hospitalizations') {
+        const hospById = new Map(
+          hospitalizations.map((row: { id: string }) => [row.id, row] as const)
+        );
         csv = toCsv(
           [
-            'id',
+            'hospitalization_id',
             'patient_id',
             'status',
             'admitted_at',
@@ -1371,13 +1510,77 @@ export async function runExportJob(
             'reason',
             'diagnosis',
             'cage',
+            'note_id',
+            'note_type',
+            'note_content',
+            'weight_kg',
+            'temperature_c',
+            'note_recorded_at',
+            'note_recorded_by',
             'source_record_id',
             'external_branch_id',
             'external_assigned_user_id',
           ],
-          hospitalizations.map((row: Record<string, unknown>) =>
-            withExternalBranchAndStaff(row, 'veterinarian_id')
-          )
+          hospitalizationNotes.length > 0
+            ? hospitalizationNotes.map((note: Record<string, unknown>) => {
+                const hosp = hospById.get(String(note.hospitalization_id)) as
+                  | Record<string, unknown>
+                  | undefined;
+                const withIds = (
+                  hosp
+                    ? withExternalBranchAndStaff(hosp, 'veterinarian_id')
+                    : {
+                        external_branch_id: '',
+                        external_assigned_user_id: '',
+                      }
+                ) as Record<string, unknown>;
+                return {
+                  hospitalization_id: note.hospitalization_id,
+                  patient_id: hosp?.patient_id ?? '',
+                  status: hosp?.status ?? '',
+                  admitted_at: hosp?.admitted_at ?? '',
+                  discharged_at: hosp?.discharged_at ?? '',
+                  reason: hosp?.reason ?? '',
+                  diagnosis: hosp?.diagnosis ?? '',
+                  cage: hosp?.cage ?? '',
+                  note_id: note.id ?? '',
+                  note_type: note.note_type ?? '',
+                  note_content: note.content ?? '',
+                  weight_kg: note.weight_kg ?? '',
+                  temperature_c: note.temperature_c ?? '',
+                  note_recorded_at: note.recorded_at ?? '',
+                  note_recorded_by: note.recorded_by ?? '',
+                  source_record_id: hosp?.source_record_id ?? '',
+                  external_branch_id: withIds.external_branch_id ?? '',
+                  external_assigned_user_id: withIds.external_assigned_user_id ?? '',
+                };
+              })
+            : hospitalizations.map((row: Record<string, unknown>) => {
+                const withIds = withExternalBranchAndStaff(row, 'veterinarian_id') as Record<
+                  string,
+                  unknown
+                >;
+                return {
+                  hospitalization_id: row.id,
+                  patient_id: row.patient_id,
+                  status: row.status,
+                  admitted_at: row.admitted_at,
+                  discharged_at: row.discharged_at ?? '',
+                  reason: row.reason ?? '',
+                  diagnosis: row.diagnosis ?? '',
+                  cage: row.cage ?? '',
+                  note_id: '',
+                  note_type: '',
+                  note_content: '',
+                  weight_kg: '',
+                  temperature_c: '',
+                  note_recorded_at: '',
+                  note_recorded_by: '',
+                  source_record_id: row.source_record_id ?? '',
+                  external_branch_id: withIds.external_branch_id ?? '',
+                  external_assigned_user_id: withIds.external_assigned_user_id ?? '',
+                };
+              })
         );
       } else if (exportType === 'appointments') {
         csv = toCsv(
@@ -1618,6 +1821,50 @@ export async function runExportJob(
                 movement_created_at: '',
               }))
         );
+      } else if (exportType === 'inventory_movements') {
+        csv = toCsv(
+          [
+            'id',
+            'branch_id',
+            'product_id',
+            'movement_type',
+            'quantity',
+            'quantity_before',
+            'quantity_after',
+            'lot_number',
+            'expires_at',
+            'reason',
+            'performed_by',
+            'created_at',
+          ],
+          inventoryMovements
+        );
+      } else if (exportType === 'clinical_images') {
+        csv = toCsv(
+          [
+            'id',
+            'patient_id',
+            'owner_id',
+            'branch_id',
+            'consultation_id',
+            'clinical_entry_id',
+            'uploaded_by',
+            'kind',
+            'title',
+            'notes',
+            'original_name',
+            'mime_type',
+            'file_size',
+            'storage_path',
+            'taken_at',
+            'created_at',
+            'external_branch_id',
+            'external_assigned_user_id',
+          ],
+          clinicalImagesMeta.map((row: Record<string, unknown>) =>
+            withExternalBranchAndStaff(row, 'uploaded_by')
+          )
+        );
       } else if (exportType === 'staff_profiles') {
         const profileById = new Map(
           staffProfiles.map((row: { id: string }) => [row.id, row] as const)
@@ -1783,7 +2030,7 @@ export async function runExportJob(
       const labByIdForZip = new Map(
         labOrders.map((row: { id: string }) => [row.id, row] as const)
       );
-      if (!specialtyOnly) {
+      if (writeFullBundle) {
         dataFolder?.file(
           'branches.csv',
           toCsv(
@@ -2027,6 +2274,23 @@ export async function runExportJob(
         )
       );
       dataFolder?.file(
+        'hospitalization_notes.csv',
+        toCsv(
+          [
+            'id',
+            'hospitalization_id',
+            'recorded_by',
+            'recorded_at',
+            'note_type',
+            'content',
+            'weight_kg',
+            'temperature_c',
+            'created_at',
+          ],
+          hospitalizationNotes
+        )
+      );
+      dataFolder?.file(
         'appointments.csv',
         toCsv(
           [
@@ -2097,6 +2361,54 @@ export async function runExportJob(
             'notes',
           ],
           inventoryProducts
+        )
+      );
+      dataFolder?.file(
+        'inventory_movements.csv',
+        toCsv(
+          [
+            'id',
+            'branch_id',
+            'product_id',
+            'movement_type',
+            'quantity',
+            'quantity_before',
+            'quantity_after',
+            'lot_number',
+            'expires_at',
+            'reason',
+            'performed_by',
+            'created_at',
+          ],
+          inventoryMovements
+        )
+      );
+      dataFolder?.file(
+        'clinical_images.csv',
+        toCsv(
+          [
+            'id',
+            'patient_id',
+            'owner_id',
+            'branch_id',
+            'consultation_id',
+            'clinical_entry_id',
+            'uploaded_by',
+            'kind',
+            'title',
+            'notes',
+            'original_name',
+            'mime_type',
+            'file_size',
+            'storage_path',
+            'taken_at',
+            'created_at',
+            'external_branch_id',
+            'external_assigned_user_id',
+          ],
+          clinicalImagesMeta.map((row: Record<string, unknown>) =>
+            withExternalBranchAndStaff(row, 'uploaded_by')
+          )
         )
       );
       dataFolder?.file(
@@ -2286,7 +2598,166 @@ export async function runExportJob(
 
       if (specialtyRows && specialtyOnly) {
         dataFolder?.file(`${exportType}.json`, JSON.stringify(specialtyRows, null, 2));
-      } else {
+        if (exportType === 'lab_orders') {
+          dataFolder?.file(
+            'lab_orders.csv',
+            toCsv(
+              [
+                'id',
+                'patient_id',
+                'title',
+                'status',
+                'priority',
+                'sample_type',
+                'ordered_at',
+                'interpretation',
+                'notes',
+                'source_system',
+                'source_record_id',
+                'external_branch_id',
+                'external_assigned_user_id',
+              ],
+              labOrders.map((row: Record<string, unknown>) =>
+                withExternalBranchAndStaff(row, 'ordered_by')
+              )
+            )
+          );
+          dataFolder?.file(
+            'lab_order_items.csv',
+            toCsv(
+              [
+                'id',
+                'lab_order_id',
+                'test_name',
+                'result_value',
+                'unit',
+                'reference_range',
+                'flag',
+                'sort_order',
+                'external_branch_id',
+                'external_assigned_user_id',
+              ],
+              labOrderItems.map((item: Record<string, unknown>) => {
+                const order = labByIdForZip.get(String(item.lab_order_id)) as
+                  | Record<string, unknown>
+                  | undefined;
+                return {
+                  ...item,
+                  external_branch_id: order?.branch_id ?? '',
+                  external_assigned_user_id: order?.ordered_by ?? '',
+                };
+              })
+            )
+          );
+          dataFolder?.file('lab_order_items.json', JSON.stringify(labOrderItems, null, 2));
+        } else if (exportType === 'prescriptions') {
+          dataFolder?.file(
+            'prescriptions.csv',
+            toCsv(
+              [
+                'id',
+                'patient_id',
+                'status',
+                'prescribed_at',
+                'notes',
+                'source_system',
+                'source_record_id',
+                'external_branch_id',
+                'external_assigned_user_id',
+              ],
+              prescriptions.map((row: Record<string, unknown>) =>
+                withExternalBranchAndStaff(row, 'prescribed_by')
+              )
+            )
+          );
+          dataFolder?.file(
+            'prescription_items.csv',
+            toCsv(
+              [
+                'id',
+                'prescription_id',
+                'medication_name',
+                'dose',
+                'frequency',
+                'duration',
+                'route',
+                'quantity',
+                'instructions',
+                'sort_order',
+              ],
+              prescriptionItems
+            )
+          );
+          dataFolder?.file('prescription_items.json', JSON.stringify(prescriptionItems, null, 2));
+        } else if (exportType === 'surgeries') {
+          dataFolder?.file(
+            'surgeries.csv',
+            toCsv(
+              [
+                'id',
+                'patient_id',
+                'procedure_name',
+                'status',
+                'scheduled_at',
+                'notes',
+                'source_system',
+                'source_record_id',
+                'external_branch_id',
+                'external_assigned_user_id',
+              ],
+              surgeries.map((row: Record<string, unknown>) =>
+                withExternalBranchAndStaff(row, 'surgeon_id')
+              )
+            )
+          );
+        } else if (exportType === 'hospitalizations') {
+          dataFolder?.file(
+            'hospitalizations.csv',
+            toCsv(
+              [
+                'id',
+                'patient_id',
+                'status',
+                'admitted_at',
+                'discharged_at',
+                'reason',
+                'diagnosis',
+                'treatment_plan',
+                'cage',
+                'notes',
+                'source_system',
+                'source_record_id',
+                'external_branch_id',
+                'external_assigned_user_id',
+              ],
+              hospitalizations.map((row: Record<string, unknown>) =>
+                withExternalBranchAndStaff(row, 'veterinarian_id')
+              )
+            )
+          );
+          dataFolder?.file(
+            'hospitalization_notes.csv',
+            toCsv(
+              [
+                'id',
+                'hospitalization_id',
+                'recorded_by',
+                'recorded_at',
+                'note_type',
+                'content',
+                'weight_kg',
+                'temperature_c',
+                'created_at',
+              ],
+              hospitalizationNotes
+            )
+          );
+          dataFolder?.file(
+            'hospitalization_notes.json',
+            JSON.stringify(hospitalizationNotes, null, 2)
+          );
+        }
+      } else if (writeFullBundle) {
         dataFolder?.file('branches.json', JSON.stringify(branches, null, 2));
         dataFolder?.file('owners.json', JSON.stringify(filteredOwners, null, 2));
         dataFolder?.file('patients.json', JSON.stringify(filteredPatients, null, 2));
@@ -2298,9 +2769,12 @@ export async function runExportJob(
         dataFolder?.file('prescriptions.json', JSON.stringify(prescriptions, null, 2));
         dataFolder?.file('prescription_items.json', JSON.stringify(prescriptionItems, null, 2));
         dataFolder?.file('hospitalizations.json', JSON.stringify(hospitalizations, null, 2));
+        dataFolder?.file('hospitalization_notes.json', JSON.stringify(hospitalizationNotes, null, 2));
         dataFolder?.file('appointments.json', JSON.stringify(appointments, null, 2));
         dataFolder?.file('consultations.json', JSON.stringify(consultations, null, 2));
         dataFolder?.file('inventory_products.json', JSON.stringify(inventoryProducts, null, 2));
+        dataFolder?.file('inventory_movements.json', JSON.stringify(inventoryMovements, null, 2));
+        dataFolder?.file('clinical_images.json', JSON.stringify(clinicalImagesMeta, null, 2));
         dataFolder?.file('invoices.json', JSON.stringify(invoices, null, 2));
         dataFolder?.file('invoice_items.json', JSON.stringify(invoiceItems, null, 2));
         dataFolder?.file('invoice_payments.json', JSON.stringify(invoicePayments, null, 2));
@@ -2312,6 +2786,90 @@ export async function runExportJob(
         dataFolder?.file('whatsapp_messages.json', JSON.stringify(whatsappMessages, null, 2));
         dataFolder?.file('audit_logs.json', JSON.stringify(auditLogs, null, 2));
         dataFolder?.file('notifications.json', JSON.stringify(notifications, null, 2));
+      } else if (specialtyRows) {
+        // Phase 48: focused single-entity ZIP — primary + companions only.
+        dataFolder?.file(`${exportType}.json`, JSON.stringify(specialtyRows, null, 2));
+        dataFolder?.file(
+          `${exportType}.csv`,
+          rowsToLooseCsv(specialtyRows as Array<Record<string, unknown>>)
+        );
+        const companions = FOCUSED_EXPORT_ZIP_COMPANIONS[exportType] ?? [];
+        if (companions.includes('cash_movements')) {
+          dataFolder?.file('cash_movements.json', JSON.stringify(cashMovements, null, 2));
+          dataFolder?.file(
+            'cash_movements.csv',
+            toCsv(
+              [
+                'id',
+                'cash_session_id',
+                'payment_id',
+                'recorded_by',
+                'kind',
+                'method',
+                'amount',
+                'notes',
+                'created_at',
+              ],
+              cashMovements
+            )
+          );
+        }
+        if (companions.includes('invoice_items')) {
+          dataFolder?.file('invoice_items.json', JSON.stringify(invoiceItems, null, 2));
+          dataFolder?.file(
+            'invoice_items.csv',
+            toCsv(
+              [
+                'id',
+                'invoice_id',
+                'description',
+                'quantity',
+                'unit_price',
+                'line_total',
+                'inventory_product_id',
+                'sort_order',
+              ],
+              invoiceItems
+            )
+          );
+        }
+        if (companions.includes('invoice_payments')) {
+          dataFolder?.file('invoice_payments.json', JSON.stringify(invoicePayments, null, 2));
+          dataFolder?.file(
+            'invoice_payments.csv',
+            toCsv(
+              [
+                'id',
+                'invoice_id',
+                'method',
+                'amount',
+                'paid_at',
+                'reference',
+                'notes',
+                'recorded_by',
+                'created_at',
+              ],
+              invoicePayments
+            )
+          );
+        }
+        if (companions.includes('staff_memberships')) {
+          dataFolder?.file('staff_memberships.json', JSON.stringify(staffMemberships, null, 2));
+          dataFolder?.file(
+            'staff_memberships.csv',
+            toCsv(
+              [
+                'id',
+                'branch_id',
+                'user_id',
+                'role',
+                'is_active',
+                'created_at',
+              ],
+              staffMemberships
+            )
+          );
+        }
       }
 
       const patientIds = filteredPatients.map((p: { id: string }) => p.id);
@@ -2326,6 +2884,12 @@ export async function runExportJob(
       let attachmentBytes = 0;
       const MAX_ATTACHMENTS = 40;
       const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+      const packedAttachmentMeta: Array<{
+        externalPatientId: string;
+        filename: string;
+        externalBranchId: string | null;
+        externalAssignedUserId: string | null;
+      }> = [];
       for (const image of images) {
         if (attachmentCount >= MAX_ATTACHMENTS || attachmentBytes >= MAX_ATTACHMENT_BYTES) break;
         const { data: blob, error: downloadError } = await storageResolved.storage
@@ -2342,16 +2906,41 @@ export async function runExportJob(
           .folder('attachments')
           ?.folder(String(image.patient_id))
           ?.file(safeName, bytes);
+        packedAttachmentMeta.push({
+          externalPatientId: String(image.patient_id),
+          filename: safeName,
+          externalBranchId: image.branch_id ? String(image.branch_id) : null,
+          externalAssignedUserId: image.uploaded_by ? String(image.uploaded_by) : null,
+        });
         attachmentCount += 1;
         attachmentBytes += bytes.byteLength;
       }
       recordCounts.attachments = attachmentCount;
+      if (packedAttachmentMeta.length > 0) {
+        const metaCsv = buildAttachmentMetaExportCsv(packedAttachmentMeta);
+        zip.file('attachments_meta.csv', metaCsv);
+        dataFolder?.file('attachments_meta.csv', metaCsv);
+      } else if (exportType === 'clinical_images' && clinicalImagesMeta.length > 0) {
+        // Focused clinical_images ZIP: meta catalog without binaries (phase 50).
+        const catalogMeta = clinicalImagesMeta.map((row: Record<string, unknown>) => ({
+          externalPatientId: String(row.patient_id ?? ''),
+          filename: String(row.original_name || `${row.id ?? 'file'}.bin`).replace(
+            /[\\/:*?"<>|]+/g,
+            '_'
+          ),
+          externalBranchId: row.branch_id ? String(row.branch_id) : null,
+          externalAssignedUserId: row.uploaded_by ? String(row.uploaded_by) : null,
+        }));
+        const metaCsv = buildAttachmentMetaExportCsv(catalogMeta);
+        zip.file('attachments_meta.csv', metaCsv);
+        dataFolder?.file('attachments_meta.csv', metaCsv);
+      }
 
       zip
         .folder('reports')
         ?.file(
           'export-summary.txt',
-          `SyncVete export\nType: ${job.export_type}\nRange: ${bounds.dateFrom ?? '—'} → ${bounds.dateTo ?? '—'}\nBranches: ${recordCounts.branches ?? 0}\nOwners: ${recordCounts.owners}\nPatients: ${recordCounts.patients}\nClinical: ${recordCounts.clinicalEntries}\nVaccinations: ${recordCounts.vaccinations}\nLab: ${recordCounts.labOrders}\nLab items: ${recordCounts.labOrderItems}\nSurgeries: ${recordCounts.surgeries}\nPrescriptions: ${recordCounts.prescriptions}\nPrescription items: ${recordCounts.prescriptionItems}\nHospitalizations: ${recordCounts.hospitalizations}\nAppointments: ${recordCounts.appointments ?? 0}\nConsultations: ${recordCounts.consultations ?? 0}\nInventory: ${recordCounts.inventoryProducts ?? 0}\nInvoices: ${recordCounts.invoices ?? 0}\nInvoice items: ${recordCounts.invoiceItems ?? 0}\nInvoice payments: ${recordCounts.invoicePayments ?? 0}\nCash sessions: ${recordCounts.cashSessions ?? 0}\nCash movements: ${recordCounts.cashMovements ?? 0}\nStaff profiles: ${recordCounts.staffProfiles ?? 0}\nStaff memberships: ${recordCounts.staffMemberships ?? 0}\nReminder logs: ${recordCounts.reminderLogs ?? 0}\nWhatsApp messages: ${recordCounts.whatsappMessages ?? 0}\nAudit logs: ${recordCounts.auditLogs ?? 0}\nNotifications: ${recordCounts.notifications ?? 0}\nAttachments: ${attachmentCount}\n`
+          `SyncVete export\nType: ${job.export_type}\nRange: ${bounds.dateFrom ?? '—'} → ${bounds.dateTo ?? '—'}\nBranches: ${recordCounts.branches ?? 0}\nOwners: ${recordCounts.owners}\nPatients: ${recordCounts.patients}\nClinical: ${recordCounts.clinicalEntries}\nVaccinations: ${recordCounts.vaccinations}\nLab: ${recordCounts.labOrders}\nLab items: ${recordCounts.labOrderItems}\nSurgeries: ${recordCounts.surgeries}\nPrescriptions: ${recordCounts.prescriptions}\nPrescription items: ${recordCounts.prescriptionItems}\nHospitalizations: ${recordCounts.hospitalizations}\nHospitalization notes: ${recordCounts.hospitalizationNotes}\nAppointments: ${recordCounts.appointments ?? 0}\nConsultations: ${recordCounts.consultations ?? 0}\nInventory: ${recordCounts.inventoryProducts ?? 0}\nInventory movements: ${recordCounts.inventoryMovements ?? 0}\nClinical images (meta): ${recordCounts.clinicalImages ?? 0}\nInvoices: ${recordCounts.invoices ?? 0}\nInvoice items: ${recordCounts.invoiceItems ?? 0}\nInvoice payments: ${recordCounts.invoicePayments ?? 0}\nCash sessions: ${recordCounts.cashSessions ?? 0}\nCash movements: ${recordCounts.cashMovements ?? 0}\nStaff profiles: ${recordCounts.staffProfiles ?? 0}\nStaff memberships: ${recordCounts.staffMemberships ?? 0}\nReminder logs: ${recordCounts.reminderLogs ?? 0}\nWhatsApp messages: ${recordCounts.whatsappMessages ?? 0}\nAudit logs: ${recordCounts.auditLogs ?? 0}\nNotifications: ${recordCounts.notifications ?? 0}\nAttachments: ${attachmentCount}\n`
         );
       body = await zip.generateAsync({ type: 'uint8array' });
       filename = `SyncVete-Clinic-Export-${new Date().toISOString().slice(0, 10)}.zip`;

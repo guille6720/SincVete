@@ -18,6 +18,10 @@ import {
   buildInventoryProductTemplateCsv,
   buildInvoiceTemplateCsv,
   buildPaymentTemplateCsv,
+  buildStaffMapTemplateCsv,
+  buildBranchMapTemplateCsv,
+  buildAttachmentMetaTemplateCsv,
+  buildCutoverRoundtripNotes,
   parseCsv,
   parseMigrationManifest,
   type MigrationZipManifest,
@@ -143,9 +147,13 @@ export async function buildSampleMigrationZip(sourceSystem = 'VetLegacy'): Promi
   zip.file('inventory_products.csv', buildInventoryProductTemplateCsv());
   zip.file('invoices.csv', buildInvoiceTemplateCsv());
   zip.file('payments.csv', buildPaymentTemplateCsv());
+  zip.file('staff_map.csv', buildStaffMapTemplateCsv());
+  zip.file('branch_map.csv', buildBranchMapTemplateCsv());
+  zip.file('attachments_meta.csv', buildAttachmentMetaTemplateCsv());
+  zip.file('roundtrip_notes.txt', buildCutoverRoundtripNotes());
   zip.folder('attachments')?.folder('PAT-001')?.file(
     'README.txt',
-    'Colocá aquí PDFs/JPG/PNG del paciente externo PAT-001.\n'
+    'Colocá aquí PDFs/JPG/PNG del paciente externo PAT-001.\nOpcional: attachments_meta.csv en la raíz mapea sucursal/staff por archivo.\n'
   );
   zip.file(
     'INSTRUCTIONS.txt',
@@ -160,6 +168,7 @@ export async function buildSampleMigrationZip(sourceSystem = 'VetLegacy'): Promi
       '3) patients.csv',
       '4) clinical_records.csv / vaccinations.csv / lab_orders.csv / surgeries.csv / prescriptions.csv',
       '5) attachments/<external_patient_id>/*.(jpg|png|pdf|webp|gif)',
+      '6) attachments_meta.csv (opcional: branch/staff por archivo)',
       '',
     ].join('\n')
   );

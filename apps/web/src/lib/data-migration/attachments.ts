@@ -5,12 +5,17 @@ import {
   DEFAULT_IMPORT_CHUNK_SIZE,
   FEATURES,
   MAX_IMPORT_ZIP_BYTES,
+  buildAttachmentMetaKey,
   buildClinicalImageStoragePath,
   bytesToStorageMb,
   chunkRange,
   guessMimeFromFilename,
   isAllowedClinicalImageMime,
+  parseAttachmentMetaCsv,
   parseMigrationAttachmentPath,
+  resolveImportBranchId,
+  resolveImportStaffUserId,
+  type AttachmentMetaRow,
   type ClinicalImageKind,
 } from '@sincvete/shared';
 import JSZip from 'jszip';
@@ -24,11 +29,39 @@ function kindFromMime(mime: string): ClinicalImageKind {
   return 'foto';
 }
 
+function findAttachmentMetaCsvPath(filePaths: string[]): string | null {
+  for (const path of filePaths) {
+    const normalized = path.replace(/\\/g, '/');
+    if (!normalized.endsWith('attachments_meta.csv')) continue;
+    if (normalized.split('/').includes('attachments')) continue;
+    return path;
+  }
+  return null;
+}
+
+async function loadAttachmentMetaMap(
+  zip: JSZip
+): Promise<Map<string, AttachmentMetaRow>> {
+  const metaPath = findAttachmentMetaCsvPath(Object.keys(zip.files));
+  if (!metaPath) return new Map();
+  const entry = zip.file(metaPath);
+  if (!entry) return new Map();
+  const csvText = await entry.async('string');
+  const { rows } = parseAttachmentMetaCsv(csvText);
+  const metaMap = new Map<string, AttachmentMetaRow>();
+  for (const row of rows) {
+    metaMap.set(buildAttachmentMetaKey(row.externalPatientId, row.filename), row);
+  }
+  return metaMap;
+}
+
 export async function importZipAttachmentsChunk(input: {
   batchId: string;
   zipBuffer: ArrayBuffer;
   patientIdByExternal: Record<string, string>;
   branchId: string;
+  branchIdByExternal?: Record<string, string>;
+  userIdByExternal?: Record<string, string>;
   sourceSystem?: string | null;
   offset?: number;
   chunkSize?: number;
@@ -61,6 +94,30 @@ export async function importZipAttachmentsChunk(input: {
   const refs = Object.keys(zip.files)
     .map((path) => parseMigrationAttachmentPath(path))
     .filter((ref): ref is NonNullable<typeof ref> => Boolean(ref));
+
+  const metaMap = await loadAttachmentMetaMap(zip);
+  let knownBranchInternalIds: Set<string> | undefined;
+  let knownStaffInternalIds: Set<string> | undefined;
+  if (metaMap.size > 0) {
+    const { data: branchRows } = await supabase
+      .from('branches')
+      .select('id')
+      .eq('organization_id', session.organizationId)
+      .is('deleted_at', null)
+      .limit(5000);
+    knownBranchInternalIds = new Set(
+      ((branchRows ?? []) as Array<{ id: string }>).map((b) => b.id).filter(Boolean)
+    );
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('organization_id', session.organizationId)
+      .is('deleted_at', null)
+      .limit(5000);
+    knownStaffInternalIds = new Set(
+      ((profiles ?? []) as Array<{ id: string }>).map((p) => p.id).filter(Boolean)
+    );
+  }
 
   const range = chunkRange(
     refs.length,
@@ -169,13 +226,42 @@ export async function importZipAttachmentsChunk(input: {
       continue;
     }
 
+    let branchId = input.branchId;
+    let uploadedBy = session.userId;
+    const meta = metaMap.get(buildAttachmentMetaKey(ref.externalPatientId, ref.filename));
+    if (meta) {
+      const branchResolved = resolveImportBranchId({
+        externalBranchId: meta.externalBranchId,
+        branchIdByExternal: input.branchIdByExternal,
+        knownBranchInternalIds,
+        defaultBranchId: input.branchId,
+      });
+      if (!branchResolved.ok) {
+        failed += 1;
+        continue;
+      }
+      branchId = branchResolved.branchId;
+
+      const staffResolved = resolveImportStaffUserId({
+        externalAssignedUserId: meta.externalAssignedUserId,
+        userIdByExternal: input.userIdByExternal,
+        knownStaffInternalIds,
+        defaultUserId: session.userId,
+      });
+      if (!staffResolved.ok) {
+        failed += 1;
+        continue;
+      }
+      uploadedBy = staffResolved.userId ?? session.userId;
+    }
+
     const { error: insertError } = await supabase.from('clinical_images').insert({
       id: imageId,
       organization_id: session.organizationId,
-      branch_id: input.branchId,
+      branch_id: branchId,
       patient_id: patient.id,
       owner_id: patient.owner_id,
-      uploaded_by: session.userId,
+      uploaded_by: uploadedBy,
       kind: kindFromMime(mime),
       title: ref.filename.replace(/\.[^.]+$/, '').slice(0, 160) || null,
       notes: `Importado desde ${ref.zipPath}`,
